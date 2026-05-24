@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#4f46e5" />
+  <title>TripMaster</title>
+
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js" defer></script>
+
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --sub: #64748b;
+      --border: #e2e8f0;
+      --danger: #ef4444;
+      --highlight: #fef9c3;
+      --highlight-border: #fbbf24;
+      --shadow: 0 10px 25px rgba(0,0,0,.08);
+    }
+
+    [data-theme="dark"] {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #f8fafc;
+      --sub: #94a3b8;
+      --border: #334155;
+      --shadow: 0 10px 25px rgba(0,0,0,.25);
+      --highlight: #422006;
+      --highlight-border: #d97706;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: 'Rubik', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding-bottom: calc(120px + env(safe-area-inset-bottom));
+      -webkit-tap-highlight-color: transparent;
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #4f46e5, #6d5dfc);
+      color: white;
+      padding: 14px 12px;
+      padding-top: calc(14px + env(safe-area-inset-top));
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header .title {
+      flex: 1;
+      min-width: 90px;
+      text-align: right;
+      font-weight: 700;
+      font-size: 18px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .header .actions {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      flex-shrink: 0;
+      padding-bottom: 2px;
+      scrollbar-width: none;
+    }
+
+    .header .actions::-webkit-scrollbar { display: none; }
+
+    .header .icon-btn {
+      width: 38px;
+      height: 38px;
+      min-width: 38px;
+      border: none;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.12);
+      backdrop-filter: blur(6px);
+      color: #fff;
+      font-size: 17px;
+      cursor: pointer;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 14px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+      margin-bottom: 12px;
+      transition: background-color 0.3s, border-color 0.3s;
+    }
+
+    .row { display: flex; gap: 10px; }
+    .row > * { flex: 1; }
+
+    label {
+      display: block;
+      font-size: .85rem;
+      color: var(--sub);
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 12px;
+      font-size: 16px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, textarea:focus { border-color: var(--primary); }
+    textarea { min-height: 80px; resize: none; }
+
+    .btn {
+      width: 100%;
+      border: none;
+      border-radius: 14px;
+      padding: 12px;
+      font-weight: 900;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .btn:active { opacity: 0.8; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-muted { background: transparent; border: 1px solid var(--border); color: var(--text); }
+
+    .chips {
+      display: flex;
+      gap: 8px;
+      overflow: auto;
+      padding: 4px 2px 10px 2px;
+    }
+
+    .chip {
+      flex: 0 0 auto;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 10px 12px;
+      font-weight: 900;
+      font-size: .9rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .chip.active {
+      border-color: var(--primary);
+      box-shadow: 0 4px 12px rgba(79,70,229,.18);
+      color: var(--primary);
+    }
+
+    .chip.add-day {
+      border-style: dashed;
+      color: var(--sub);
+      font-size: 1.1rem;
+      padding: 8px 14px;
+    }
+
+    .chip.add-day:hover { border-color: var(--primary); color: var(--primary); }
+
+    .day-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .day-head h2 { margin: 0; font-size: 1.05rem; }
+
+    .day-head .sub {
+      color: var(--sub);
+      font-size: .9rem;
+      margin-top: 4px;
+      font-weight: 800;
+    }
+
+    .list { margin-top: 6px; }
+
+    .empty {
+      text-align: center;
+      color: var(--sub);
+      padding: 18px 8px;
+      font-weight: 800;
+    }
+
+    .item {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 16px;
+      margin-bottom: 10px;
+      transition: opacity 0.3s, transform 0.2s, border-color 0.3s, background-color 0.3s;
+    }
+
+    .item.completed { opacity: 0.5; }
+    .item.completed .title { text-decoration: line-through; }
+
+    .item.now-item {
+      border-color: var(--highlight-border) !important;
+      background: var(--highlight) !important;
+      box-shadow: 0 0 0 3px rgba(251,191,36,.25);
+    }
+
+    .item.now-item .now-badge { display: inline-block; }
+
+    .now-badge {
+      display: none;
+      background: #f59e0b;
+      color: white;
+      font-size: .7rem;
+      font-weight: 900;
+      border-radius: 999px;
+      padding: 2px 8px;
+      margin-right: 6px;
+    }
+
+    .item-content {
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .item-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 64px;
+      text-align: right;
+      font-weight: 900;
+    }
+
+    .time { font-size: 1rem; }
+    .meta { font-size: .75rem; color: var(--sub); font-weight: 800; }
+
+    .item-main { flex: 1; min-width: 0; cursor: pointer; }
+
+    .title {
+      font-weight: 900;
+      font-size: 1rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .note {
+      font-size: .85rem;
+      color: var(--sub);
+      margin-top: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .item-actions { display: flex; align-items: center; gap: 6px; }
+
+    .done, .delete, .drag {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      user-select: none;
+      font-size: 14px;
+    }
+
+    .done:active, .delete:active { background: var(--border); }
+    .delete { color: var(--danger); }
+    .drag { cursor: grab; }
+    .drag:active { cursor: grabbing; }
+
+    .bottom-bar {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      padding: 10px 14px calc(10px + env(safe-area-inset-bottom)) 14px;
+      z-index: 1200;
+      background: linear-gradient(180deg, rgba(0,0,0,0), var(--bg) 35%, var(--bg));
+    }
+
+    .bottom-actions {
+      display: flex;
+      gap: 10px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .fab {
+      flex: 1;
+      height: 54px;
+      border-radius: 18px;
+      border: none;
+      font-weight: 900;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .fab:active { transform: scale(0.98); }
+    .fab.add { background: var(--primary); color: #fff; }
+    .fab.ai { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+
+    .sheet-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.35);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 2000;
+      transition: opacity 0.25s;
+    }
+
+    .sheet-backdrop.open { opacity: 1; pointer-events: auto; }
+
+    .sheet {
+      position: fixed;
+      left: 0; right: 0; bottom: -100%;
+      max-width: 720px;
+      margin: 0 auto;
+      height: 78%;
+      background: var(--card);
+      border-radius: 22px 22px 0 0;
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -18px 35px rgba(0,0,0,.18);
+      transition: bottom .3s cubic-bezier(0.2, 0.8, 0.2, 1);
+      z-index: 2100;
+      padding: 14px;
+      overflow: auto;
+    }
+
+    .sheet.open { bottom: 0; }
+
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .sheet-close {
+      width: 38px; height: 38px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    #aiSheet { height: 88%; }
+
+    .ai-input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .ai-input-row input { flex: 1; }
+    .ai-input-row button {
+      flex: 0 0 auto;
+      width: auto;
+      padding: 0 16px;
+      border-radius: 14px;
+      border: none;
+      background: var(--primary);
+      color: white;
+      font-weight: 900;
+      font-size: .95rem;
+      cursor: pointer;
+    }
+
+    #aiOutput {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      min-height: 120px;
+      font-size: .95rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+
+    #aiOutput.loading { color: var(--sub); font-style: italic; }
+    .ai-actions { display: flex; gap: 8px; }
+    #aiImportBtn { display: none; }
+
+    #toast {
+      position: fixed;
+      left: 50%;
+      bottom: 90px;
+      transform: translateX(-50%);
+      background: #0f172a;
+      color: white;
+      padding: 10px 16px;
+      border-radius: 999px;
+      opacity: 0;
+      transition: .25s;
+      z-index: 5000;
+      font-weight: 900;
+      pointer-events: none;
+      text-align: center;
+      max-width: 92%;
+    }
+
+    @media (max-width:480px) {
+      .container { padding: 10px; }
+      .row { flex-direction: column; }
+      .bottom-actions { gap: 8px; }
+      .fab { font-size: .95rem; }
+
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .header .title {
+        text-align: right;
+        white-space: normal;
+        min-width: unset;
+        overflow: unset;
+        text-overflow: unset;
+        width: 100%;
+      }
+
+      .header .actions {
+        width: 100%;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        margin-top: 4px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <div class="title">
+      TripMaster 📱
+      <small id="headerCity">My Trip</small>
+    </div>
+    <div class="actions">
+      <button class="icon-btn" id="settingsToggle" type="button">⚙️</button>
+      <button class="icon-btn" id="exportBtn" type="button">📤</button>
+      <button class="icon-btn" id="backupBtn" type="button">💾</button>
+      <button class="icon-btn" id="resetBtn" type="button">↩️</button>
+      <button class="icon-btn" id="todayBtn" type="button">📅</button>
+      <button class="icon-btn" id="themeBtn" type="button">🌓</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <div class="day-head">
+        <div>
+          <h2 id="currentTitle">היום</h2>
+          <div class="sub" id="currentSub">TripMaster Ready</div>
+        </div>
+      </div>
+
+      <div id="settingsArea" style="display:none;margin-top:10px">
+        <div class="row">
+          <div>
+            <label>עיר</label>
+            <input id="global-city" placeholder="London" />
+          </div>
+          <div>
+            <label>מלון</label>
+            <input id="global-hotel" placeholder="שם המלון" />
+          </div>
+        </div>
+
+        <label style="margin-top:8px">אזור מרכזי</label>
+        <input id="global-basearea" placeholder="Paddington / Soho / etc" />
+
+        <label style="margin-top:8px">🔑 Anthropic API Key</label>
+        <input id="global-apikey" type="password" placeholder="sk-ant-..." autocomplete="off" />
+        <div style="font-size:.8rem;color:var(--sub);margin-top:4px">
+          נשמר רק במכשיר שלך. מתאים לניסוי אישי בלבד.
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <div>
+            <label>QA</label>
+            <button class="btn btn-muted" id="qaBtn" type="button">✅ בדיקה</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="chips" id="dayChips"></div>
+    </div>
+
+    <div class="card">
+      <div class="day-head">
+        <div>
+          <h2 id="dayTitle">יום מתוכנן</h2>
+          <div class="sub" id="dayMeta">עדיין אין פעילויות</div>
+        </div>
+        <button class="btn btn-muted" id="jumpNowBtn"
+          style="width:auto;padding:10px 12px;border-radius:14px;font-weight:900" type="button">
+          ⏱️ עכשיו
+        </button>
+      </div>
+
+      <div class="list" id="activityList"></div>
+      <div class="empty" id="emptyState">אין עדיין פעילויות ✈️</div>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <div class="bottom-actions">
+      <button class="fab ai" id="aiBtn" type="button">🤖 AI</button>
+      <button class="fab add" id="addBtn" type="button">➕ הוסף פעילות</button>
+    </div>
+  </div>
+
+  <div class="sheet-backdrop" id="sheetBackdrop"></div>
+
+  <div class="sheet" id="sheet">
+    <div class="sheet-head">
+      <h3 id="sheetTitle">הוסף פעילות</h3>
+      <button class="sheet-close" id="sheetClose" type="button">✖</button>
+    </div>
+
+    <div id="addPane">
+      <div class="row">
+        <div>
+          <label>תאריך</label>
+          <input type="date" id="addDate" />
+        </div>
+        <div>
+          <label>שעה</label>
+          <input type="time" id="addTime" />
+        </div>
+      </div>
+
+      <label>כותרת</label>
+      <input id="addTitle" placeholder="למשל: Natural History Museum" />
+
+      <label>הערה</label>
+      <textarea id="addNote" placeholder="כתובת / לינק / הערה"></textarea>
+
+      <div class="row" style="margin-top:10px">
+        <button class="btn btn-muted" id="addWithReminderBtn" type="button">📅 שמור + לוח שנה</button>
+        <button class="btn btn-primary" id="addSaveBtn" type="button">שמור</button>
+      </div>
+
+      <button class="btn btn-muted" id="addCancelBtn" style="margin-top:10px" type="button">ביטול</button>
+    </div>
+  </div>
+
+  <div class="sheet" id="aiSheet">
+    <div class="sheet-head">
+      <h3>🤖 תכנון יום עם AI</h3>
+      <button class="sheet-close" id="aiSheetClose" type="button">✖</button>
+    </div>
+
+    <div class="ai-input-row">
+      <input id="aiPromptInput" placeholder="למשל: יום בלונדון, אוהב מוזיאונים, 3 ילדים קטנים" />
+      <button id="aiSendBtn" type="button">שלח</button>
+    </div>
+
+    <div id="aiOutput" style="color:var(--sub);font-style:italic">
+      הכנס תיאור של הטיול ולחץ שלח — ה-AI יציע תוכנית יום מפורטת 🗺️
+    </div>
+
+    <div class="ai-actions" style="margin-top:10px">
+      <button class="btn btn-primary" id="aiImportBtn" type="button">➕ ייבא לטיול</button>
+      <button class="btn btn-muted" id="aiClearBtn" type="button">נקה</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const $ = (id) => document.getElementById(id);
+
+    const KEY_DAYS = "tm_days_clean";
+    const KEY_SETTINGS = "tm_settings_clean";
+    const KEY_THEME = "tm_theme_clean";
+
+    let currentDayIndex = 0;
+    let sortableInstance = null;
+    let editingDayIndex = null;
+    let editingItemIndex = null;
+    let lastAIPlan = [];
+
+    let days = JSON.parse(localStorage.getItem(KEY_DAYS) || "[]");
+
+    let settings = JSON.parse(
+      localStorage.getItem(KEY_SETTINGS) ||
+      JSON.stringify({ city: "", hotel: "", baseArea: "", defaultRemindMin: 30, apiKey: "" })
+    );
+
+    function saveDays() {
+      localStorage.setItem(KEY_DAYS, JSON.stringify(days));
+    }
+
+    function saveSettings() {
+      localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
+    }
+
+    function showToast(text) {
+      const t = $("toast");
+      t.innerText = text;
+      t.style.opacity = "1";
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => { t.style.opacity = "0"; }, 1800);
+    }
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function todayISO() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${dd}`;
+    }
+
+    function formatDateForTitle(dateString, fallback) {
+      const d = new Date(dateString);
+      return isNaN(d) ? fallback : d.toLocaleDateString("he-IL");
+    }
+
+    function findTodayDayIndex() {
+      const t = todayISO();
+      return days.findIndex(d => d.date === t);
+    }
+
+    function renderDays() {
+      const wrap = $("dayChips");
+      wrap.innerHTML = "";
+
+      days.forEach((day, index) => {
+        const chip = document.createElement("button");
+        chip.className = `chip ${index === currentDayIndex ? "active" : ""}`;
+        chip.type = "button";
+        chip.innerHTML = `יום ${index + 1}`;
+        chip.addEventListener("click", () => {
+          currentDayIndex = index;
+          renderDays();
+          renderActivities(index);
+        });
+        chip.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+
+  if (!confirm(`למחוק את יום ${index + 1}?`)) return;
+
+  days.splice(index, 1);
+
+  if (currentDayIndex >= days.length) {
+    currentDayIndex = Math.max(0, days.length - 1);
+  }
+
+  saveDays();
+  renderDays();
+
+  if (days.length > 0) {
+    renderActivities(currentDayIndex);
+  } else {
+    renderActivities(0);
+  }
+
+  showToast("היום נמחק 🗑️");
+});
+        wrap.appendChild(chip);
+      });
+
+      const addChip = document.createElement("button");
+      addChip.className = "chip add-day";
+      addChip.type = "button";
+      addChip.innerHTML = "＋";
+      addChip.title = "הוסף יום חדש";
+      addChip.addEventListener("click", addNewDay);
+      wrap.appendChild(addChip);
+    }
+
+    // ✅ תוקן: הוסר הקוד הכפול שהיה מחוץ לפונקציה
+    function addNewDay() {
+      let nextDate;
+
+      if (days.length > 0) {
+        const last = new Date(days[days.length - 1].date);
+        last.setDate(last.getDate() + 1);
+
+        const y = last.getFullYear();
+        const m = String(last.getMonth() + 1).padStart(2, "0");
+        const dd = String(last.getDate()).padStart(2, "0");
+
+        nextDate = `${y}-${m}-${dd}`;
+      } else {
+        const chosenDate = prompt("מה תאריך היום הראשון בטיול? כתוב בפורמט YYYY-MM-DD", todayISO());
+
+        if (!chosenDate) {
+          showToast("הוספת יום בוטלה");
+          return;
+        }
+
+        nextDate = chosenDate;
+      }
+
+      days.push({ date: nextDate, items: [] });
+      saveDays();
+      currentDayIndex = days.length - 1;
+      renderDays();
+      renderActivities(currentDayIndex);
+      showToast(`יום ${days.length} נוסף 📅`);
+    }
+
+    function renderActivities(index) {
+      const list = $("activityList");
+      const empty = $("emptyState");
+      list.innerHTML = "";
+
+      const day = days[index];
+
+      if (!day || !day.items || day.items.length === 0) {
+        empty.style.display = "block";
+        $("dayMeta").innerText = "אין פעילויות להציג";
+        $("dayTitle").innerText = day ? formatDateForTitle(day.date, `יום ${index + 1}`) : "יום מתוכנן";
+
+        if (sortableInstance) {
+          sortableInstance.destroy();
+          sortableInstance = null;
+        }
+
+        return;
+      }
+
+      empty.style.display = "none";
+      $("dayMeta").innerText = `${day.items.length} פעילויות מתוכננות`;
+      $("dayTitle").innerText = formatDateForTitle(day.date, `יום ${index + 1}`);
+
+      const nowItemIndex = findNowItemIndex(day);
+
+      day.items.forEach((item, itemIndex) => {
+        const isNow = itemIndex === nowItemIndex;
+        const div = document.createElement("div");
+        div.className = `item ${item.completed ? "completed" : ""} ${isNow ? "now-item" : ""}`;
+        div.dataset.index = itemIndex;
+
+        div.innerHTML = `
+          <div class="item-content">
+            <div class="item-left">
+              <div class="time">${escapeHtml(item.time || "--:--")}</div>
+              <div class="meta">פעילות</div>
+            </div>
+            <div class="item-main">
+              <div class="title">
+                <span class="now-badge">עכשיו</span>
+                ${escapeHtml(item.title)}
+              </div>
+              <div class="note">${escapeHtml(item.note)}</div>
+            </div>
+            <div class="item-actions">
+              <div class="done" title="סמן כבוצע">✓</div>
+              <div class="delete" title="מחק פעילות">🗑️</div>
+              <div class="drag" title="גרור לשינוי סדר">≡</div>
+            </div>
+          </div>
+        `;
+
+        div.querySelector(".done").addEventListener("click", (e) => {
+          e.stopPropagation();
+          item.completed = !item.completed;
+          saveDays();
+          renderActivities(index);
+        });
+
+        div.querySelector(".delete").addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (confirm("בטוח שתרצה למחוק את הפעילות הזו?")) {
+            day.items.splice(itemIndex, 1);
+            saveDays();
+            renderDays();
+            renderActivities(currentDayIndex);
+            showToast("הפעילות נמחקה 🗑️");
+          }
+        });
+
+        div.querySelector(".item-main").addEventListener("click", () => {
+          openEditSheet(index, itemIndex);
+        });
+
+        list.appendChild(div);
+      });
+
+      if (window.Sortable) {
+        if (sortableInstance) sortableInstance.destroy();
+
+        sortableInstance = Sortable.create(list, {
+          handle: ".drag",
+          animation: 150,
+          onEnd: (evt) => {
+            const moved = day.items.splice(evt.oldIndex, 1)[0];
+            day.items.splice(evt.newIndex, 0, moved);
+            saveDays();
+          }
+        });
+      }
+    }
+
+    function findNowItemIndex(day) {
+      if (!day || !day.date) return -1;
+      if (day.date !== todayISO()) return -1;
+
+      const now = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+
+      let best = -1;
+      let bestDiff = Infinity;
+
+      day.items.forEach((item, i) => {
+        if (!item.time) return;
+        const [h, m] = item.time.split(":").map(Number);
+        const itemMin = h * 60 + m;
+        const diff = nowMin - itemMin;
+        if (diff >= 0 && diff < bestDiff) {
+          bestDiff = diff;
+          best = i;
+        }
+      });
+
+      if (best === -1) {
+        let nextDiff = Infinity;
+
+        day.items.forEach((item, i) => {
+          if (!item.time) return;
+          const [h, m] = item.time.split(":").map(Number);
+          const itemMin = h * 60 + m;
+          const diff = itemMin - nowMin;
+          if (diff >= 0 && diff < nextDiff) {
+            nextDiff = diff;
+            best = i;
+          }
+        });
+      }
+
+      return best;
+    }
+
+    function addItem() {
+      const title = $("addTitle").value.trim();
+      if (!title) {
+        showToast("חסר שם פעילות");
+        return;
+      }
+
+      const item = {
+        time: $("addTime").value || "12:00",
+        title,
+        note: $("addNote").value.trim(),
+        completed: false
+      };
+
+      const date = $("addDate").value || todayISO();
+      let day = days.find(d => d.date === date);
+
+      if (!day) {
+        day = { date, items: [] };
+        days.push(day);
+        days.sort((a, b) => new Date(a.date) - new Date(b.date));
+      }
+
+      day.items.push(item);
+      day.items.sort((a, b) => a.time.localeCompare(b.time));
+
+      saveDays();
+      currentDayIndex = days.indexOf(day);
+      renderDays();
+      renderActivities(currentDayIndex);
+      showToast("הפעילות נוספה ✔");
+      closeSheet();
+    }
+
+    function editItem(dayIndex, itemIndex) {
+      const title = $("addTitle").value.trim();
+      if (!title) {
+        showToast("חסר שם פעילות");
+        return;
+      }
+
+      const oldDay = days[dayIndex];
+
+      if (!oldDay || !oldDay.items[itemIndex]) {
+        showToast("לא נמצאה פעילות");
+        closeSheet();
+        return;
+      }
+
+      const item = oldDay.items[itemIndex];
+
+      item.title = title;
+      item.note = $("addNote").value.trim();
+      item.time = $("addTime").value || "12:00";
+
+      const newDate = $("addDate").value || oldDay.date;
+
+      if (newDate !== oldDay.date) {
+        oldDay.items.splice(itemIndex, 1);
+
+        let newDay = days.find(d => d.date === newDate);
+
+        if (!newDay) {
+          newDay = { date: newDate, items: [] };
+          days.push(newDay);
+          days.sort((a, b) => new Date(a.date) - new Date(b.date));
+        }
+
+        newDay.items.push(item);
+        newDay.items.sort((a, b) => a.time.localeCompare(b.time));
+        currentDayIndex = days.indexOf(newDay);
+      } else {
+        oldDay.items.sort((a, b) => a.time.localeCompare(b.time));
+        currentDayIndex = dayIndex;
+      }
+
+      saveDays();
+      renderDays();
+      renderActivities(currentDayIndex);
+      showToast("הפעילות עודכנה ✔");
+      closeSheet();
+    }
+
+    function openSheet() {
+      editingDayIndex = null;
+      editingItemIndex = null;
+
+      $("sheetTitle").innerText = "הוסף פעילות";
+      $("addSaveBtn").innerText = "שמור";
+      $("addWithReminderBtn").innerText = "📅 שמור + לוח שנה";
+
+      $("addTitle").value = "";
+      $("addNote").value = "";
+
+      const now = new Date();
+      const selectedDay = days[currentDayIndex];
+      $("addDate").value = selectedDay?.date || todayISO();
+      $("addTime").value = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+
+      $("sheet").classList.add("open");
+      $("sheetBackdrop").classList.add("open");
+    }
+
+    function openEditSheet(dayIndex, itemIndex) {
+      editingDayIndex = dayIndex;
+      editingItemIndex = itemIndex;
+
+      const day = days[dayIndex];
+      const item = day.items[itemIndex];
+
+      $("sheetTitle").innerText = "ערוך פעילות";
+      $("addSaveBtn").innerText = "עדכן";
+      $("addWithReminderBtn").innerText = "📅 עדכן + לוח שנה";
+
+      $("addDate").value = day.date;
+      $("addTime").value = item.time || "12:00";
+      $("addTitle").value = item.title || "";
+      $("addNote").value = item.note || "";
+
+      $("sheet").classList.add("open");
+      $("sheetBackdrop").classList.add("open");
+    }
+
+    function closeSheet() {
+      $("sheet").classList.remove("open");
+      $("sheetBackdrop").classList.remove("open");
+    }
+
+    function handleSave() {
+      if (editingDayIndex !== null && editingItemIndex !== null) {
+        editItem(editingDayIndex, editingItemIndex);
+      } else {
+        addItem();
+      }
+    }
+
+    function downloadCalendarFile(title, dateVal, timeVal, noteVal) {
+      const [year, month, day2] = dateVal.split("-").map(Number);
+      const [hour, min] = timeVal.split(":").map(Number);
+
+      const startDt = new Date(year, month - 1, day2, hour, min);
+      const endDt = new Date(startDt.getTime() + 60 * 60 * 1000);
+
+      function pad(n) {
+        return String(n).padStart(2, "0");
+      }
+
+      function toICS(d) {
+        return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+      }
+
+      function icsEscape(s) {
+        return String(s || "")
+          .replace(/\\/g, "\\\\")
+          .replace(/;/g, "\\;")
+          .replace(/,/g, "\\,")
+          .replace(/\n/g, "\\n");
+      }
+
+      const icsContent = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//TripMaster//HE",
+        "BEGIN:VEVENT",
+        `SUMMARY:${icsEscape(title)}`,
+        `DTSTART:${toICS(startDt)}`,
+        `DTEND:${toICS(endDt)}`,
+        `DESCRIPTION:${icsEscape(noteVal)}`,
+        "END:VEVENT",
+        "END:VCALENDAR"
+      ].join("\r\n");
+
+      const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+
+      a.href = url;
+      a.download = `${title}.ics`;
+      a.click();
+
+      URL.revokeObjectURL(url);
+      showToast("קובץ לוח שנה הורד 📅");
+    }
+
+    $("addWithReminderBtn").addEventListener("click", () => {
+      const titleCheck = $("addTitle").value.trim();
+
+      if (!titleCheck) {
+        showToast("חסר שם פעילות");
+        return;
+      }
+
+      const title = titleCheck;
+      const dateVal = $("addDate").value || todayISO();
+      const timeVal = $("addTime").value || "12:00";
+      const noteVal = $("addNote").value.trim();
+
+      if (editingDayIndex !== null && editingItemIndex !== null) {
+        editItem(editingDayIndex, editingItemIndex);
+      } else {
+        addItem();
+      }
+
+      downloadCalendarFile(title, dateVal, timeVal, noteVal);
+    });
+
+    $("addBtn").addEventListener("click", openSheet);
+    $("sheetClose").addEventListener("click", closeSheet);
+    $("sheetBackdrop").addEventListener("click", () => {
+      closeSheet();
+      closeAISheet();
+    });
+    $("addCancelBtn").addEventListener("click", closeSheet);
+    $("addSaveBtn").addEventListener("click", handleSave);
+
+    function openAISheet() {
+      $("aiSheet").classList.add("open");
+      $("sheetBackdrop").classList.add("open");
+    }
+
+    function closeAISheet() {
+      $("aiSheet").classList.remove("open");
+      $("sheetBackdrop").classList.remove("open");
+    }
+
+    $("aiBtn").addEventListener("click", openAISheet);
+    $("aiSheetClose").addEventListener("click", closeAISheet);
+
+    $("aiClearBtn").addEventListener("click", () => {
+      $("aiOutput").innerText = "הכנס תיאור של הטיול ולחץ שלח — ה-AI יציע תוכנית יום מפורטת 🗺️";
+      $("aiOutput").classList.remove("loading");
+      $("aiImportBtn").style.display = "none";
+      $("aiPromptInput").value = "";
+      lastAIPlan = [];
+    });
+
+    $("aiSendBtn").addEventListener("click", runAI);
+    $("aiPromptInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") runAI();
+    });
+
+    async function runAI() {
+      const prompt = $("aiPromptInput").value.trim();
+
+      if (!prompt) {
+        showToast("הכנס תיאור לטיול");
+        return;
+      }
+
+      const out = $("aiOutput");
+
+      out.classList.add("loading");
+      out.innerText = "🤖 חושב…";
+      $("aiImportBtn").style.display = "none";
+      lastAIPlan = [];
+
+      const apiKey = settings.apiKey || "";
+
+      if (!apiKey) {
+        out.classList.remove("loading");
+        out.innerText = "⚠️ חסר API Key — הכנס אותו בהגדרות (⚙️)";
+        return;
+      }
+
+      const city = settings.city || "";
+      const hotel = settings.hotel || "";
+      const baseArea = settings.baseArea || "";
+
+      const systemPrompt = `אתה מתכנן טיולים מקצועי. המשתמש יתאר את הטיול שלו ואתה תציע תוכנית יום מפורטת.
+
+ענה אך ורק בפורמט JSON הבא, ללא טקסט נוסף:
+{
+  "summary": "תקציר קצר של היום",
+  "activities": [
+    { "time": "HH:MM", "title": "שם הפעילות", "note": "כתובת / טיפ קצר" }
+  ]
+}
+
+כללים:
+- 5-8 פעילויות ביום
+- שעות ריאליות מ-09:00 עד 22:00
+- כלול ארוחות
+- התאם לתיאור המשתמש
+${city ? `- העיר: ${city}` : ""}
+${hotel ? `- מלון: ${hotel}` : ""}
+${baseArea ? `- אזור מרכזי: ${baseArea}` : ""}`;
+
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-calls": "true"
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 1000,
+            system: systemPrompt,
+            messages: [{ role: "user", content: prompt }]
+          })
+        });
+
+        const data = await res.json();
+        const raw = (data.content || []).map(b => b.text || "").join("");
+
+        let parsed;
+
+        try {
+          parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+        } catch {
+          out.classList.remove("loading");
+          out.innerText = raw || "לא התקבלה תשובה תקינה";
+          return;
+        }
+
+        let text = `📋 ${parsed.summary || ""}\n\n`;
+
+        (parsed.activities || []).forEach(a => {
+          text += `${a.time}  ${a.title}\n`;
+          if (a.note) text += `        📍 ${a.note}\n`;
+          text += "\n";
+        });
+
+        out.classList.remove("loading");
+        out.innerText = text.trim();
+        lastAIPlan = parsed.activities || [];
+
+        if (lastAIPlan.length > 0) {
+          $("aiImportBtn").style.display = "block";
+        }
+      } catch (err) {
+        out.classList.remove("loading");
+        out.innerText = `שגיאה: ${err.message}`;
+      }
+    }
+
+    $("aiImportBtn").addEventListener("click", () => {
+      if (lastAIPlan.length === 0) return;
+
+      let day = days[currentDayIndex];
+
+      if (!day) {
+        day = { date: todayISO(), items: [] };
+        days.push(day);
+        days.sort((a, b) => new Date(a.date) - new Date(b.date));
+        currentDayIndex = days.indexOf(day);
+      }
+
+      lastAIPlan.forEach(a => {
+        day.items.push({
+          time: a.time || "12:00",
+          title: a.title || "",
+          note: a.note || "",
+          completed: false
+        });
+      });
+
+      day.items.sort((a, b) => a.time.localeCompare(b.time));
+
+      saveDays();
+      renderDays();
+      renderActivities(currentDayIndex);
+      showToast(`${lastAIPlan.length} פעילויות יובאו ✔`);
+      closeAISheet();
+    });
+
+    $("themeBtn").addEventListener("click", () => {
+      const cur = document.documentElement.getAttribute("data-theme");
+
+      if (cur === "dark") {
+        document.documentElement.removeAttribute("data-theme");
+        localStorage.setItem(KEY_THEME, "light");
+      } else {
+        document.documentElement.setAttribute("data-theme", "dark");
+        localStorage.setItem(KEY_THEME, "dark");
+      }
+    });
+
+    $("settingsToggle").addEventListener("click", () => {
+      const a = $("settingsArea");
+      a.style.display = a.style.display === "none" ? "block" : "none";
+    });
+
+    $("global-city").addEventListener("input", () => {
+      settings.city = $("global-city").value;
+      saveSettings();
+      $("headerCity").innerText = settings.city || "My Trip";
+    });
+
+    $("global-hotel").addEventListener("input", () => {
+      settings.hotel = $("global-hotel").value;
+      saveSettings();
+    });
+
+    $("global-basearea").addEventListener("input", () => {
+      settings.baseArea = $("global-basearea").value;
+      saveSettings();
+    });
+
+    $("global-apikey").addEventListener("input", () => {
+      settings.apiKey = $("global-apikey").value;
+      saveSettings();
+    });
+
+    $("resetBtn").addEventListener("click", () => {
+      if (confirm("למחוק את כל הנתונים וההגדרות?")) {
+        localStorage.removeItem(KEY_DAYS);
+        localStorage.removeItem(KEY_SETTINGS);
+        location.reload();
+      }
+    });
+
+    $("exportBtn").addEventListener("click", async () => {
+      let text = "";
+
+      days.forEach((day, index) => {
+        text += `יום ${index + 1} — ${formatDateForTitle(day.date, "")}\n`;
+
+        day.items.forEach(item => {
+          text += `${item.time} - ${item.title} ${item.completed ? "(בוצע)" : ""}\n`;
+          if (item.note) text += `  📍 ${item.note}\n`;
+        });
+
+        text += "\n";
+      });
+
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(text);
+          showToast("הועתק ללוח ✔");
+        } catch {
+          showToast("שגיאה בהעתקה ❌");
+        }
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.cssText = "position:fixed;left:-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+
+        try {
+          document.execCommand("copy");
+          showToast("הועתק ✔");
+        } catch {
+          showToast("לא ניתן להעתיק ❌");
+        }
+
+        ta.remove();
+      }
+    });
+
+    $("todayBtn").addEventListener("click", () => {
+      const idx = findTodayDayIndex();
+
+      if (idx !== -1) {
+        currentDayIndex = idx;
+        renderDays();
+        renderActivities(currentDayIndex);
+        showToast("קפצתי להיום 📅");
+      } else {
+        showToast("אין יום מתוכנן להיום");
+      }
+    });
+
+    $("jumpNowBtn").addEventListener("click", () => {
+      const todayIdx = findTodayDayIndex();
+
+      if (todayIdx === -1) {
+        showToast("אין יום מתוכנן להיום 📅");
+        return;
+      }
+
+      currentDayIndex = todayIdx;
+      renderDays();
+      renderActivities(currentDayIndex);
+
+      setTimeout(() => {
+        const nowEl = document.querySelector(".now-item");
+
+        if (nowEl) {
+          nowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+          showToast("קפיצה לפעילות הנוכחית ⏱️");
+        } else {
+          showToast("לא נמצאה פעילות פעילה כרגע");
+        }
+      }, 100);
+    });
+
+    $("qaBtn").addEventListener("click", () => {
+      const checks = [
+        Boolean($("addBtn")),
+        Boolean($("activityList")),
+        Boolean($("sheet")),
+        Boolean(window.localStorage),
+        typeof escapeHtml === "function",
+        typeof todayISO === "function"
+      ];
+
+      showToast(checks.every(Boolean) ? "QA בסיסי עבר ✅" : "QA מצא בעיה ❌");
+    });
+
+    if (localStorage.getItem(KEY_THEME) === "dark") {
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+
+    $("global-city").value = settings.city;
+    $("global-hotel").value = settings.hotel;
+    $("global-basearea").value = settings.baseArea;
+    $("global-apikey").value = settings.apiKey || "";
+    $("headerCity").innerText = settings.city || "My Trip";
+
+    renderDays();
+
+    if (days.length > 0) {
+      renderActivities(currentDayIndex);
+    }
+
+    showToast("TripMaster Ready 🚀");
+  });
+  </script>
+</body>
+</html>
