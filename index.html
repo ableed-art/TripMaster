@@ -479,6 +479,7 @@
       <button class="icon-btn" id="settingsToggle" type="button">⚙️</button>
       <button class="icon-btn" id="exportBtn" type="button">📤</button>
       <button class="icon-btn" id="backupBtn" type="button">💾</button>
+      <button class="icon-btn" id="restoreBtn" type="button">📂</button>
       <button class="icon-btn" id="resetBtn" type="button">↩️</button>
       <button class="icon-btn" id="todayBtn" type="button">📅</button>
       <button class="icon-btn" id="themeBtn" type="button">🌓</button>
@@ -607,7 +608,7 @@
   </div>
 
   <div id="toast"></div>
-
+<input type="file" id="restoreInput" accept=".json" style="display:none">
   <script>
   document.addEventListener("DOMContentLoaded", () => {
     const $ = (id) => document.getElementById(id);
@@ -1012,61 +1013,87 @@
       $("sheetBackdrop").classList.remove("open");
     }
 
-    function handleSave() {
-      if (editingDayIndex !== null && editingItemIndex !== null) {
-        editItem(editingDayIndex, editingItemIndex);
-      } else {
-        addItem();
-      }
-    }
+  function handleSave() {
+  if (editingDayIndex !== null && editingItemIndex !== null) {
+    editItem(editingDayIndex, editingItemIndex);
+  } else {
+    addItem();
+  }
+}
+function downloadCalendarFile(title, dateVal, timeVal, noteVal) {
+  const [year, month, day2] = dateVal.split("-").map(Number);
+  const [hour, min] = timeVal.split(":").map(Number);
 
-    function downloadCalendarFile(title, dateVal, timeVal, noteVal) {
-      const [year, month, day2] = dateVal.split("-").map(Number);
-      const [hour, min] = timeVal.split(":").map(Number);
+  const startDt = new Date(year, month - 1, day2, hour, min);
+  const endDt = new Date(startDt.getTime() + 60 * 60 * 1000);
 
-      const startDt = new Date(year, month - 1, day2, hour, min);
-      const endDt = new Date(startDt.getTime() + 60 * 60 * 1000);
+  function pad(n) {
+    return String(n).padStart(2, "0");
+  }
 
-      function pad(n) {
-        return String(n).padStart(2, "0");
-      }
+  function toICS(d) {
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+  }
 
-      function toICS(d) {
-        return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
-      }
+  function icsEscape(s) {
+    return String(s || "")
+      .replace(/\\/g, "\\\\")
+      .replace(/;/g, "\\;")
+      .replace(/,/g, "\\,")
+      .replace(/\n/g, "\\n");
+  }
 
-      function icsEscape(s) {
-        return String(s || "")
-          .replace(/\\/g, "\\\\")
-          .replace(/;/g, "\\;")
-          .replace(/,/g, "\\,")
-          .replace(/\n/g, "\\n");
-      }
+  const icsContent = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//TripMaster//HE",
+    "BEGIN:VEVENT",
+    `SUMMARY:${icsEscape(title)}`,
+    `DTSTART:${toICS(startDt)}`,
+    `DTEND:${toICS(endDt)}`,
+    `DESCRIPTION:${icsEscape(noteVal)}`,
+    "END:VEVENT",
+    "END:VCALENDAR"
+  ].join("\r\n");
 
-      const icsContent = [
-        "BEGIN:VCALENDAR",
-        "VERSION:2.0",
-        "PRODID:-//TripMaster//HE",
-        "BEGIN:VEVENT",
-        `SUMMARY:${icsEscape(title)}`,
-        `DTSTART:${toICS(startDt)}`,
-        `DTEND:${toICS(endDt)}`,
-        `DESCRIPTION:${icsEscape(noteVal)}`,
-        "END:VEVENT",
-        "END:VCALENDAR"
-      ].join("\r\n");
+  const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
 
-      const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title}.ics`;
+  a.click();
 
-      a.href = url;
-      a.download = `${title}.ics`;
-      a.click();
+  URL.revokeObjectURL(url);
+  showToast("קובץ לוח שנה הורד 📅");
+}
+$("backupBtn").addEventListener("click", exportBackup);
+$("restoreBtn").addEventListener("click", () => {
+  $("restoreInput").click();
+});
+    function exportBackup() {
+  const backup = {
+    app: "TripMaster",
+    backupVersion: 1,
+    exportedAt: new Date().toISOString(),
+    days,
+    settings,
+    theme: localStorage.getItem(KEY_THEME) || "light"
+  };
 
-      URL.revokeObjectURL(url);
-      showToast("קובץ לוח שנה הורד 📅");
-    }
+  const json = JSON.stringify(backup, null, 2);
+  const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  const today = todayISO();
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `tripmaster-backup-${today}.json`;
+  a.click();
+
+  URL.revokeObjectURL(url);
+  showToast("גיבוי JSON הורד 💾");
+}
 
     $("addWithReminderBtn").addEventListener("click", () => {
       const titleCheck = $("addTitle").value.trim();
@@ -1290,13 +1317,37 @@ ${baseArea ? `- אזור מרכזי: ${baseArea}` : ""}`;
       saveSettings();
     });
 
-    $("resetBtn").addEventListener("click", () => {
-      if (confirm("למחוק את כל הנתונים וההגדרות?")) {
-        localStorage.removeItem(KEY_DAYS);
-        localStorage.removeItem(KEY_SETTINGS);
-        location.reload();
-      }
-    });
+   $("resetBtn").addEventListener("click", () => {
+  if (confirm("למחוק את כל הנתונים וההגדרות?")) {
+
+    days = [];
+    settings = {
+      city: "",
+      hotel: "",
+      baseArea: "",
+      defaultRemindMin: 30,
+      apiKey: ""
+    };
+
+    localStorage.removeItem(KEY_DAYS);
+    localStorage.removeItem(KEY_SETTINGS);
+    localStorage.removeItem(KEY_THEME);
+
+    renderDays();
+    renderActivities(0);
+
+    $("global-city").value = "";
+    $("global-hotel").value = "";
+    $("global-basearea").value = "";
+    $("global-apikey").value = "";
+
+    $("headerCity").innerText = "My Trip";
+
+    document.documentElement.removeAttribute("data-theme");
+
+    showToast("כל הנתונים נמחקו 🗑️");
+  }
+});
 
     $("exportBtn").addEventListener("click", async () => {
       let text = "";
