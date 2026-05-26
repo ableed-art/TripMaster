@@ -1109,10 +1109,15 @@ function importBackup(event) {
     try {
       const backup = JSON.parse(e.target.result);
 
-      if (!backup.days || !backup.settings) {
-        showToast("קובץ גיבוי לא תקין ❌");
-        return;
-      }
+     if (
+  !backup.days ||
+  !Array.isArray(backup.days) ||
+  !backup.settings ||
+  typeof backup.settings !== "object"
+) {
+  showToast("קובץ גיבוי לא תקין ❌");
+  return;
+}
 
       if (!confirm("לשחזר את הגיבוי? הנתונים הנוכחיים יימחקו.")) {
         return;
@@ -1519,4 +1524,4 @@ ${baseArea ? `- אזור מרכזי: ${baseArea}` : ""}`;
   });
   </script>
 </body>
-  </html>
+</html>
