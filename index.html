@@ -1071,6 +1071,7 @@ $("backupBtn").addEventListener("click", exportBackup);
 $("restoreBtn").addEventListener("click", () => {
   $("restoreInput").click();
 });
+$("restoreInput").addEventListener("change", importBackup);
     function exportBackup() {
   const backup = {
     app: "TripMaster",
@@ -1094,7 +1095,67 @@ $("restoreBtn").addEventListener("click", () => {
   URL.revokeObjectURL(url);
   showToast("גיבוי JSON הורד 💾");
 }
+function importBackup(event) {
+  const file = event.target.files[0];
 
+  if (!file) {
+    showToast("לא נבחר קובץ");
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    try {
+      const backup = JSON.parse(e.target.result);
+
+      if (!backup.days || !backup.settings) {
+        showToast("קובץ גיבוי לא תקין ❌");
+        return;
+      }
+
+      if (!confirm("לשחזר את הגיבוי? הנתונים הנוכחיים יימחקו.")) {
+        return;
+      }
+
+      days = backup.days;
+      settings = backup.settings;
+
+      localStorage.setItem(KEY_DAYS, JSON.stringify(days));
+      localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
+
+      if (backup.theme === "dark") {
+        document.documentElement.setAttribute("data-theme", "dark");
+        localStorage.setItem(KEY_THEME, "dark");
+      } else {
+        document.documentElement.removeAttribute("data-theme");
+        localStorage.setItem(KEY_THEME, "light");
+      }
+
+      $("global-city").value = settings.city || "";
+      $("global-hotel").value = settings.hotel || "";
+      $("global-basearea").value = settings.baseArea || "";
+      $("global-apikey").value = settings.apiKey || "";
+
+      $("headerCity").innerText = settings.city || "My Trip";
+
+      currentDayIndex = 0;
+
+      renderDays();
+      renderActivities(currentDayIndex);
+
+      showToast("הגיבוי שוחזר ✔");
+
+    } catch (err) {
+      console.error(err);
+      showToast("שגיאה בקריאת הגיבוי ❌");
+    }
+
+    event.target.value = "";
+  };
+
+  reader.readAsText(file);
+}
     $("addWithReminderBtn").addEventListener("click", () => {
       const titleCheck = $("addTitle").value.trim();
 
@@ -1458,4 +1519,4 @@ ${baseArea ? `- אזור מרכזי: ${baseArea}` : ""}`;
   });
   </script>
 </body>
-</html>
+  </html>
