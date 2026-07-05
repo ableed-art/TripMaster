@@ -10,343 +10,1010 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet" />
-  <script src="./js/sortable.min.js" defer></script>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 
   <style>
     :root {
       --primary: #4f46e5;
-      --bg: #f8fafc;
+      --primary-dark: #3730a3;
+      --primary-light: #6366f1;
+      --primary-soft: rgba(79,70,229,0.09);
+      --primary-soft2: rgba(79,70,229,0.15);
+      --bg: #f4f4f8;
+      --bg2: #eeeef4;
       --card: #ffffff;
-      --text: #0f172a;
-      --sub: #64748b;
-      --border: #e2e8f0;
+      --card2: #fafafa;
+      --text: #0f1117;
+      --text2: #1e2130;
+      --sub: #6b7280;
+      --sub2: #9ca3af;
+      --border: #e8e8ef;
+      --border-soft: #f0f0f5;
       --danger: #ef4444;
-      --highlight: #fef9c3;
-      --highlight-border: #fbbf24;
-      --shadow: 0 10px 25px rgba(0,0,0,.08);
+      --danger-soft: rgba(239,68,68,0.08);
+      --success: #10b981;
+      --now-bg: linear-gradient(135deg, #fffbeb 0%, #fff8e6 100%);
+      --now-border: #f59e0b;
+      --now-badge: #f59e0b;
+      --shadow-xs: 0 1px 2px rgba(0,0,0,.04);
+      --shadow: 0 2px 8px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+      --shadow-md: 0 4px 20px rgba(0,0,0,.08), 0 1px 4px rgba(0,0,0,.04);
+      --shadow-lg: 0 8px 40px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
+      --shadow-primary: 0 4px 20px rgba(79,70,229,.28);
+      --radius-xs: 8px;
+      --radius-sm: 12px;
+      --radius: 16px;
+      --radius-lg: 20px;
+      --radius-xl: 24px;
+      --font: 'Rubik', sans-serif;
+      --hero-gradient: linear-gradient(135deg, #667eea 0%, #4f46e5 100%);
     }
 
     [data-theme="dark"] {
-      --bg: #0f172a;
-      --card: #1e293b;
-      --text: #f8fafc;
-      --sub: #94a3b8;
-      --border: #334155;
-      --shadow: 0 10px 25px rgba(0,0,0,.25);
-      --highlight: #422006;
-      --highlight-border: #d97706;
+      --bg: #0a0c12;
+      --bg2: #0f1117;
+      --card: #141822;
+      --card2: #1a1f2e;
+      --text: #f0f2f8;
+      --text2: #d0d4e8;
+      --sub: #7b83a0;
+      --sub2: #505870;
+      --border: #1e2438;
+      --border-soft: #161b28;
+      --shadow-xs: 0 1px 2px rgba(0,0,0,.4);
+      --shadow: 0 2px 8px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.3);
+      --shadow-md: 0 4px 20px rgba(0,0,0,.6), 0 1px 4px rgba(0,0,0,.4);
+      --shadow-lg: 0 8px 40px rgba(0,0,0,.7), 0 2px 8px rgba(0,0,0,.5);
+      --now-bg: linear-gradient(135deg, #1c1408 0%, #201608 100%);
+      --now-border: #d97706;
+      --primary-soft: rgba(99,87,255,0.12);
+      --primary-soft2: rgba(99,87,255,0.18);
+      --hero-gradient: linear-gradient(135deg, #4338ca 0%, #3730a3 100%);
     }
 
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
 
     body {
-      margin: 0;
-      font-family: 'Rubik', sans-serif;
+      font-family: var(--font);
       background: var(--bg);
       color: var(--text);
-      padding-bottom: calc(120px + env(safe-area-inset-bottom));
+      padding-bottom: calc(90px + env(safe-area-inset-bottom));
       -webkit-tap-highlight-color: transparent;
-      transition: background-color 0.3s, color 0.3s;
+      transition: background-color 0.25s, color 0.25s;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
     }
 
+    /* ═══════════════════════════════════════
+       HEADER — redesigned
+    ═══════════════════════════════════════ */
     .header {
-      background: linear-gradient(135deg, #4f46e5, #6d5dfc);
-      color: white;
-      padding: 14px 12px;
-      padding-top: calc(14px + env(safe-area-inset-top));
+      background: var(--card);
+      padding-top: env(safe-area-inset-top);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      transition: background-color 0.25s;
+    }
+
+    .header-inner {
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: space-between;
+      padding: 0 14px;
+      height: 62px;
+      max-width: 640px;
+      margin: 0 auto;
     }
 
-    .header .title {
+    /* Left: hamburger / menu */
+    .header-menu-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      border: none;
+      background: var(--border-soft);
+      color: var(--sub);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s, color 0.15s, transform 0.1s;
+    }
+    .header-menu-btn:active { background: var(--border); color: var(--text); transform: scale(0.92); }
+    .header-menu-btn svg { width: 18px; height: 18px; }
+
+    /* Center: trip info */
+    .header-center {
       flex: 1;
-      min-width: 90px;
-      text-align: right;
+      text-align: center;
+      padding: 0 10px;
+      min-width: 0;
+    }
+
+    .header-trip-name {
+      font-size: 1rem;
       font-weight: 700;
-      font-size: 18px;
+      letter-spacing: -0.025em;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text);
+    }
+
+    .header-trip-dates {
+      font-size: .72rem;
+      color: var(--sub);
+      font-weight: 500;
+      margin-top: 1px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
-    .header .actions {
+    /* Right: switch trip + theme */
+    .header-right {
       display: flex;
+      align-items: center;
       gap: 6px;
-      overflow-x: auto;
       flex-shrink: 0;
-      padding-bottom: 2px;
-      scrollbar-width: none;
     }
 
-    .header .actions::-webkit-scrollbar { display: none; }
-
-    .header .icon-btn {
-      width: 38px;
-      height: 38px;
-      min-width: 38px;
-      border: none;
+    .header-icon-btn {
+      width: 40px;
+      height: 40px;
       border-radius: 12px;
+      border: none;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(255,255,255,0.12);
-      backdrop-filter: blur(6px);
-      color: #fff;
-      font-size: 17px;
       cursor: pointer;
-    }
-
-    .container {
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 14px;
-    }
-
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 14px;
-      box-shadow: var(--shadow);
-      margin-bottom: 12px;
-      transition: background-color 0.3s, border-color 0.3s;
-    }
-
-    .row { display: flex; gap: 10px; }
-    .row > * { flex: 1; }
-
-    label {
-      display: block;
-      font-size: .85rem;
+      transition: background 0.15s, color 0.15s, transform 0.1s;
       color: var(--sub);
-      margin-bottom: 6px;
-      font-weight: 700;
-    }
-
-    input, textarea, select {
-      width: 100%;
-      border: 1px solid var(--border);
-      background: var(--card);
-      color: var(--text);
-      border-radius: 14px;
-      padding: 12px;
       font-size: 16px;
-      outline: none;
-      transition: border-color 0.2s;
+      background: transparent;
+      flex-shrink: 0;
     }
+    .header-icon-btn:active { background: var(--border-soft); color: var(--text); transform: scale(0.92); }
 
-    input:focus, textarea:focus { border-color: var(--primary); }
-    textarea { min-height: 80px; resize: none; }
-
-    .btn {
-      width: 100%;
+    .header-switch-btn {
+      height: 36px;
+      border-radius: 10px;
       border: none;
-      border-radius: 14px;
-      padding: 12px;
-      font-weight: 900;
-      font-size: 1rem;
+      background: var(--primary);
+      color: #fff;
+      font-size: .75rem;
+      font-weight: 700;
+      font-family: var(--font);
+      padding: 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
       cursor: pointer;
-      transition: opacity 0.2s;
+      transition: opacity 0.15s, transform 0.1s;
+      white-space: nowrap;
+      letter-spacing: -0.01em;
+      box-shadow: 0 2px 10px rgba(79,70,229,.3);
+    }
+    .header-switch-btn:active { opacity: 0.85; transform: scale(0.96); }
+    .header-switch-btn svg { width: 13px; height: 13px; }
+
+    /* Hidden secondary actions strip */
+    .header-secondary {
+      display: none;
+      border-top: 1px solid var(--border-soft);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .header-secondary::-webkit-scrollbar { display: none; }
+    .header-secondary.open { display: flex; }
+
+    .header-secondary-inner {
+      display: flex;
+      gap: 0;
+      padding: 6px 14px;
+      min-width: max-content;
+      max-width: 640px;
+      margin: 0 auto;
     }
 
-    .btn:active { opacity: 0.8; }
-    .btn-primary { background: var(--primary); color: #fff; }
-    .btn-muted { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .header-sec-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      padding: 8px 14px;
+      border: none;
+      background: transparent;
+      color: var(--sub);
+      font-size: .65rem;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      border-radius: 10px;
+      transition: background 0.12s, color 0.12s;
+      white-space: nowrap;
+      letter-spacing: 0.01em;
+    }
+    .header-sec-btn:active { background: var(--border-soft); color: var(--primary); }
+    .header-sec-btn .sec-icon { font-size: 1.15rem; }
+
+    /* Settings area */
+    .settings-area {
+      display: none;
+      padding: 14px;
+      border-top: 1px solid var(--border-soft);
+      background: var(--bg);
+    }
+
+    /* ═══════════════════════════════════════
+       CONTAINER
+    ═══════════════════════════════════════ */
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 16px 14px 0;
+    }
+
+    /* ═══════════════════════════════════════
+       DAYS STRIP — horizontal calendar
+    ═══════════════════════════════════════ */
+    .days-strip-wrap {
+      background: var(--card);
+      border-radius: var(--radius-xl);
+      padding: 14px 14px 12px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+
+    .days-strip-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .days-strip-label {
+      font-size: .7rem;
+      font-weight: 700;
+      color: var(--sub2);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .days-strip-meta {
+      font-size: .7rem;
+      color: var(--sub);
+      font-weight: 500;
+    }
 
     .chips {
       display: flex;
-      gap: 8px;
-      overflow: auto;
-      padding: 4px 2px 10px 2px;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 2px 2px 4px;
+      scrollbar-width: none;
     }
+    .chips::-webkit-scrollbar { display: none; }
 
     .chip {
       flex: 0 0 auto;
-      border: 1px solid var(--border);
-      background: var(--card);
-      color: var(--text);
-      border-radius: 999px;
-      padding: 10px 12px;
-      font-weight: 900;
-      font-size: .9rem;
+      border: 1.5px solid var(--border);
+      background: var(--bg);
+      color: var(--sub);
+      border-radius: 12px;
+      padding: 8px 16px;
+      font-weight: 600;
+      font-size: .8rem;
+      font-family: var(--font);
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 8px;
+      gap: 3px;
       white-space: nowrap;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.18s;
+      letter-spacing: -0.01em;
+      line-height: 1;
+      min-width: 54px;
+    }
+
+    .chip:active { transform: scale(0.94); }
+
+    .chip .chip-day-label {
+      font-size: .6rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: inherit;
+      opacity: 0.7;
+    }
+
+    .chip .chip-day-num {
+      font-size: .95rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .chip .chip-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.4;
     }
 
     .chip.active {
       border-color: var(--primary);
-      box-shadow: 0 4px 12px rgba(79,70,229,.18);
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 3px 12px rgba(79,70,229,.28);
+    }
+    .chip.active .chip-dot { opacity: 0.7; }
+
+    .chip.today-chip:not(.active) {
+      border-color: var(--primary);
       color: var(--primary);
+      background: var(--primary-soft);
     }
 
     .chip.add-day {
       border-style: dashed;
-      color: var(--sub);
-      font-size: 1.1rem;
+      color: var(--sub2);
+      background: transparent;
+      font-size: 1.2rem;
       padding: 8px 14px;
+      min-width: 42px;
+    }
+    .chip.add-day:active { border-color: var(--primary); color: var(--primary); }
+
+    /* ═══════════════════════════════════════
+       HERO CARD — current activity
+    ═══════════════════════════════════════ */
+    .hero-card {
+      border-radius: var(--radius-xl);
+      margin-bottom: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+      position: relative;
     }
 
-    .chip.add-day:hover { border-color: var(--primary); color: var(--primary); }
+    .hero-card-inner {
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 20px 18px 18px;
+      position: relative;
+    }
 
-    .day-head {
+    /* Completed state — same visual language as Timeline (.item.completed) */
+    .hero-card-inner.completed { opacity: 0.65; }
+    .hero-card-inner.completed .hero-title {
+      text-decoration: line-through;
+      color: var(--sub);
+    }
+
+    .hero-card-top {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 8px;
+      gap: 12px;
+      margin-bottom: 14px;
     }
 
-    .day-head h2 { margin: 0; font-size: 1.05rem; }
-
-    .day-head .sub {
-      color: var(--sub);
-      font-size: .9rem;
-      margin-top: 4px;
-      font-weight: 800;
+    .hero-card-left {
+      flex: 1;
+      min-width: 0;
     }
 
-    .list { margin-top: 6px; }
-
-    .empty {
-      text-align: center;
-      color: var(--sub);
-      padding: 18px 8px;
-      font-weight: 800;
-    }
-
-    .item {
-      position: relative;
-      overflow: hidden;
-      border: 1px solid var(--border);
-      background: var(--card);
-      border-radius: 16px;
-      margin-bottom: 10px;
-      transition: opacity 0.3s, transform 0.2s, border-color 0.3s, background-color 0.3s;
-    }
-
-    .item.completed { opacity: 0.5; }
-    .item.completed .title { text-decoration: line-through; }
-
-    .item.now-item {
-      border-color: var(--highlight-border) !important;
-      background: var(--highlight) !important;
-      box-shadow: 0 0 0 3px rgba(251,191,36,.25);
-    }
-
-    .item.now-item .now-badge { display: inline-block; }
-
-    .now-badge {
-      display: none;
-      background: #f59e0b;
-      color: white;
-      font-size: .7rem;
-      font-weight: 900;
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
       border-radius: 999px;
-      padding: 2px 8px;
-      margin-right: 6px;
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
     }
 
-    .item-content {
-      padding: 12px;
+    .hero-badge.now {
+      background: rgba(16,185,129,0.12);
+      color: #059669;
+      border: 1px solid rgba(16,185,129,0.2);
+    }
+
+    .hero-badge.next {
+      background: var(--primary-soft);
+      color: var(--primary);
+      border: 1px solid var(--primary-soft2);
+    }
+
+    .hero-badge-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+    .hero-badge.next .hero-badge-dot { animation: none; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.7); }
+    }
+
+    .hero-time {
+      font-size: 2.4rem;
+      font-weight: 700;
+      letter-spacing: -0.05em;
+      line-height: 1;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .hero-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      line-height: 1.3;
+      color: var(--text);
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .hero-location {
       display: flex;
       align-items: center;
+      gap: 5px;
+      font-size: .82rem;
+      color: var(--sub);
+      font-weight: 400;
+    }
+
+    .hero-location svg { width: 12px; height: 12px; flex-shrink: 0; color: var(--sub2); }
+
+    /* Map thumbnail */
+    .hero-card-thumb {
+      width: 90px;
+      height: 90px;
+      border-radius: var(--radius);
+      background: var(--bg2);
+      flex-shrink: 0;
+      overflow: hidden;
+      position: relative;
+      border: 1px solid var(--border);
+    }
+
+    .hero-thumb-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      background: linear-gradient(135deg, var(--primary-soft) 0%, var(--border-soft) 100%);
+    }
+
+    .hero-thumb-placeholder .thumb-icon {
+      font-size: 1.6rem;
+    }
+
+    .hero-map-btn {
+      position: absolute;
+      bottom: 5px;
+      left: 5px;
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.92);
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,.12);
+      transition: transform 0.1s;
+    }
+    .hero-map-btn:active { transform: scale(0.9); }
+    .hero-map-btn svg { width: 13px; height: 13px; color: var(--primary); }
+
+    /* Time until next */
+    .hero-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 14px 0 12px;
+    }
+
+    .hero-until {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: .8rem;
+      color: var(--sub);
+      font-weight: 500;
+      margin-bottom: 14px;
+    }
+    .hero-until svg { width: 14px; height: 14px; color: var(--sub2); }
+
+    /* Hero action buttons */
+    .hero-actions {
+      display: flex;
       gap: 10px;
     }
 
-    .item-left {
+    .hero-btn {
+      flex: 1;
+      height: 46px;
+      border-radius: var(--radius);
+      border: none;
+      font-size: .88rem;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      letter-spacing: -0.01em;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .hero-btn:active { opacity: 0.82; transform: scale(0.97); }
+
+    .hero-btn-done {
+      background: var(--border-soft);
+      border: 1.5px solid var(--border);
+      color: var(--text);
+    }
+    [data-theme="dark"] .hero-btn-done {
+      background: var(--card2);
+    }
+
+    .hero-btn-nav {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: var(--shadow-primary);
+    }
+    .hero-btn svg { width: 15px; height: 15px; }
+
+    /* Empty hero state */
+    .hero-empty {
+      text-align: center;
+      padding: 36px 20px 32px;
+    }
+
+    .hero-empty-icon {
+      font-size: 2.8rem;
+      margin-bottom: 12px;
+      display: block;
+      opacity: 0.3;
+    }
+
+    .hero-empty-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+      letter-spacing: -0.02em;
+    }
+
+    .hero-empty-sub {
+      font-size: .83rem;
+      color: var(--sub);
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .hero-empty-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 12px 24px;
+      font-size: .9rem;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+      box-shadow: var(--shadow-primary);
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .hero-empty-btn:active { opacity: 0.85; transform: scale(0.97); }
+
+    /* ═══════════════════════════════════════
+       TIMELINE SECTION
+    ═══════════════════════════════════════ */
+    .timeline-card {
+      background: var(--card);
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .timeline-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 18px 0;
+    }
+
+    .timeline-title {
+      font-size: .82rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    .timeline-meta {
+      font-size: .72rem;
+      color: var(--sub);
+      font-weight: 500;
+    }
+
+    .now-jump-btn {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--primary-soft);
+      color: var(--primary);
+      border: none;
+      border-radius: 8px;
+      padding: 6px 11px;
+      font-size: .73rem;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+      letter-spacing: -0.01em;
+    }
+    .now-jump-btn:active { opacity: 0.75; }
+    .now-jump-btn svg { width: 12px; height: 12px; }
+
+    .timeline-list {
+      padding: 12px 0 4px;
+    }
+
+    /* Timeline item — compact row */
+    .item {
+      position: relative;
+      display: flex;
+      align-items: stretch;
+      padding: 0 18px;
+      gap: 0;
+      cursor: default;
+      transition: background 0.12s;
+    }
+
+    .item:active { background: var(--border-soft); }
+    .item.completed { opacity: 0.38; }
+    .item.completed .item-title { text-decoration: line-through; color: var(--sub); }
+
+    /* Left: time column */
+    .item-time-col {
       display: flex;
       flex-direction: column;
-      gap: 2px;
-      min-width: 64px;
-      text-align: right;
-      font-weight: 900;
+      align-items: flex-end;
+      padding-top: 14px;
+      padding-bottom: 14px;
+      min-width: 52px;
+      flex-shrink: 0;
+      padding-left: 0;
     }
 
-    .time { font-size: 1rem; }
-    .meta { font-size: .75rem; color: var(--sub); font-weight: 800; }
+    .item-time {
+      font-size: .88rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--primary);
+      line-height: 1;
+    }
 
-    .item-main { flex: 1; min-width: 0; cursor: pointer; }
+    .item-time-sub {
+      font-size: .6rem;
+      color: var(--sub2);
+      font-weight: 500;
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
 
-    .title {
-      font-weight: 900;
-      font-size: 1rem;
+    /* Timeline vertical line + dot */
+    .item-line-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 28px;
+      flex-shrink: 0;
+      position: relative;
+      margin: 0 10px;
+    }
+
+    .item-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--border);
+      border: 2px solid var(--bg);
+      flex-shrink: 0;
+      margin-top: 18px;
+      position: relative;
+      z-index: 1;
+      transition: background 0.15s;
+    }
+
+    .item.now-item .item-dot {
+      background: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-soft);
+    }
+
+    .item.completed .item-dot {
+      background: var(--success);
+    }
+
+    .item-line-top {
+      width: 2px;
+      background: var(--border);
+      flex: 1 0 8px;
+      border-radius: 999px;
+    }
+
+    .item-line-bottom {
+      width: 2px;
+      background: var(--border);
+      flex: 1;
+      border-radius: 999px;
+    }
+
+    /* Main content */
+    .item-body {
+      flex: 1;
+      min-width: 0;
+      padding: 12px 0;
+      cursor: pointer;
+    }
+
+    .item-category-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: var(--primary-soft);
+      font-size: .88rem;
+      margin-bottom: 5px;
+    }
+
+    .item-title {
+      font-weight: 600;
+      font-size: .88rem;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      line-height: 1.3;
+      letter-spacing: -0.01em;
+      color: var(--text);
     }
 
-    .note {
-      font-size: .85rem;
+    .item-note {
+      font-size: .74rem;
       color: var(--sub);
-      margin-top: 4px;
+      margin-top: 2px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      line-height: 1.4;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .item-note svg { width: 10px; height: 10px; flex-shrink: 0; }
+
+    /* now badge inline */
+    .now-badge-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: var(--primary);
+      color: #fff;
+      font-size: .6rem;
+      font-weight: 700;
+      border-radius: 5px;
+      padding: 1px 6px;
+      margin-bottom: 3px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
     }
 
-    .item-actions { display: flex; align-items: center; gap: 6px; }
+    /* Actions */
+    .item-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 12px 0 12px 6px;
+      flex-shrink: 0;
+    }
 
-    .done, .delete, .drag {
+    .done, .delete {
       width: 32px;
       height: 32px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
+      border-radius: 8px;
+      border: none;
+      background: transparent;
       display: grid;
       place-items: center;
       cursor: pointer;
       user-select: none;
-      font-size: 14px;
+      font-size: 13px;
+      transition: background 0.12s, transform 0.1s;
+      color: var(--sub2);
     }
 
-    .done:active, .delete:active { background: var(--border); }
-    .delete { color: var(--danger); }
-    .drag { cursor: grab; }
-    .drag:active { cursor: grabbing; }
+    .done:active { background: rgba(79,70,229,.1); transform: scale(0.9); color: var(--primary); }
+    .delete:active { background: rgba(239,68,68,.1); transform: scale(0.9); }
+    .delete { color: var(--sub2); }
 
+    /* Show more */
+    .timeline-show-more {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 12px 18px 16px;
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--primary);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      font-family: var(--font);
+      width: 100%;
+      transition: opacity 0.15s;
+    }
+    .timeline-show-more:active { opacity: 0.7; }
+    .timeline-show-more svg { width: 13px; height: 13px; }
+
+    /* AI suggestion strip */
+    .ai-suggestion-strip {
+      background: var(--card);
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      margin-bottom: 12px;
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      transition: background 0.12s, box-shadow 0.12s;
+    }
+    .ai-suggestion-strip:active { background: var(--border-soft); }
+
+    .ai-strip-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-sm);
+      background: var(--primary-soft);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      flex-shrink: 0;
+    }
+
+    .ai-strip-text { flex: 1; min-width: 0; }
+
+    .ai-strip-title {
+      font-size: .9rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+      margin-bottom: 2px;
+    }
+
+    .ai-strip-sub {
+      font-size: .76rem;
+      color: var(--sub);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .ai-strip-arrow {
+      color: var(--sub2);
+      flex-shrink: 0;
+    }
+    .ai-strip-arrow svg { width: 16px; height: 16px; }
+
+    /* ═══════════════════════════════════════
+       BOTTOM BAR
+    ═══════════════════════════════════════ */
     .bottom-bar {
       position: fixed;
       left: 0; right: 0; bottom: 0;
-      padding: 10px 14px calc(10px + env(safe-area-inset-bottom)) 14px;
-      z-index: 1200;
-      background: linear-gradient(180deg, rgba(0,0,0,0), var(--bg) 35%, var(--bg));
+      z-index: 200;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+      transition: background-color 0.25s;
     }
 
     .bottom-actions {
       display: flex;
+      align-items: center;
       gap: 10px;
-      max-width: 720px;
+      max-width: 640px;
       margin: 0 auto;
     }
 
-    .fab {
-      flex: 1;
-      height: 54px;
-      border-radius: 18px;
-      border: none;
-      font-weight: 900;
-      font-size: 1rem;
+    .fab-secondary {
+      width: 52px;
+      height: 52px;
+      border-radius: var(--radius);
+      border: 1.5px solid var(--border);
+      background: var(--card);
+      color: var(--sub);
+      display: flex;
+      align-items: center;
+      justify-content: center;
       cursor: pointer;
-      transition: transform 0.2s;
+      flex-shrink: 0;
+      transition: background 0.15s, color 0.15s, transform 0.1s;
+      font-size: 1.3rem;
     }
+    .fab-secondary:active { background: var(--border-soft); transform: scale(0.94); color: var(--text); }
 
-    .fab:active { transform: scale(0.98); }
-    .fab.add { background: var(--primary); color: #fff; }
-    .fab.ai { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+    .fab-primary {
+      flex: 1;
+      height: 52px;
+      border-radius: var(--radius);
+      border: none;
+      background: var(--primary);
+      color: #fff;
+      font-size: .92rem;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      letter-spacing: -0.01em;
+      box-shadow: var(--shadow-primary);
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .fab-primary:active { opacity: 0.88; transform: scale(0.97); }
+    .fab-primary svg { width: 17px; height: 17px; }
 
+    /* ═══════════════════════════════════════
+       SHEET / BOTTOM SHEET
+    ═══════════════════════════════════════ */
     .sheet-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,.35);
+      background: rgba(0,0,0,.45);
       opacity: 0;
       pointer-events: none;
       z-index: 2000;
       transition: opacity 0.25s;
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
     }
 
     .sheet-backdrop.open { opacity: 1; pointer-events: auto; }
@@ -354,211 +1021,454 @@
     .sheet {
       position: fixed;
       left: 0; right: 0; bottom: -100%;
-      max-width: 720px;
+      max-width: 640px;
       margin: 0 auto;
-      height: 78%;
+      height: 80%;
       background: var(--card);
-      border-radius: 22px 22px 0 0;
-      border-top: 1px solid var(--border);
-      box-shadow: 0 -18px 35px rgba(0,0,0,.18);
-      transition: bottom .3s cubic-bezier(0.2, 0.8, 0.2, 1);
+      border-radius: 24px 24px 0 0;
+      box-shadow: 0 -12px 50px rgba(0,0,0,.2);
+      transition: bottom .32s cubic-bezier(0.2, 0.8, 0.2, 1);
       z-index: 2100;
-      padding: 14px;
-      overflow: auto;
+      padding: 0 18px calc(20px + env(safe-area-inset-bottom));
+      overflow-y: auto;
+      overflow-x: hidden;
     }
 
     .sheet.open { bottom: 0; }
+
+    .sheet-handle {
+      display: flex;
+      justify-content: center;
+      padding: 14px 0 0;
+      flex-shrink: 0;
+    }
+
+    .sheet-handle::before {
+      content: "";
+      display: block;
+      width: 38px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 999px;
+    }
 
     .sheet-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 12px;
+      margin: 16px 0 20px;
+    }
+
+    .sheet-head h3 {
+      font-size: 1.08rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      color: var(--text);
     }
 
     .sheet-close {
-      width: 38px; height: 38px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: var(--card);
-      color: var(--text);
-      font-size: 18px;
+      width: 34px; height: 34px;
+      border-radius: 10px;
+      border: none;
+      background: var(--border-soft);
+      color: var(--sub);
+      font-size: 14px;
       cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: background 0.12s;
     }
+    .sheet-close:active { background: var(--border); }
 
-    #aiSheet { height: 88%; }
+    #aiSheet { height: 90%; }
 
-    .ai-input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .ai-input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
     .ai-input-row input { flex: 1; }
     .ai-input-row button {
       flex: 0 0 auto;
       width: auto;
-      padding: 0 16px;
-      border-radius: 14px;
+      padding: 0 18px;
+      border-radius: var(--radius-sm);
       border: none;
       background: var(--primary);
       color: white;
-      font-weight: 900;
-      font-size: .95rem;
+      font-weight: 700;
+      font-family: var(--font);
+      font-size: .9rem;
       cursor: pointer;
+      height: 48px;
+      transition: opacity 0.15s;
     }
+    .ai-input-row button:active { opacity: 0.85; }
 
     #aiOutput {
       background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 14px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
       padding: 14px;
       min-height: 120px;
-      font-size: .95rem;
-      line-height: 1.6;
+      font-size: .9rem;
+      line-height: 1.65;
       white-space: pre-wrap;
       color: var(--text);
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     #aiOutput.loading { color: var(--sub); font-style: italic; }
     .ai-actions { display: flex; gap: 8px; }
     #aiImportBtn { display: none; }
 
+    /* ═══════════════════════════════════════
+       FORMS
+    ═══════════════════════════════════════ */
+    .row { display: flex; gap: 10px; }
+    .row > * { flex: 1; }
+
+    label {
+      display: block;
+      font-size: .78rem;
+      color: var(--sub);
+      margin-bottom: 6px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      border: 1.5px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      font-size: 16px;
+      font-family: var(--font);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      appearance: none;
+      -webkit-appearance: none;
+      margin-bottom: 12px;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-soft);
+      background: var(--card);
+    }
+
+    textarea { min-height: 80px; resize: none; line-height: 1.5; }
+
+    .btn {
+      width: 100%;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0 18px;
+      height: 50px;
+      font-weight: 700;
+      font-size: .95rem;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      letter-spacing: -0.01em;
+    }
+
+    .btn:active { opacity: 0.82; transform: scale(0.98); }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 2px 12px rgba(79,70,229,.25);
+    }
+    .btn-muted {
+      background: var(--border-soft);
+      border: 1.5px solid var(--border);
+      color: var(--text);
+    }
+    .btn-danger {
+      background: var(--danger-soft);
+      border: 1.5px solid rgba(239,68,68,.2);
+      color: var(--danger);
+    }
+
+    /* ═══════════════════════════════════════
+       CONFIRM SHEETS
+    ═══════════════════════════════════════ */
+    .confirm-sheet {
+      height: auto !important;
+      padding-bottom: calc(env(safe-area-inset-bottom) + 24px) !important;
+    }
+
+    .confirm-body {
+      text-align: center;
+      padding: 8px 4px 20px;
+    }
+
+    .confirm-icon {
+      font-size: 2.6rem;
+      margin-bottom: 14px;
+      display: block;
+    }
+
+    .confirm-title {
+      font-size: 1.12rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.025em;
+      color: var(--text);
+    }
+
+    .confirm-msg {
+      font-size: .86rem;
+      color: var(--sub);
+      line-height: 1.65;
+      margin-bottom: 24px;
+    }
+
+    .confirm-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* ═══════════════════════════════════════
+       TOAST
+    ═══════════════════════════════════════ */
     #toast {
       position: fixed;
       left: 50%;
       bottom: 90px;
-      transform: translateX(-50%);
-      background: #0f172a;
+      transform: translateX(-50%) translateY(10px);
+      background: rgba(15,17,23,0.94);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       color: white;
-      padding: 10px 16px;
+      padding: 10px 22px;
       border-radius: 999px;
       opacity: 0;
-      transition: .25s;
+      transition: opacity 0.22s, transform 0.22s;
       z-index: 5000;
-      font-weight: 900;
+      font-weight: 600;
+      font-size: .86rem;
       pointer-events: none;
       text-align: center;
-      max-width: 92%;
+      max-width: 90%;
+      white-space: nowrap;
+      box-shadow: 0 4px 20px rgba(0,0,0,.25);
     }
 
-    @media (max-width:480px) {
-      .container { padding: 10px; }
+    #toast.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ═══════════════════════════════════════
+       SETTINGS AREA (in card)
+    ═══════════════════════════════════════ */
+    #settingsArea {
+      display: none;
+      padding: 0 14px 14px;
+      border-top: 1px solid var(--border-soft);
+      margin-top: 8px;
+    }
+    #settingsArea label { margin-top: 10px; }
+
+    /* ═══════════════════════════════════════
+       RESPONSIVE
+    ═══════════════════════════════════════ */
+    @media (max-width: 480px) {
+      .container { padding: 12px 10px 0; }
       .row { flex-direction: column; }
-      .bottom-actions { gap: 8px; }
-      .fab { font-size: .95rem; }
-
-      .header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 8px;
-      }
-
-      .header .title {
-        text-align: right;
-        white-space: normal;
-        min-width: unset;
-        overflow: unset;
-        text-overflow: unset;
-        width: 100%;
-      }
-
-      .header .actions {
-        width: 100%;
-        justify-content: flex-end;
-        flex-wrap: wrap;
-        margin-top: 4px;
-      }
+      .hero-time { font-size: 2rem; }
+      .hero-card-thumb { width: 78px; height: 78px; }
+      .item-time-col { min-width: 46px; }
     }
   </style>
 </head>
 
 <body>
-  <div class="header">
-    <div class="title">
-      TripMaster 📱
-      <small id="headerCity">My Trip</small>
+
+  <!-- ══ HEADER ══ -->
+  <div class="header" id="mainHeader">
+    <div class="header-inner">
+      <!-- Left: menu toggle -->
+      <button class="header-menu-btn" id="settingsToggle" type="button" aria-label="תפריט">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+
+      <!-- Center: trip name + dates -->
+      <div class="header-center" id="headerCenter">
+        <div class="header-trip-name" id="headerCity">TripMaster</div>
+        <div class="header-trip-dates" id="headerTripDates"></div>
+      </div>
+
+      <!-- Right: switch trip + theme -->
+      <div class="header-right">
+        <button class="header-icon-btn" id="themeBtn" type="button" title="ערכת נושא">
+          🌓
+        </button>
+        <button class="header-switch-btn" id="switchTripBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="17 1 21 5 17 9"/>
+            <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+            <polyline points="7 23 3 19 7 15"/>
+            <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+          </svg>
+          טיולים
+        </button>
+      </div>
     </div>
-    <div class="actions">
-      <button class="icon-btn" id="settingsToggle" type="button">⚙️</button>
-      <button class="icon-btn" id="exportBtn" type="button">📤</button>
-      <button class="icon-btn" id="backupBtn" type="button">💾</button>
-      <button class="icon-btn" id="restoreBtn" type="button">📂</button>
-      <button class="icon-btn" id="resetBtn" type="button">↩️</button>
-      <button class="icon-btn" id="todayBtn" type="button">📅</button>
-      <button class="icon-btn" id="themeBtn" type="button">🌓</button>
+
+    <!-- Secondary actions strip (hidden by default, toggle by hamburger) -->
+    <div class="header-secondary" id="headerSecondary">
+      <div class="header-secondary-inner">
+        <button class="header-sec-btn" id="homeBtn" type="button">
+          <span class="sec-icon">🏠</span>
+          הום
+        </button>
+        <button class="header-sec-btn" id="newTripBtn" type="button">
+          <span class="sec-icon">🧳</span>
+          טיול חדש
+        </button>
+        <button class="header-sec-btn" id="todayBtn" type="button">
+          <span class="sec-icon">📅</span>
+          היום
+        </button>
+        <button class="header-sec-btn" id="jumpNowBtn" type="button">
+          <span class="sec-icon">⏱️</span>
+          עכשיו
+        </button>
+        <button class="header-sec-btn" id="exportBtn" type="button">
+          <span class="sec-icon">📤</span>
+          ייצא
+        </button>
+        <button class="header-sec-btn" id="backupBtn" type="button">
+          <span class="sec-icon">💾</span>
+          גיבוי
+        </button>
+        <button class="header-sec-btn" id="restoreBtn" type="button">
+          <span class="sec-icon">📂</span>
+          שחזור
+        </button>
+        <button class="header-sec-btn" id="resetBtn" type="button">
+          <span class="sec-icon">↩️</span>
+          איפוס
+        </button>
+        <button class="header-sec-btn" id="qaBtn" type="button">
+          <span class="sec-icon">✅</span>
+          QA
+        </button>
+      </div>
+    </div>
+
+    <!-- Settings area -->
+    <div id="settingsArea">
+      <div class="row" style="margin-top:14px">
+        <div>
+          <label>עיר</label>
+          <input id="global-city" placeholder="London" />
+        </div>
+        <div>
+          <label>מלון</label>
+          <input id="global-hotel" placeholder="שם המלון" />
+        </div>
+      </div>
+      <label>אזור מרכזי</label>
+      <input id="global-basearea" placeholder="Paddington / Soho / etc" />
+      <label>🔑 Anthropic API Key</label>
+      <input id="global-apikey" type="password" placeholder="sk-ant-..." autocomplete="off" />
+      <div style="font-size:.78rem;color:var(--sub);margin-top:-6px;margin-bottom:10px">
+        נשמר רק במכשיר שלך. מתאים לניסוי אישי בלבד.
+      </div>
     </div>
   </div>
 
+  <!-- ══ MAIN CONTENT ══ -->
   <div class="container">
-    <div class="card">
-      <div class="day-head">
-        <div>
-          <h2 id="currentTitle">היום</h2>
-          <div class="sub" id="currentSub">TripMaster Ready</div>
-        </div>
+
+    <!-- Days strip -->
+    <div class="days-strip-wrap">
+      <div class="days-strip-header">
+        <span class="days-strip-label">ימים</span>
+        <span class="days-strip-meta" id="currentSub"></span>
       </div>
-
-      <div id="settingsArea" style="display:none;margin-top:10px">
-        <div class="row">
-          <div>
-            <label>עיר</label>
-            <input id="global-city" placeholder="London" />
-          </div>
-          <div>
-            <label>מלון</label>
-            <input id="global-hotel" placeholder="שם המלון" />
-          </div>
-        </div>
-
-        <label style="margin-top:8px">אזור מרכזי</label>
-        <input id="global-basearea" placeholder="Paddington / Soho / etc" />
-
-        <label style="margin-top:8px">🔑 Anthropic API Key</label>
-        <input id="global-apikey" type="password" placeholder="sk-ant-..." autocomplete="off" />
-        <div style="font-size:.8rem;color:var(--sub);margin-top:4px">
-          נשמר רק במכשיר שלך. מתאים לניסוי אישי בלבד.
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <div>
-            <label>QA</label>
-            <button class="btn btn-muted" id="qaBtn" type="button">✅ בדיקה</button>
-          </div>
-        </div>
-      </div>
-
       <div class="chips" id="dayChips"></div>
     </div>
 
-    <div class="card">
-      <div class="day-head">
+    <!-- Hero card: current / next activity -->
+    <div class="hero-card" id="heroCard">
+      <div class="hero-card-inner" id="heroCardInner">
+        <!-- rendered by JS -->
+      </div>
+    </div>
+
+    <!-- Timeline: rest of the day -->
+    <div class="timeline-card" id="timelineCard" style="display:none">
+      <div class="timeline-header">
         <div>
-          <h2 id="dayTitle">יום מתוכנן</h2>
-          <div class="sub" id="dayMeta">עדיין אין פעילויות</div>
+          <div class="timeline-title" id="dayTitle">המשך היום</div>
+          <div class="timeline-meta" id="dayMeta"></div>
         </div>
-        <button class="btn btn-muted" id="jumpNowBtn"
-          style="width:auto;padding:10px 12px;border-radius:14px;font-weight:900" type="button">
-          ⏱️ עכשיו
+        <button class="now-jump-btn" id="jumpNowBtnHeader" type="button" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          עכשיו
         </button>
       </div>
-
-      <div class="list" id="activityList"></div>
-      <div class="empty" id="emptyState">אין עדיין פעילויות ✈️</div>
+      <div class="timeline-list" id="activityList"></div>
     </div>
+
+    <!-- AI suggestion strip -->
+    <div class="ai-suggestion-strip" id="aiStripBtn">
+      <div class="ai-strip-icon">💡</div>
+      <div class="ai-strip-text">
+        <div class="ai-strip-title">וגם הצעות AI</div>
+        <div class="ai-strip-sub">קבל הצעות מותאמות אישית לטיול שלך</div>
+      </div>
+      <div class="ai-strip-arrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </div>
+    </div>
+
   </div>
 
+  <!-- ══ BOTTOM BAR ══ -->
   <div class="bottom-bar">
     <div class="bottom-actions">
-      <button class="fab ai" id="aiBtn" type="button">🤖 AI</button>
-      <button class="fab add" id="addBtn" type="button">➕ הוסף פעילות</button>
+      <button class="fab-secondary" id="aiBtn" type="button" title="AI">🤖</button>
+      <button class="fab-primary" id="addBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        הוסף פעילות
+      </button>
     </div>
   </div>
 
+  <!-- ══ SHEET BACKDROP ══ -->
   <div class="sheet-backdrop" id="sheetBackdrop"></div>
 
+  <!-- ══ ADD/EDIT SHEET ══ -->
   <div class="sheet" id="sheet">
+    <div class="sheet-handle"></div>
     <div class="sheet-head">
       <h3 id="sheetTitle">הוסף פעילות</h3>
-      <button class="sheet-close" id="sheetClose" type="button">✖</button>
+      <button class="sheet-close" id="sheetClose" type="button">✕</button>
     </div>
-
     <div id="addPane">
       <div class="row">
         <div>
@@ -570,97 +1480,587 @@
           <input type="time" id="addTime" />
         </div>
       </div>
-
       <label>כותרת</label>
       <input id="addTitle" placeholder="למשל: Natural History Museum" />
-
       <label>הערה</label>
       <textarea id="addNote" placeholder="כתובת / לינק / הערה"></textarea>
-
-      <div class="row" style="margin-top:10px">
+      <label>🔔 תזכורת</label>
+      <select id="addReminder">
+        <option value="-1">ללא תזכורת</option>
+        <option value="10">10 דקות לפני</option>
+        <option value="15">15 דקות לפני</option>
+        <option value="30">30 דקות לפני</option>
+        <option value="60">שעה לפני</option>
+        <option value="120">שעתיים לפני</option>
+      </select>
+      <div class="row" style="margin-top:4px">
         <button class="btn btn-muted" id="addWithReminderBtn" type="button">📅 שמור + לוח שנה</button>
         <button class="btn btn-primary" id="addSaveBtn" type="button">שמור</button>
       </div>
-
+      <button class="btn btn-danger" id="addDeleteBtn" style="margin-top:10px; display:none" type="button">🗑 מחק פעילות</button>
       <button class="btn btn-muted" id="addCancelBtn" style="margin-top:10px" type="button">ביטול</button>
     </div>
   </div>
 
+  <!-- ══ AI SHEET ══ -->
   <div class="sheet" id="aiSheet">
+    <div class="sheet-handle"></div>
     <div class="sheet-head">
       <h3>🤖 תכנון יום עם AI</h3>
-      <button class="sheet-close" id="aiSheetClose" type="button">✖</button>
+      <button class="sheet-close" id="aiSheetClose" type="button">✕</button>
     </div>
-
     <div class="ai-input-row">
       <input id="aiPromptInput" placeholder="למשל: יום בלונדון, אוהב מוזיאונים, 3 ילדים קטנים" />
       <button id="aiSendBtn" type="button">שלח</button>
     </div>
-
     <div id="aiOutput" style="color:var(--sub);font-style:italic">
       הכנס תיאור של הטיול ולחץ שלח — ה-AI יציע תוכנית יום מפורטת 🗺️
     </div>
-
     <div class="ai-actions" style="margin-top:10px">
       <button class="btn btn-primary" id="aiImportBtn" type="button">➕ ייבא לטיול</button>
       <button class="btn btn-muted" id="aiClearBtn" type="button">נקה</button>
     </div>
   </div>
 
+  <!-- ══ TRIP SWITCH SHEET ══ -->
+  <div class="sheet" id="tripSheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3>🔄 החלפת טיול</h3>
+      <button class="sheet-close" id="tripSheetClose" type="button">✕</button>
+    </div>
+    <div id="tripList"></div>
+  </div>
+
+  <!-- ══ NEW TRIP SHEET ══ -->
+  <div class="sheet" id="newTripSheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3>🧳 טיול חדש</h3>
+      <button class="sheet-close" id="newTripSheetClose" type="button">✕</button>
+    </div>
+    <label>שם הטיול</label>
+    <input id="newTripNameInput" placeholder="London 2026" autocomplete="off" />
+    <div class="row" style="margin-top:4px">
+      <button class="btn btn-muted" id="newTripCancelBtn" type="button">ביטול</button>
+      <button class="btn btn-primary" id="newTripConfirmBtn" type="button">צור טיול</button>
+    </div>
+  </div>
+
+  <!-- ══ FIRST DAY SHEET ══ -->
+  <div class="sheet" id="firstDaySheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3>📅 יום ראשון בטיול</h3>
+      <button class="sheet-close" id="firstDaySheetClose" type="button">✕</button>
+    </div>
+    <label>בחר את תאריך היום הראשון</label>
+    <input type="date" id="firstDayDateInput" />
+    <div class="row" style="margin-top:4px">
+      <button class="btn btn-muted" id="firstDayCancelBtn" type="button">ביטול</button>
+      <button class="btn btn-primary" id="firstDayConfirmBtn" type="button">צור יום</button>
+    </div>
+  </div>
+
+  <!-- ══ CONFIRM: delete activity ══ -->
+  <div class="sheet confirm-sheet" id="confirmDeleteActivitySheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3>מחיקת פעילות</h3>
+      <button class="sheet-close" id="confirmDeleteActivityClose" type="button">✕</button>
+    </div>
+    <div class="confirm-body">
+      <span class="confirm-icon">🗑</span>
+      <div class="confirm-title">למחוק את הפעילות?</div>
+      <div class="confirm-msg">הפעילות תימחק לצמיתות ולא ניתן לשחזרה.</div>
+      <div class="confirm-actions">
+        <button class="btn btn-danger" id="confirmDeleteActivityOk" type="button">מחק</button>
+        <button class="btn btn-muted" id="confirmDeleteActivityCancel" type="button">ביטול</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CONFIRM: delete trip ══ -->
+  <div class="sheet confirm-sheet" id="confirmDeleteTripSheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3>מחיקת טיול</h3>
+      <button class="sheet-close" id="confirmDeleteTripClose" type="button">✕</button>
+    </div>
+    <div class="confirm-body">
+      <span class="confirm-icon">🧳</span>
+      <div class="confirm-title" id="confirmDeleteTripTitle">למחוק את הטיול?</div>
+      <div class="confirm-msg">כל הימים והפעילויות של הטיול יימחקו לצמיתות.</div>
+      <div class="confirm-actions">
+        <button class="btn btn-danger" id="confirmDeleteTripOk" type="button">מחק טיול</button>
+        <button class="btn btn-muted" id="confirmDeleteTripCancel" type="button">ביטול</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CONFIRM: reset ══ -->
+  <div class="sheet confirm-sheet" id="confirmResetSheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3>איפוס מלא</h3>
+      <button class="sheet-close" id="confirmResetClose" type="button">✕</button>
+    </div>
+    <div class="confirm-body">
+      <span class="confirm-icon">⚠️</span>
+      <div class="confirm-title">למחוק את כל הנתונים?</div>
+      <div class="confirm-msg">כל הטיולים, הפעילויות וההגדרות יימחקו לצמיתות ולא ניתן לשחזרם.</div>
+      <div class="confirm-actions">
+        <button class="btn btn-danger" id="confirmResetOk" type="button">מחק הכל</button>
+        <button class="btn btn-muted" id="confirmResetCancel" type="button">ביטול</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CONFIRM: restore ══ -->
+  <div class="sheet confirm-sheet" id="confirmRestoreSheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3>שחזור גיבוי</h3>
+      <button class="sheet-close" id="confirmRestoreClose" type="button">✕</button>
+    </div>
+    <div class="confirm-body">
+      <span class="confirm-icon">📂</span>
+      <div class="confirm-title">לשחזר את הגיבוי?</div>
+      <div class="confirm-msg">הנתונים הנוכחיים יימחקו ויוחלפו בנתוני הגיבוי.</div>
+      <div class="confirm-actions">
+        <button class="btn btn-primary" id="confirmRestoreOk" type="button">שחזר</button>
+        <button class="btn btn-muted" id="confirmRestoreCancel" type="button">ביטול</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
-<input type="file" id="restoreInput" accept=".json" style="display:none">
+  <input type="file" id="restoreInput" accept=".json" style="display:none">
+
   <script>
   document.addEventListener("DOMContentLoaded", () => {
     const $ = (id) => document.getElementById(id);
 
-    const KEY_DAYS = "tm_days_clean";
-    const KEY_SETTINGS = "tm_settings_clean";
-    const KEY_THEME = "tm_theme_clean";
+    const KEY_DAYS        = "tm_days_clean";
+    const KEY_SETTINGS    = "tm_settings_clean";
+    const KEY_THEME       = "tm_theme_clean";
+    const KEY_TRIPS       = "tm_trips";
+    const KEY_ACTIVE_TRIP = "tm_active_trip";
 
-    let currentDayIndex = 0;
-    let sortableInstance = null;
-    let editingDayIndex = null;
+    let currentDayIndex  = 0;
+    let editingDayIndex  = null;
     let editingItemIndex = null;
-    let lastAIPlan = [];
+    let lastAIPlan       = [];
+    let isSavingActivity = false; // BUG-001 preventive guard: blocks duplicate rapid-tap saves
 
     let days = JSON.parse(localStorage.getItem(KEY_DAYS) || "[]");
+    let trips = JSON.parse(localStorage.getItem(KEY_TRIPS) || "[]");
+    let activeTripId = localStorage.getItem(KEY_ACTIVE_TRIP) || null;
 
-    let settings = JSON.parse(
-      localStorage.getItem(KEY_SETTINGS) ||
-      JSON.stringify({ city: "", hotel: "", baseArea: "", defaultRemindMin: 30, apiKey: "" })
-    );
-
+    /* ── Storage ── */
     function saveDays() {
+      const activeTrip = getActiveTrip();
+      if (activeTrip) {
+        activeTrip.days = JSON.parse(JSON.stringify(days));
+        saveTrips();
+        return;
+      }
       localStorage.setItem(KEY_DAYS, JSON.stringify(days));
     }
+
+    function saveTrips() {
+      localStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
+      localStorage.setItem(KEY_ACTIVE_TRIP, activeTripId || "");
+    }
+
+    function getActiveTrip() {
+      return trips.find(t => t.id === activeTripId) || null;
+    }
+
+    /* ── Trip management ── */
+    function createTrip(name) {
+      const newTrip = { id: "trip_" + Date.now(), name: name || "טיול חדש", days: [] };
+      trips.push(newTrip);
+      activeTripId = newTrip.id;
+      saveTrips();
+      return newTrip;
+    }
+
+    function switchTrip(tripId) {
+      activeTripId = tripId;
+      const activeTrip = getActiveTrip();
+      if (!activeTrip) return;
+      days = activeTrip.days || [];
+      currentDayIndex = 0;
+      saveTrips();
+      renderDays();
+      days.length > 0 ? renderActivities(currentDayIndex) : renderActivities(0);
+      updateHeaderInfo();
+      showToast("עברתם ל-" + activeTrip.name + " ✈️");
+    }
+
+    function goHome() {
+      activeTripId = null;
+      localStorage.setItem(KEY_ACTIVE_TRIP, "");
+      days = JSON.parse(localStorage.getItem(KEY_DAYS) || "[]");
+      currentDayIndex = 0;
+      renderDays();
+      renderActivities(0);
+      updateHeaderInfo();
+      showToast("🏠 חזרה למסך הראשי");
+    }
+
+    /* ── Header info ── */
+    function updateHeaderInfo() {
+      const activeTrip = getActiveTrip();
+      const cityName = settings.city || "My Trip";
+      
+      if (activeTrip) {
+        $("headerCity").innerText = activeTrip.name;
+      } else {
+        $("headerCity").innerText = cityName;
+      }
+
+      // dates from days array
+      if (days.length > 0) {
+        const first = days[0].date;
+        const last  = days[days.length - 1].date;
+        const fmt = (d) => {
+          const dt = new Date(d);
+          if (isNaN(dt)) return d;
+          return dt.toLocaleDateString("he-IL", { day: "numeric", month: "numeric" });
+        };
+        $("headerTripDates").innerText = first === last ? fmt(first) : `${fmt(first)}–${fmt(last)}`;
+      } else {
+        $("headerTripDates").innerText = "";
+      }
+    }
+
+    /* ── Sheets (trips) ── */
+    function openNewTripSheet() {
+      $("newTripNameInput").value = "";
+      $("newTripSheet").classList.add("open");
+      $("sheetBackdrop").classList.add("open");
+    }
+    function closeNewTripSheet() {
+      $("newTripSheet").classList.remove("open");
+      $("sheetBackdrop").classList.remove("open");
+    }
+    function openFirstDaySheet() {
+      $("firstDayDateInput").value = todayISO();
+      $("firstDaySheet").classList.add("open");
+      $("sheetBackdrop").classList.add("open");
+    }
+    function closeFirstDaySheet() {
+      $("firstDaySheet").classList.remove("open");
+      $("sheetBackdrop").classList.remove("open");
+    }
+
+    function openTripSheet() {
+      const list = document.getElementById("tripList");
+      list.innerHTML = "";
+
+      // 🏠 הטיול הראשי — always first, selects Home
+      const isHomeActive = activeTripId == null;
+      const homeCard = document.createElement("div");
+      homeCard.style.cssText = `
+        display:flex;align-items:center;gap:14px;
+        border:1.5px solid ${isHomeActive ? "var(--primary)" : "var(--border)"};
+        background:${isHomeActive ? "var(--primary-soft)" : "var(--bg)"};
+        border-radius:var(--radius);
+        padding:16px;margin-bottom:10px;cursor:pointer;
+        transition:border-color .15s,background .15s,transform .1s;
+        -webkit-user-select:none;user-select:none;
+      `;
+
+      const homeIcon = document.createElement("div");
+      homeIcon.style.cssText = "width:42px;height:42px;border-radius:12px;background:var(--primary-soft);display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;";
+      homeIcon.textContent = "🏠";
+
+      const homeTextWrap = document.createElement("div");
+      homeTextWrap.style.flex = "1";
+      homeTextWrap.style.minWidth = "0";
+
+      const homeNameEl = document.createElement("div");
+      homeNameEl.textContent = "הטיול הראשי";
+      homeNameEl.style.cssText = `font-weight:700;font-size:.95rem;letter-spacing:-0.02em;color:${isHomeActive ? "var(--primary)" : "var(--text)"};`;
+
+      const homeSubEl = document.createElement("div");
+      homeSubEl.textContent = isHomeActive ? "הטיול הפעיל כרגע" : "חזרה למסך הראשי";
+      homeSubEl.style.cssText = "font-size:.76rem;color:var(--sub);margin-top:3px;";
+
+      homeTextWrap.appendChild(homeNameEl);
+      homeTextWrap.appendChild(homeSubEl);
+
+      const homeBadge = document.createElement("span");
+      if (isHomeActive) {
+        homeBadge.textContent = "פעיל";
+        homeBadge.style.cssText = "font-size:.7rem;font-weight:700;background:var(--primary);color:#fff;border-radius:999px;padding:4px 12px;flex-shrink:0;";
+      }
+
+      homeCard.appendChild(homeIcon);
+      homeCard.appendChild(homeTextWrap);
+      if (isHomeActive) homeCard.appendChild(homeBadge);
+
+      homeCard.addEventListener("click", () => {
+        closeTripSheet();
+        if (!isHomeActive) goHome();
+      });
+
+      list.appendChild(homeCard);
+
+      if (trips.length === 0) {
+        const emptyMsg = document.createElement("div");
+        emptyMsg.style.cssText = "text-align:center;padding:40px 16px";
+        emptyMsg.innerHTML = `
+            <div style="font-size:2.4rem;opacity:.3;margin-bottom:12px">🧳</div>
+            <div style="color:var(--sub);font-size:.95rem;font-weight:500;line-height:1.6">עדיין אין טיולים נוספים<br><small style="font-size:.82rem;opacity:.7">לחץ "טיול חדש" בתפריט למעלה</small></div>`;
+        list.appendChild(emptyMsg);
+      } else {
+        trips.forEach((trip) => {
+          const isActive = trip.id === activeTripId;
+          const card = document.createElement("div");
+          card.style.cssText = `
+            display:flex;align-items:center;gap:14px;
+            border:1.5px solid ${isActive ? "var(--primary)" : "var(--border)"};
+            background:${isActive ? "var(--primary-soft)" : "var(--bg)"};
+            border-radius:var(--radius);
+            padding:16px;margin-bottom:10px;cursor:pointer;
+            transition:border-color .15s,background .15s,transform .1s;
+            -webkit-user-select:none;user-select:none;
+          `;
+
+          const icon = document.createElement("div");
+          icon.style.cssText = "width:42px;height:42px;border-radius:12px;background:var(--primary-soft);display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;";
+          icon.textContent = isActive ? "✈️" : "🗺️";
+
+          const textWrap = document.createElement("div");
+          textWrap.style.flex = "1";
+          textWrap.style.minWidth = "0";
+
+          const nameEl = document.createElement("div");
+          nameEl.textContent = trip.name;
+          nameEl.style.cssText = `font-weight:700;font-size:.95rem;letter-spacing:-0.02em;color:${isActive ? "var(--primary)" : "var(--text)"};`;
+
+          const subEl = document.createElement("div");
+          subEl.textContent = isActive ? "הטיול הפעיל כרגע" : `${trip.days ? trip.days.length : 0} ימים`;
+          subEl.style.cssText = "font-size:.76rem;color:var(--sub);margin-top:3px;";
+
+          textWrap.appendChild(nameEl);
+          textWrap.appendChild(subEl);
+
+          const badge = document.createElement("span");
+          if (isActive) {
+            badge.textContent = "פעיל";
+            badge.style.cssText = "font-size:.7rem;font-weight:700;background:var(--primary);color:#fff;border-radius:999px;padding:4px 12px;flex-shrink:0;";
+          }
+
+          card.appendChild(icon);
+          card.appendChild(textWrap);
+          if (isActive) card.appendChild(badge);
+
+          card.addEventListener("click", () => {
+            closeTripSheet();
+            if (!isActive) switchTrip(trip.id);
+          });
+          card.addEventListener("contextmenu", (e) => { e.preventDefault(); deleteTrip(trip.id); });
+
+          let longPressTimer = null;
+          card.addEventListener("touchstart", () => {
+            longPressTimer = setTimeout(() => { longPressTimer = null; deleteTrip(trip.id); }, 600);
+          }, { passive: true });
+          card.addEventListener("touchend", () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } });
+          card.addEventListener("touchmove", () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } });
+
+          list.appendChild(card);
+        });
+      }
+
+      document.getElementById("tripSheet").classList.add("open");
+      document.getElementById("sheetBackdrop").classList.add("open");
+    }
+
+    function closeTripSheet() {
+      document.getElementById("tripSheet").classList.remove("open");
+      document.getElementById("sheetBackdrop").classList.remove("open");
+    }
+
+    function deleteTrip(tripId) {
+      if (tripId === "home") { showToast("לא ניתן למחוק את Home"); return; }
+      const trip = trips.find(t => t.id === tripId);
+      if (!trip) return;
+      confirmDeleteTrip(trip.name, () => {
+        const wasActive = activeTripId === tripId;
+        trips = trips.filter(t => t.id !== tripId);
+        if (wasActive) { goHome(); } else { saveTrips(); }
+        openTripSheet();
+        showToast(`"${trip.name}" נמחק 🗑️`);
+      });
+    }
+
+    /* ── Settings ── */
+    let settings = JSON.parse(
+      localStorage.getItem(KEY_SETTINGS) ||
+      JSON.stringify({ city: "", hotel: "", baseArea: "", defaultReminderMin: 30, apiKey: "" })
+    );
 
     function saveSettings() {
       localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
     }
 
+    /* ── Toast ── */
     function showToast(text) {
       const t = $("toast");
       t.innerText = text;
-      t.style.opacity = "1";
+      t.classList.add("visible");
       clearTimeout(showToast._t);
-      showToast._t = setTimeout(() => { t.style.opacity = "0"; }, 1800);
+      showToast._t = setTimeout(() => t.classList.remove("visible"), 1900);
     }
 
+    /* ── Custom confirm dialogs ── */
+    function openConfirmSheet(sheetId) {
+      $(sheetId).classList.add("open");
+      $("sheetBackdrop").classList.add("open");
+    }
+    function closeConfirmSheet(sheetId) {
+      $(sheetId).classList.remove("open");
+      $("sheetBackdrop").classList.remove("open");
+    }
+
+    let _pendingDeleteActivity = null;
+    function confirmDeleteActivity(cb) {
+      _pendingDeleteActivity = cb;
+      openConfirmSheet("confirmDeleteActivitySheet");
+    }
+    $("confirmDeleteActivityOk").addEventListener("click", () => {
+      closeConfirmSheet("confirmDeleteActivitySheet");
+      if (_pendingDeleteActivity) { _pendingDeleteActivity(); _pendingDeleteActivity = null; }
+    });
+    $("confirmDeleteActivityCancel").addEventListener("click", () => { closeConfirmSheet("confirmDeleteActivitySheet"); _pendingDeleteActivity = null; });
+    $("confirmDeleteActivityClose").addEventListener("click",  () => { closeConfirmSheet("confirmDeleteActivitySheet"); _pendingDeleteActivity = null; });
+
+    function attachLongPressDelete(element, callback) {
+      if (!element || typeof callback !== "function") return;
+
+      let longPressTimer = null;
+      let longPressFired = false;
+      let startX = 0;
+      let startY = 0;
+      const MOVE_TOLERANCE = 12;
+      const ignoreSelector = "button, input, textarea, select, .done, .delete, .hero-btn, .hero-map-btn";
+
+      const clearLongPress = () => {
+        if (longPressTimer) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      };
+
+      const startLongPress = (clientX, clientY, target) => {
+        if (target && target.closest && target.closest(ignoreSelector)) return;
+        longPressFired = false;
+        startX = clientX || 0;
+        startY = clientY || 0;
+        clearLongPress();
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          longPressFired = true;
+          callback();
+        }, 650);
+      };
+
+      const maybeCancelOnMove = (clientX, clientY) => {
+        if (!longPressTimer) return;
+        const dx = Math.abs((clientX || 0) - startX);
+        const dy = Math.abs((clientY || 0) - startY);
+        if (dx > MOVE_TOLERANCE || dy > MOVE_TOLERANCE) clearLongPress();
+      };
+
+      element.addEventListener("touchstart", (e) => {
+        const t = e.touches && e.touches[0];
+        if (!t) return;
+        startLongPress(t.clientX, t.clientY, e.target);
+      }, { passive: true });
+
+      element.addEventListener("touchmove", (e) => {
+        const t = e.touches && e.touches[0];
+        if (!t) return;
+        maybeCancelOnMove(t.clientX, t.clientY);
+      }, { passive: true });
+
+      element.addEventListener("touchend", (e) => {
+        clearLongPress();
+        if (longPressFired) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      });
+
+      element.addEventListener("touchcancel", clearLongPress, { passive: true });
+
+      element.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        startLongPress(e.clientX, e.clientY, e.target);
+      });
+      element.addEventListener("mousemove", (e) => maybeCancelOnMove(e.clientX, e.clientY));
+      element.addEventListener("mouseup", clearLongPress);
+      element.addEventListener("mouseleave", clearLongPress);
+
+      element.addEventListener("contextmenu", (e) => {
+        if (e.target.closest(ignoreSelector)) return;
+        e.preventDefault();
+        clearLongPress();
+        callback();
+      });
+    }
+
+    let _pendingDeleteTrip = null;
+    function confirmDeleteTrip(tripName, cb) {
+      $("confirmDeleteTripTitle").innerText = `למחוק את "${tripName}"?`;
+      _pendingDeleteTrip = cb;
+      openConfirmSheet("confirmDeleteTripSheet");
+    }
+    $("confirmDeleteTripOk").addEventListener("click", () => {
+      closeConfirmSheet("confirmDeleteTripSheet");
+      if (_pendingDeleteTrip) { _pendingDeleteTrip(); _pendingDeleteTrip = null; }
+    });
+    $("confirmDeleteTripCancel").addEventListener("click", () => { closeConfirmSheet("confirmDeleteTripSheet"); _pendingDeleteTrip = null; });
+    $("confirmDeleteTripClose").addEventListener("click",  () => { closeConfirmSheet("confirmDeleteTripSheet"); _pendingDeleteTrip = null; });
+
+    let _pendingReset = null;
+    function confirmReset(cb) {
+      _pendingReset = cb;
+      openConfirmSheet("confirmResetSheet");
+    }
+    $("confirmResetOk").addEventListener("click", () => {
+      closeConfirmSheet("confirmResetSheet");
+      if (_pendingReset) { _pendingReset(); _pendingReset = null; }
+    });
+    $("confirmResetCancel").addEventListener("click", () => { closeConfirmSheet("confirmResetSheet"); _pendingReset = null; });
+    $("confirmResetClose").addEventListener("click",  () => { closeConfirmSheet("confirmResetSheet"); _pendingReset = null; });
+
+    let _pendingRestore = null;
+    function confirmRestore(cb) {
+      _pendingRestore = cb;
+      openConfirmSheet("confirmRestoreSheet");
+    }
+    $("confirmRestoreOk").addEventListener("click", () => {
+      closeConfirmSheet("confirmRestoreSheet");
+      if (_pendingRestore) { _pendingRestore(); _pendingRestore = null; }
+    });
+    $("confirmRestoreCancel").addEventListener("click", () => { closeConfirmSheet("confirmRestoreSheet"); _pendingRestore = null; });
+    $("confirmRestoreClose").addEventListener("click",  () => { closeConfirmSheet("confirmRestoreSheet"); _pendingRestore = null; });
+
+    /* ── Utils ── */
     function escapeHtml(str) {
       return String(str || "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     }
 
     function todayISO() {
       const d = new Date();
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      return `${y}-${m}-${dd}`;
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
     }
 
     function formatDateForTitle(dateString, fallback) {
@@ -673,136 +2073,332 @@
       return days.findIndex(d => d.date === t);
     }
 
+    /* ── Category icons ── */
+    const CATEGORY_ICONS = {
+      attraction: "🏛", food: "🍴", hotel: "🛏", flight: "✈️",
+      shopping: "🛍", transport: "🚇", other: "📌"
+    };
+    function getCategoryIcon(item) {
+      if (item.category && CATEGORY_ICONS[item.category]) return CATEGORY_ICONS[item.category];
+      const t = (item.title || "").toLowerCase();
+      if (t.includes("מסעדה") || t.includes("ארוחה") || t.includes("lunch") || t.includes("dinner") || t.includes("food") || t.includes("coffee")) return "🍴";
+      if (t.includes("מלון") || t.includes("hotel") || t.includes("hostel")) return "🛏";
+      if (t.includes("טיסה") || t.includes("flight") || t.includes("airport")) return "✈️";
+      if (t.includes("קניות") || t.includes("shopping") || t.includes("shop")) return "🛍";
+      if (t.includes("רכבת") || t.includes("אוטובוס") || t.includes("metro") || t.includes("bus") || t.includes("taxi")) return "🚇";
+      if (t.includes("מוזיאון") || t.includes("museum") || t.includes("גלריה") || t.includes("gallery")) return "🏛";
+      return "📍";
+    }
+
+    /* ── Render Days ── */
     function renderDays() {
       const wrap = $("dayChips");
       wrap.innerHTML = "";
+      const todayStr = todayISO();
 
       days.forEach((day, index) => {
         const chip = document.createElement("button");
-        chip.className = `chip ${index === currentDayIndex ? "active" : ""}`;
+        const d = new Date(day.date);
+        const isToday = day.date === todayStr;
+        chip.className = `chip ${index === currentDayIndex ? "active" : ""} ${isToday && index !== currentDayIndex ? "today-chip" : ""}`;
         chip.type = "button";
-        chip.innerHTML = `יום ${index + 1}`;
+
+        const dayNames = ["א","ב","ג","ד","ה","ו","ש"];
+        const dayLabel = isNaN(d) ? `יום ${index+1}` : dayNames[d.getDay()];
+        const dayNum   = isNaN(d) ? (index+1) : d.getDate();
+
+        chip.innerHTML = `
+          <span class="chip-day-label">${escapeHtml(dayLabel)}</span>
+          <span class="chip-day-num">${dayNum}</span>
+          <span class="chip-dot"></span>
+        `;
+
         chip.addEventListener("click", () => {
           currentDayIndex = index;
           renderDays();
           renderActivities(index);
         });
+
         chip.addEventListener("contextmenu", (e) => {
-  e.preventDefault();
+          e.preventDefault();
+          confirmDeleteActivity(() => {
+            days.splice(index, 1);
+            if (currentDayIndex >= days.length) currentDayIndex = Math.max(0, days.length - 1);
+            saveDays();
+            renderDays();
+            days.length > 0 ? renderActivities(currentDayIndex) : renderActivities(0);
+            showToast("היום נמחק 🗑️");
+          });
+        });
 
-  if (!confirm(`למחוק את יום ${index + 1}?`)) return;
-
-  days.splice(index, 1);
-
-  if (currentDayIndex >= days.length) {
-    currentDayIndex = Math.max(0, days.length - 1);
-  }
-
-  saveDays();
-  renderDays();
-
-  if (days.length > 0) {
-    renderActivities(currentDayIndex);
-  } else {
-    renderActivities(0);
-  }
-
-  showToast("היום נמחק 🗑️");
-});
         wrap.appendChild(chip);
       });
 
       const addChip = document.createElement("button");
       addChip.className = "chip add-day";
       addChip.type = "button";
-      addChip.innerHTML = "＋";
+      addChip.textContent = "＋";
       addChip.title = "הוסף יום חדש";
       addChip.addEventListener("click", addNewDay);
       wrap.appendChild(addChip);
+
+      updateHeaderInfo();
     }
 
-    // ✅ תוקן: הוסר הקוד הכפול שהיה מחוץ לפונקציה
     function addNewDay() {
-      let nextDate;
-
       if (days.length > 0) {
         const last = new Date(days[days.length - 1].date);
         last.setDate(last.getDate() + 1);
-
-        const y = last.getFullYear();
-        const m = String(last.getMonth() + 1).padStart(2, "0");
-        const dd = String(last.getDate()).padStart(2, "0");
-
-        nextDate = `${y}-${m}-${dd}`;
+        const nextDate = `${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,"0")}-${String(last.getDate()).padStart(2,"0")}`;
+        days.push({ date: nextDate, items: [] });
+        saveDays();
+        currentDayIndex = days.length - 1;
+        renderDays();
+        renderActivities(currentDayIndex);
+        showToast(`יום ${days.length} נוסף 📅`);
       } else {
-        const chosenDate = prompt("מה תאריך היום הראשון בטיול? כתוב בפורמט YYYY-MM-DD", todayISO());
-
-        if (!chosenDate) {
-          showToast("הוספת יום בוטלה");
-          return;
-        }
-
-        nextDate = chosenDate;
+        openFirstDaySheet();
       }
-
-      days.push({ date: nextDate, items: [] });
-      saveDays();
-      currentDayIndex = days.length - 1;
-      renderDays();
-      renderActivities(currentDayIndex);
-      showToast(`יום ${days.length} נוסף 📅`);
     }
 
+    /* ── Find now item ── */
+    function findNowItemIndex(day) {
+      if (!day || !day.date) return -1;
+      if (day.date !== todayISO()) return -1;
+      const now = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      let best = -1, bestDiff = Infinity;
+      day.items.forEach((item, i) => {
+        if (!item.time) return;
+        const [h, m] = item.time.split(":").map(Number);
+        const diff = nowMin - (h * 60 + m);
+        if (diff >= 0 && diff < bestDiff) { bestDiff = diff; best = i; }
+      });
+      if (best === -1) {
+        let nextDiff = Infinity;
+        day.items.forEach((item, i) => {
+          if (!item.time) return;
+          const [h, m] = item.time.split(":").map(Number);
+          const diff = (h * 60 + m) - nowMin;
+          if (diff >= 0 && diff < nextDiff) { nextDiff = diff; best = i; }
+        });
+      }
+      return best;
+    }
+
+    /* ── Minutes until next ── */
+    function minutesUntilNext(day, nowItemIndex) {
+      if (nowItemIndex === -1 || !day.items[nowItemIndex + 1]) return null;
+      const next = day.items[nowItemIndex + 1];
+      if (!next.time) return null;
+      const now = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      const [h, m] = next.time.split(":").map(Number);
+      const diff = (h * 60 + m) - nowMin;
+      return diff > 0 ? diff : null;
+    }
+
+    /* ── Render Hero Card ── */
+    function renderHeroCard(day, dayIndex) {
+      const inner = $("heroCardInner");
+      const timelineCard = $("timelineCard");
+      const nowIdx = findNowItemIndex(day);
+
+      if (!day || !day.items || day.items.length === 0) {
+        inner.innerHTML = `
+          <div class="hero-empty">
+            <span class="hero-empty-icon">✈️</span>
+            <div class="hero-empty-title">עדיין אין פעילויות ביום הזה</div>
+            <div class="hero-empty-sub">לחץ על הכפתור למטה כדי להוסיף את הפעילות הראשונה שלך</div>
+            <button class="hero-empty-btn" id="heroAddBtn" type="button">
+              ＋ הוסף פעילות
+            </button>
+          </div>`;
+        inner.classList.remove("completed");
+        timelineCard.style.display = "none";
+        document.getElementById("heroAddBtn").addEventListener("click", openSheet);
+        return;
+      }
+
+      const heroOriginalIndex = nowIdx !== -1 ? nowIdx : 0;
+      const heroItem = day.items[heroOriginalIndex];
+      const isNow = nowIdx !== -1 && day.date === todayISO();
+      const isNext = !isNow;
+
+      const untilMin = minutesUntilNext(day, nowIdx);
+      const nextItem = (nowIdx !== -1 && day.items[nowIdx + 1]) ? day.items[nowIdx + 1] : null;
+
+      let untilHtml = "";
+      if (untilMin !== null && nextItem) {
+        const h = Math.floor(untilMin / 60);
+        const m = untilMin % 60;
+        const untilStr = h > 0 ? `${h} שע' ${m > 0 ? `ו-${m} דק'` : ""}` : `${m} דקות`;
+        untilHtml = `
+          <div class="hero-divider"></div>
+          <div class="hero-until">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            עוד ${untilStr} לפעילות הבאה
+          </div>`;
+      }
+
+      const catIcon = getCategoryIcon(heroItem);
+      const note = heroItem.note ? escapeHtml(heroItem.note) : "";
+      const navUrl = heroItem.note
+        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(heroItem.note)}`
+        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(heroItem.title)}`;
+
+      inner.innerHTML = `
+        <div class="hero-card-top" id="heroTapArea" style="cursor:pointer">
+          <div class="hero-card-left">
+            <div class="hero-badge ${isNow ? "now" : "next"}">
+              <span class="hero-badge-dot"></span>
+              ${isNow ? "עכשיו" : "הבא בתור"}
+            </div>
+            <div class="hero-time">${escapeHtml(heroItem.time || "--:--")}</div>
+            <div class="hero-title">${escapeHtml(heroItem.title)}</div>
+            ${note ? `<div class="hero-location">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+              ${note}
+            </div>` : ""}
+          </div>
+          <div class="hero-card-thumb">
+            <div class="hero-thumb-placeholder">
+              <span class="thumb-icon">${catIcon}</span>
+            </div>
+            <button class="hero-map-btn" id="heroMapBtn" type="button" title="נווט">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        ${untilHtml}
+        <div class="hero-actions">
+          <button class="hero-btn hero-btn-done" id="heroDoneBtn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px">
+              ${heroItem.completed ? '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.1"/>' : '<polyline points="20 6 9 17 4 12"/>'}
+            </svg>
+            ${heroItem.completed ? "בטל בוצע" : "סמן בוצע"}
+          </button>
+          <button class="hero-btn hero-btn-done" id="heroEditBtn" type="button" title="ערוך פעילות">✏️ ערוך</button>
+          <button class="hero-btn hero-btn-nav" id="heroNavBtn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px">
+              <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+            </svg>
+            נווט
+          </button>
+        </div>
+      `;
+
+      // Completed visual state (same visual language as Timeline)
+      inner.classList.toggle("completed", !!heroItem.completed);
+
+      // hero card event listeners
+      document.getElementById("heroMapBtn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.open(navUrl, "_blank");
+      });
+      document.getElementById("heroNavBtn").addEventListener("click", () => {
+        window.open(navUrl, "_blank");
+      });
+      document.getElementById("heroDoneBtn").addEventListener("click", () => {
+        heroItem.completed = !heroItem.completed;
+        saveDays();
+        renderActivities(currentDayIndex);
+      });
+      document.getElementById("heroEditBtn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        openEditSheet(dayIndex, heroOriginalIndex);
+      });
+      // Tapping the hero content opens Edit Activity; long press offers delete shortcut.
+      // Buttons stop/ignore propagation so navigate/done/edit remain safe.
+      document.getElementById("heroTapArea").addEventListener("click", () => {
+        openEditSheet(dayIndex, heroOriginalIndex);
+      });
+      attachLongPressDelete(document.getElementById("heroTapArea"), () => {
+        confirmDeleteActivity(() => {
+          day.items.splice(heroOriginalIndex, 1);
+          saveDays();
+          renderDays();
+          renderActivities(currentDayIndex);
+          showToast("הפעילות נמחקה 🗑️");
+        });
+      });
+
+      // Show timeline for the rest of activities
+      if (day.items.length > 1) {
+        timelineCard.style.display = "block";
+      } else {
+        timelineCard.style.display = "none";
+      }
+    }
+
+    /* ── Render Activities (timeline) ── */
     function renderActivities(index) {
       const list = $("activityList");
-      const empty = $("emptyState");
       list.innerHTML = "";
 
       const day = days[index];
 
+      // Update day title/meta
+      $("dayTitle").innerText = day ? formatDateForTitle(day.date, `יום ${index + 1}`) : "יום מתוכנן";
+      $("dayMeta").innerText = day && day.items ? `${day.items.length} פעילויות` : "";
+
+      // Render hero card
+      renderHeroCard(day, index);
+
       if (!day || !day.items || day.items.length === 0) {
-        empty.style.display = "block";
-        $("dayMeta").innerText = "אין פעילויות להציג";
-        $("dayTitle").innerText = day ? formatDateForTitle(day.date, `יום ${index + 1}`) : "יום מתוכנן";
-
-        if (sortableInstance) {
-          sortableInstance.destroy();
-          sortableInstance = null;
-        }
-
         return;
       }
 
-      empty.style.display = "none";
-      $("dayMeta").innerText = `${day.items.length} פעילויות מתוכננות`;
-      $("dayTitle").innerText = formatDateForTitle(day.date, `יום ${index + 1}`);
-
       const nowItemIndex = findNowItemIndex(day);
 
-      day.items.forEach((item, itemIndex) => {
-        const isNow = itemIndex === nowItemIndex;
+      // Timeline: show items excluding the hero one
+      const heroIdx = nowItemIndex !== -1 ? nowItemIndex : 0;
+      const timelineItems = day.items.map((item, i) => ({ item, originalIndex: i })).filter((_, i) => i !== heroIdx);
+
+      if (timelineItems.length === 0) {
+        return;
+      }
+
+      const isLastItem = (arrIdx) => arrIdx === timelineItems.length - 1;
+
+      timelineItems.forEach(({ item, originalIndex }, arrIdx) => {
+        const isNow = originalIndex === nowItemIndex;
+        const catIcon = getCategoryIcon(item);
+
         const div = document.createElement("div");
         div.className = `item ${item.completed ? "completed" : ""} ${isNow ? "now-item" : ""}`;
-        div.dataset.index = itemIndex;
+        div.dataset.index = originalIndex;
 
         div.innerHTML = `
-          <div class="item-content">
-            <div class="item-left">
-              <div class="time">${escapeHtml(item.time || "--:--")}</div>
-              <div class="meta">פעילות</div>
-            </div>
-            <div class="item-main">
-              <div class="title">
-                <span class="now-badge">עכשיו</span>
-                ${escapeHtml(item.title)}
-              </div>
-              <div class="note">${escapeHtml(item.note)}</div>
-            </div>
-            <div class="item-actions">
-              <div class="done" title="סמן כבוצע">✓</div>
-              <div class="delete" title="מחק פעילות">🗑️</div>
-              <div class="drag" title="גרור לשינוי סדר">≡</div>
-            </div>
+          <div class="item-time-col">
+            <div class="item-time">${escapeHtml(item.time || "--:--")}</div>
+          </div>
+          <div class="item-line-col">
+            <div class="item-line-top" style="${arrIdx === 0 ? "flex:0 0 14px" : ""}"></div>
+            <div class="item-dot"></div>
+            <div class="item-line-bottom" style="${isLastItem(arrIdx) ? "flex:0 0 0" : ""}"></div>
+          </div>
+          <div class="item-body">
+            ${isNow ? '<div class="now-badge-inline">⚡ עכשיו</div>' : ""}
+            <div class="item-category-icon">${catIcon}</div>
+            <div class="item-title">${escapeHtml(item.title)}</div>
+            ${item.note ? `<div class="item-note">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+              </svg>
+              ${escapeHtml(item.note)}
+            </div>` : ""}
+          </div>
+          <div class="item-actions">
+            <div class="done" title="סמן כבוצע">${item.completed ? "↩" : "✓"}</div>
+            <div class="delete" title="מחק פעילות">🗑</div>
           </div>
         `;
 
@@ -815,93 +2411,48 @@
 
         div.querySelector(".delete").addEventListener("click", (e) => {
           e.stopPropagation();
-          if (confirm("בטוח שתרצה למחוק את הפעילות הזו?")) {
-            day.items.splice(itemIndex, 1);
+          confirmDeleteActivity(() => {
+            day.items.splice(originalIndex, 1);
             saveDays();
             renderDays();
             renderActivities(currentDayIndex);
             showToast("הפעילות נמחקה 🗑️");
-          }
+          });
         });
 
-        div.querySelector(".item-main").addEventListener("click", () => {
-          openEditSheet(index, itemIndex);
+        attachLongPressDelete(div, () => {
+          confirmDeleteActivity(() => {
+            day.items.splice(originalIndex, 1);
+            saveDays();
+            renderDays();
+            renderActivities(currentDayIndex);
+            showToast("הפעילות נמחקה 🗑️");
+          });
+        });
+
+        div.querySelector(".item-body").addEventListener("click", () => {
+          openEditSheet(index, originalIndex);
         });
 
         list.appendChild(div);
       });
-
-      if (window.Sortable) {
-        if (sortableInstance) sortableInstance.destroy();
-
-        sortableInstance = Sortable.create(list, {
-          handle: ".drag",
-          animation: 150,
-          onEnd: (evt) => {
-            const moved = day.items.splice(evt.oldIndex, 1)[0];
-            day.items.splice(evt.newIndex, 0, moved);
-            saveDays();
-          }
-        });
-      }
     }
 
-    function findNowItemIndex(day) {
-      if (!day || !day.date) return -1;
-      if (day.date !== todayISO()) return -1;
-
-      const now = new Date();
-      const nowMin = now.getHours() * 60 + now.getMinutes();
-
-      let best = -1;
-      let bestDiff = Infinity;
-
-      day.items.forEach((item, i) => {
-        if (!item.time) return;
-        const [h, m] = item.time.split(":").map(Number);
-        const itemMin = h * 60 + m;
-        const diff = nowMin - itemMin;
-        if (diff >= 0 && diff < bestDiff) {
-          bestDiff = diff;
-          best = i;
-        }
-      });
-
-      if (best === -1) {
-        let nextDiff = Infinity;
-
-        day.items.forEach((item, i) => {
-          if (!item.time) return;
-          const [h, m] = item.time.split(":").map(Number);
-          const itemMin = h * 60 + m;
-          const diff = itemMin - nowMin;
-          if (diff >= 0 && diff < nextDiff) {
-            nextDiff = diff;
-            best = i;
-          }
-        });
-      }
-
-      return best;
-    }
-
+    /* ── Add / Edit item ── */
     function addItem() {
       const title = $("addTitle").value.trim();
-      if (!title) {
-        showToast("חסר שם פעילות");
-        return;
-      }
+      if (!title) { showToast("חסר שם פעילות"); return; }
 
       const item = {
         time: $("addTime").value || "12:00",
         title,
         note: $("addNote").value.trim(),
-        completed: false
+        completed: false,
+        reminderMin: parseInt($("addReminder").value, 10)
       };
 
       const date = $("addDate").value || todayISO();
       let day = days.find(d => d.date === date);
-
       if (!day) {
         day = { date, items: [] };
         days.push(day);
@@ -910,7 +2461,6 @@
 
       day.items.push(item);
       day.items.sort((a, b) => a.time.localeCompare(b.time));
-
       saveDays();
       currentDayIndex = days.indexOf(day);
       renderDays();
@@ -921,38 +2471,26 @@
 
     function editItem(dayIndex, itemIndex) {
       const title = $("addTitle").value.trim();
-      if (!title) {
-        showToast("חסר שם פעילות");
-        return;
-      }
+      if (!title) { showToast("חסר שם פעילות"); return; }
 
       const oldDay = days[dayIndex];
-
-      if (!oldDay || !oldDay.items[itemIndex]) {
-        showToast("לא נמצאה פעילות");
-        closeSheet();
-        return;
-      }
+      if (!oldDay || !oldDay.items[itemIndex]) { showToast("לא נמצאה פעילות"); closeSheet(); return; }
 
       const item = oldDay.items[itemIndex];
-
       item.title = title;
-      item.note = $("addNote").value.trim();
-      item.time = $("addTime").value || "12:00";
+      item.note  = $("addNote").value.trim();
+      item.time  = $("addTime").value || "12:00";
+      item.reminderMin = parseInt($("addReminder").value, 10);
 
       const newDate = $("addDate").value || oldDay.date;
-
       if (newDate !== oldDay.date) {
         oldDay.items.splice(itemIndex, 1);
-
         let newDay = days.find(d => d.date === newDate);
-
         if (!newDay) {
           newDay = { date: newDate, items: [] };
           days.push(newDay);
           days.sort((a, b) => new Date(a.date) - new Date(b.date));
         }
-
         newDay.items.push(item);
         newDay.items.sort((a, b) => a.time.localeCompare(b.time));
         currentDayIndex = days.indexOf(newDay);
@@ -969,41 +2507,43 @@
     }
 
     function openSheet() {
+      isSavingActivity = false;
+      $("addSaveBtn").disabled = false;
+      $("addWithReminderBtn").disabled = false;
       editingDayIndex = null;
       editingItemIndex = null;
-
       $("sheetTitle").innerText = "הוסף פעילות";
       $("addSaveBtn").innerText = "שמור";
       $("addWithReminderBtn").innerText = "📅 שמור + לוח שנה";
-
       $("addTitle").value = "";
       $("addNote").value = "";
-
       const now = new Date();
       const selectedDay = days[currentDayIndex];
       $("addDate").value = selectedDay?.date || todayISO();
       $("addTime").value = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-
+      $("addReminder").value = String(settings.defaultReminderMin || 30);
+      $("addDeleteBtn").style.display = "none";
       $("sheet").classList.add("open");
       $("sheetBackdrop").classList.add("open");
     }
 
     function openEditSheet(dayIndex, itemIndex) {
-      editingDayIndex = dayIndex;
+      isSavingActivity = false;
+      $("addSaveBtn").disabled = false;
+      $("addWithReminderBtn").disabled = false;
+      editingDayIndex  = dayIndex;
       editingItemIndex = itemIndex;
-
-      const day = days[dayIndex];
+      const day  = days[dayIndex];
       const item = day.items[itemIndex];
-
       $("sheetTitle").innerText = "ערוך פעילות";
       $("addSaveBtn").innerText = "עדכן";
       $("addWithReminderBtn").innerText = "📅 עדכן + לוח שנה";
-
       $("addDate").value = day.date;
       $("addTime").value = item.time || "12:00";
       $("addTitle").value = item.title || "";
       $("addNote").value = item.note || "";
-
+      $("addReminder").value = String(item.reminderMin != null ? item.reminderMin : (settings.defaultReminderMin || 30));
+      $("addDeleteBtn").style.display = "flex";
       $("sheet").classList.add("open");
       $("sheetBackdrop").classList.add("open");
     }
@@ -1013,166 +2553,11 @@
       $("sheetBackdrop").classList.remove("open");
     }
 
-  function handleSave() {
-  if (editingDayIndex !== null && editingItemIndex !== null) {
-    editItem(editingDayIndex, editingItemIndex);
-  } else {
-    addItem();
-  }
-}
-function downloadCalendarFile(title, dateVal, timeVal, noteVal) {
-  const [year, month, day2] = dateVal.split("-").map(Number);
-  const [hour, min] = timeVal.split(":").map(Number);
-
-  const startDt = new Date(year, month - 1, day2, hour, min);
-  const endDt = new Date(startDt.getTime() + 60 * 60 * 1000);
-
-  function pad(n) {
-    return String(n).padStart(2, "0");
-  }
-
-  function toICS(d) {
-    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
-  }
-
-  function icsEscape(s) {
-    return String(s || "")
-      .replace(/\\/g, "\\\\")
-      .replace(/;/g, "\\;")
-      .replace(/,/g, "\\,")
-      .replace(/\n/g, "\\n");
-  }
-
-  const icsContent = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//TripMaster//HE",
-    "BEGIN:VEVENT",
-    `SUMMARY:${icsEscape(title)}`,
-    `DTSTART:${toICS(startDt)}`,
-    `DTEND:${toICS(endDt)}`,
-    `DESCRIPTION:${icsEscape(noteVal)}`,
-    "END:VEVENT",
-    "END:VCALENDAR"
-  ].join("\r\n");
-
-  const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-
-  a.href = url;
-  a.download = `${title}.ics`;
-  a.click();
-
-  URL.revokeObjectURL(url);
-  showToast("קובץ לוח שנה הורד 📅");
-}
-$("backupBtn").addEventListener("click", exportBackup);
-$("restoreBtn").addEventListener("click", () => {
-  $("restoreInput").click();
-});
-$("restoreInput").addEventListener("change", importBackup);
-    function exportBackup() {
-  const backup = {
-    app: "TripMaster",
-    backupVersion: 1,
-    exportedAt: new Date().toISOString(),
-    days,
-    settings,
-    theme: localStorage.getItem(KEY_THEME) || "light"
-  };
-
-  const json = JSON.stringify(backup, null, 2);
-  const blob = new Blob([json], { type: "application/json;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-
-  const today = todayISO();
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `tripmaster-backup-${today}.json`;
-  a.click();
-
-  URL.revokeObjectURL(url);
-  showToast("גיבוי JSON הורד 💾");
-}
-function importBackup(event) {
-  const file = event.target.files[0];
-
-  if (!file) {
-    showToast("לא נבחר קובץ");
-    return;
-  }
-
-  const reader = new FileReader();
-
-  reader.onload = function(e) {
-    try {
-      const backup = JSON.parse(e.target.result);
-
-     if (
-  !backup.days ||
-  !Array.isArray(backup.days) ||
-  !backup.settings ||
-  typeof backup.settings !== "object"
-) {
-  showToast("קובץ גיבוי לא תקין ❌");
-  return;
-}
-
-      if (!confirm("לשחזר את הגיבוי? הנתונים הנוכחיים יימחקו.")) {
-        return;
-      }
-
-      days = backup.days;
-      settings = backup.settings;
-
-      localStorage.setItem(KEY_DAYS, JSON.stringify(days));
-      localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
-
-      if (backup.theme === "dark") {
-        document.documentElement.setAttribute("data-theme", "dark");
-        localStorage.setItem(KEY_THEME, "dark");
-      } else {
-        document.documentElement.removeAttribute("data-theme");
-        localStorage.setItem(KEY_THEME, "light");
-      }
-
-      $("global-city").value = settings.city || "";
-      $("global-hotel").value = settings.hotel || "";
-      $("global-basearea").value = settings.baseArea || "";
-      $("global-apikey").value = settings.apiKey || "";
-
-      $("headerCity").innerText = settings.city || "My Trip";
-
-      currentDayIndex = 0;
-
-      renderDays();
-      renderActivities(currentDayIndex);
-
-      showToast("הגיבוי שוחזר ✔");
-
-    } catch (err) {
-      console.error(err);
-      showToast("שגיאה בקריאת הגיבוי ❌");
-    }
-
-    event.target.value = "";
-  };
-
-  reader.readAsText(file);
-}
-    $("addWithReminderBtn").addEventListener("click", () => {
-      const titleCheck = $("addTitle").value.trim();
-
-      if (!titleCheck) {
-        showToast("חסר שם פעילות");
-        return;
-      }
-
-      const title = titleCheck;
-      const dateVal = $("addDate").value || todayISO();
-      const timeVal = $("addTime").value || "12:00";
-      const noteVal = $("addNote").value.trim();
+    function handleSave() {
+      if (isSavingActivity) return;
+      isSavingActivity = true;
+      $("addSaveBtn").disabled = true;
+      $("addWithReminderBtn").disabled = true;
 
       if (editingDayIndex !== null && editingItemIndex !== null) {
         editItem(editingDayIndex, editingItemIndex);
@@ -1180,90 +2565,122 @@ function importBackup(event) {
         addItem();
       }
 
-      downloadCalendarFile(title, dateVal, timeVal, noteVal);
-    });
+      isSavingActivity = false;
+      $("addSaveBtn").disabled = false;
+      $("addWithReminderBtn").disabled = false;
+    }
 
-    $("addBtn").addEventListener("click", openSheet);
-    $("sheetClose").addEventListener("click", closeSheet);
-    $("sheetBackdrop").addEventListener("click", () => {
-      closeSheet();
-      closeAISheet();
-    });
-    $("addCancelBtn").addEventListener("click", closeSheet);
-    $("addSaveBtn").addEventListener("click", handleSave);
+    /* ── Calendar ICS ── */
+    function downloadCalendarFile(title, dateVal, timeVal, noteVal, reminderMin) {
+      const [year, month, day2] = dateVal.split("-").map(Number);
+      const [hour, min] = timeVal.split(":").map(Number);
+      const startDt = new Date(year, month - 1, day2, hour, min);
+      const endDt   = new Date(startDt.getTime() + 60 * 60 * 1000);
+      const pad = n => String(n).padStart(2, "0");
+      const toICS = d => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+      const icsEscape = s => String(s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");
+      const alarmBlock = (reminderMin != null && reminderMin >= 0) ? [
+        "BEGIN:VALARM","ACTION:DISPLAY",`DESCRIPTION:תזכורת: ${icsEscape(title)}`,`TRIGGER:-PT${reminderMin}M`,"END:VALARM"
+      ] : [];
+      const icsContent = [
+        "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//TripMaster//HE","BEGIN:VEVENT",
+        `SUMMARY:${icsEscape(title)}`,`DTSTART:${toICS(startDt)}`,`DTEND:${toICS(endDt)}`,
+        `DESCRIPTION:${icsEscape(noteVal)}`,...alarmBlock,"END:VEVENT","END:VCALENDAR"
+      ].join("\r\n");
+      const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = `${title}.ics`; a.click();
+      URL.revokeObjectURL(url);
+      showToast("קובץ לוח שנה הורד 📅");
+    }
 
+    /* ── Backup / Restore ── */
+    function exportBackup() {
+      const backup = {
+        app: "TripMaster", backupVersion: 2, exportedAt: new Date().toISOString(),
+        trips, activeTripId,
+        homeDays: JSON.parse(localStorage.getItem(KEY_DAYS) || "[]"),
+        settings, theme: localStorage.getItem(KEY_THEME) || "light"
+      };
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = `tripmaster-backup-${todayISO()}.json`; a.click();
+      URL.revokeObjectURL(url);
+      showToast("גיבוי JSON הורד 💾");
+    }
+
+    function doRestore(backup) {
+      if (backup.trips && Array.isArray(backup.trips)) {
+        trips = JSON.parse(JSON.stringify(backup.trips));
+        activeTripId = backup.activeTripId || null;
+        const homeDaysToRestore = Array.isArray(backup.homeDays) ? backup.homeDays : (Array.isArray(backup.days) ? backup.days : []);
+        const activeTrip = getActiveTrip();
+        days = activeTrip
+          ? JSON.parse(JSON.stringify(activeTrip.days || []))
+          : JSON.parse(JSON.stringify(homeDaysToRestore));
+        settings = backup.settings;
+        localStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
+        localStorage.setItem(KEY_ACTIVE_TRIP, activeTripId || "");
+        localStorage.setItem(KEY_DAYS, JSON.stringify(homeDaysToRestore));
+        localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
+      } else {
+        days = backup.days || [];
+        trips = [{ id: "trip_" + Date.now(), name: settings.city || "הטיול הראשי", days }];
+        activeTripId = trips[0].id;
+        settings = backup.settings;
+        localStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
+        localStorage.setItem(KEY_ACTIVE_TRIP, activeTripId || "");
+        localStorage.setItem(KEY_DAYS, JSON.stringify(days));
+        localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
+      }
+      if (backup.theme === "dark") {
+        document.documentElement.setAttribute("data-theme", "dark");
+        localStorage.setItem(KEY_THEME, "dark");
+      } else {
+        document.documentElement.removeAttribute("data-theme");
+        localStorage.setItem(KEY_THEME, "light");
+      }
+      $("global-city").value    = settings.city || "";
+      $("global-hotel").value   = settings.hotel || "";
+      $("global-basearea").value = settings.baseArea || "";
+      $("global-apikey").value  = settings.apiKey || "";
+      $("headerCity").innerText = settings.city || "My Trip";
+      currentDayIndex = 0;
+      renderDays();
+      renderActivities(currentDayIndex);
+      showToast("הגיבוי שוחזר ✔");
+    }
+
+    /* ── AI ── */
     function openAISheet() {
       $("aiSheet").classList.add("open");
       $("sheetBackdrop").classList.add("open");
     }
-
     function closeAISheet() {
       $("aiSheet").classList.remove("open");
       $("sheetBackdrop").classList.remove("open");
     }
 
-    $("aiBtn").addEventListener("click", openAISheet);
-    $("aiSheetClose").addEventListener("click", closeAISheet);
-
-    $("aiClearBtn").addEventListener("click", () => {
-      $("aiOutput").innerText = "הכנס תיאור של הטיול ולחץ שלח — ה-AI יציע תוכנית יום מפורטת 🗺️";
-      $("aiOutput").classList.remove("loading");
-      $("aiImportBtn").style.display = "none";
-      $("aiPromptInput").value = "";
-      lastAIPlan = [];
-    });
-
-    $("aiSendBtn").addEventListener("click", runAI);
-    $("aiPromptInput").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") runAI();
-    });
-
     async function runAI() {
       const prompt = $("aiPromptInput").value.trim();
-
-      if (!prompt) {
-        showToast("הכנס תיאור לטיול");
-        return;
-      }
-
+      if (!prompt) { showToast("הכנס תיאור לטיול"); return; }
       const out = $("aiOutput");
-
       out.classList.add("loading");
       out.innerText = "🤖 חושב…";
       $("aiImportBtn").style.display = "none";
       lastAIPlan = [];
-
       const apiKey = settings.apiKey || "";
-
       if (!apiKey) {
         out.classList.remove("loading");
-        out.innerText = "⚠️ חסר API Key — הכנס אותו בהגדרות (⚙️)";
+        out.innerText = "⚠️ חסר API Key — הכנס אותו בהגדרות (☰)";
         return;
       }
-
-      const city = settings.city || "";
-      const hotel = settings.hotel || "";
-      const baseArea = settings.baseArea || "";
-
-      const systemPrompt = `אתה מתכנן טיולים מקצועי. המשתמש יתאר את הטיול שלו ואתה תציע תוכנית יום מפורטת.
-
-ענה אך ורק בפורמט JSON הבא, ללא טקסט נוסף:
-{
-  "summary": "תקציר קצר של היום",
-  "activities": [
-    { "time": "HH:MM", "title": "שם הפעילות", "note": "כתובת / טיפ קצר" }
-  ]
-}
-
-כללים:
-- 5-8 פעילויות ביום
-- שעות ריאליות מ-09:00 עד 22:00
-- כלול ארוחות
-- התאם לתיאור המשתמש
-${city ? `- העיר: ${city}` : ""}
-${hotel ? `- מלון: ${hotel}` : ""}
-${baseArea ? `- אזור מרכזי: ${baseArea}` : ""}`;
-
+      const systemPrompt = `אתה מתכנן טיולים מקצועי. ענה אך ורק בפורמט JSON הבא, ללא טקסט נוסף:
+{"summary":"תקציר קצר","activities":[{"time":"HH:MM","title":"שם הפעילות","note":"כתובת / טיפ"}]}
+כללים: 5-8 פעילויות, שעות ריאליות 09:00-22:00, כלול ארוחות.
+${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון: ${settings.hotel}` : ""}`;
       try {
         const res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -1274,80 +2691,45 @@ ${baseArea ? `- אזור מרכזי: ${baseArea}` : ""}`;
             "anthropic-dangerous-direct-browser-calls": "true"
           },
           body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 1000,
+            model: "claude-sonnet-4-20250514", max_tokens: 1000,
             system: systemPrompt,
             messages: [{ role: "user", content: prompt }]
           })
         });
-
         const data = await res.json();
-        const raw = (data.content || []).map(b => b.text || "").join("");
-
+        const raw  = (data.content || []).map(b => b.text || "").join("");
         let parsed;
-
-        try {
-          parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-        } catch {
-          out.classList.remove("loading");
-          out.innerText = raw || "לא התקבלה תשובה תקינה";
-          return;
-        }
-
+        try { parsed = JSON.parse(raw.replace(/```json|```/g, "").trim()); }
+        catch { out.classList.remove("loading"); out.innerText = raw || "לא התקבלה תשובה תקינה"; return; }
         let text = `📋 ${parsed.summary || ""}\n\n`;
-
         (parsed.activities || []).forEach(a => {
           text += `${a.time}  ${a.title}\n`;
           if (a.note) text += `        📍 ${a.note}\n`;
           text += "\n";
         });
-
         out.classList.remove("loading");
         out.innerText = text.trim();
         lastAIPlan = parsed.activities || [];
-
-        if (lastAIPlan.length > 0) {
-          $("aiImportBtn").style.display = "block";
-        }
+        if (lastAIPlan.length > 0) $("aiImportBtn").style.display = "block";
       } catch (err) {
         out.classList.remove("loading");
         out.innerText = `שגיאה: ${err.message}`;
       }
     }
 
-    $("aiImportBtn").addEventListener("click", () => {
-      if (lastAIPlan.length === 0) return;
+    /* ══════════════════════════════════════
+       EVENT LISTENERS
+    ══════════════════════════════════════ */
 
-      let day = days[currentDayIndex];
-
-      if (!day) {
-        day = { date: todayISO(), items: [] };
-        days.push(day);
-        days.sort((a, b) => new Date(a.date) - new Date(b.date));
-        currentDayIndex = days.indexOf(day);
-      }
-
-      lastAIPlan.forEach(a => {
-        day.items.push({
-          time: a.time || "12:00",
-          title: a.title || "",
-          note: a.note || "",
-          completed: false
-        });
-      });
-
-      day.items.sort((a, b) => a.time.localeCompare(b.time));
-
-      saveDays();
-      renderDays();
-      renderActivities(currentDayIndex);
-      showToast(`${lastAIPlan.length} פעילויות יובאו ✔`);
-      closeAISheet();
+    // Header menu toggle
+    $("settingsToggle").addEventListener("click", () => {
+      const sec = $("headerSecondary");
+      sec.classList.toggle("open");
     });
 
+    // Theme
     $("themeBtn").addEventListener("click", () => {
       const cur = document.documentElement.getAttribute("data-theme");
-
       if (cur === "dark") {
         document.documentElement.removeAttribute("data-theme");
         localStorage.setItem(KEY_THEME, "light");
@@ -1357,110 +2739,111 @@ ${baseArea ? `- אזור מרכזי: ${baseArea}` : ""}`;
       }
     });
 
-    $("settingsToggle").addEventListener("click", () => {
-      const a = $("settingsArea");
-      a.style.display = a.style.display === "none" ? "block" : "none";
+    // Switch trip
+    $("switchTripBtn").addEventListener("click", openTripSheet);
+    $("tripSheetClose").addEventListener("click", closeTripSheet);
+
+    // New trip
+    $("newTripBtn").addEventListener("click", () => {
+      $("headerSecondary").classList.remove("open");
+      openNewTripSheet();
+    });
+    $("newTripSheetClose").addEventListener("click", closeNewTripSheet);
+    $("newTripCancelBtn").addEventListener("click", closeNewTripSheet);
+    $("newTripConfirmBtn").addEventListener("click", () => {
+      const name = $("newTripNameInput").value.trim();
+      if (!name) { showToast("חסר שם טיול"); return; }
+      createTrip(name);
+      const activeTrip = getActiveTrip();
+      if (activeTrip) days = activeTrip.days;
+      currentDayIndex = 0;
+      renderDays();
+      renderActivities(0);
+      closeNewTripSheet();
+      $("newTripNameInput").value = "";
+      showToast("טיול חדש נוצר ✈️");
     });
 
+    // First day sheet
+    $("firstDaySheetClose").addEventListener("click", closeFirstDaySheet);
+    $("firstDayCancelBtn").addEventListener("click", closeFirstDaySheet);
+    $("firstDayConfirmBtn").addEventListener("click", () => {
+      const selectedDate = $("firstDayDateInput").value;
+      if (!selectedDate) { showToast("חסר תאריך"); return; }
+      days.push({ date: selectedDate, items: [] });
+      saveDays();
+      currentDayIndex = days.length - 1;
+      renderDays();
+      renderActivities(currentDayIndex);
+      closeFirstDaySheet();
+      showToast(`יום ${days.length} נוסף 📅`);
+    });
+
+    // Home
+    $("homeBtn").addEventListener("click", () => {
+      $("headerSecondary").classList.remove("open");
+      goHome();
+    });
+
+    // Settings inputs
     $("global-city").addEventListener("input", () => {
       settings.city = $("global-city").value;
       saveSettings();
       $("headerCity").innerText = settings.city || "My Trip";
     });
+    $("global-hotel").addEventListener("input", () => { settings.hotel = $("global-hotel").value; saveSettings(); });
+    $("global-basearea").addEventListener("input", () => { settings.baseArea = $("global-basearea").value; saveSettings(); });
+    $("global-apikey").addEventListener("input", () => { settings.apiKey = $("global-apikey").value; saveSettings(); });
 
-    $("global-hotel").addEventListener("input", () => {
-      settings.hotel = $("global-hotel").value;
-      saveSettings();
+    // Reset
+    $("resetBtn").addEventListener("click", () => {
+      $("headerSecondary").classList.remove("open");
+      confirmReset(() => {
+        days = []; trips = []; activeTripId = null;
+        settings = { city: "", hotel: "", baseArea: "", defaultReminderMin: 30, apiKey: "" };
+        localStorage.removeItem(KEY_DAYS); localStorage.removeItem(KEY_SETTINGS);
+        localStorage.removeItem(KEY_THEME); localStorage.removeItem(KEY_TRIPS);
+        localStorage.removeItem(KEY_ACTIVE_TRIP);
+        renderDays(); renderActivities(0);
+        $("global-city").value = ""; $("global-hotel").value = "";
+        $("global-basearea").value = ""; $("global-apikey").value = "";
+        $("headerCity").innerText = "My Trip";
+        document.documentElement.removeAttribute("data-theme");
+        showToast("כל הנתונים נמחקו 🗑️");
+      });
     });
 
-    $("global-basearea").addEventListener("input", () => {
-      settings.baseArea = $("global-basearea").value;
-      saveSettings();
-    });
-
-    $("global-apikey").addEventListener("input", () => {
-      settings.apiKey = $("global-apikey").value;
-      saveSettings();
-    });
-
-   $("resetBtn").addEventListener("click", () => {
-  if (confirm("למחוק את כל הנתונים וההגדרות?")) {
-
-    days = [];
-    settings = {
-      city: "",
-      hotel: "",
-      baseArea: "",
-      defaultRemindMin: 30,
-      apiKey: ""
-    };
-
-    localStorage.removeItem(KEY_DAYS);
-    localStorage.removeItem(KEY_SETTINGS);
-    localStorage.removeItem(KEY_THEME);
-
-    renderDays();
-    renderActivities(0);
-
-    $("global-city").value = "";
-    $("global-hotel").value = "";
-    $("global-basearea").value = "";
-    $("global-apikey").value = "";
-
-    $("headerCity").innerText = "My Trip";
-
-    document.documentElement.removeAttribute("data-theme");
-
-    showToast("כל הנתונים נמחקו 🗑️");
-  }
-});
-
+    // Export text
     $("exportBtn").addEventListener("click", async () => {
+      $("headerSecondary").classList.remove("open");
       let text = "";
-
       days.forEach((day, index) => {
-        text += `יום ${index + 1} — ${formatDateForTitle(day.date, "")}\n`;
-
+        text += `יום ${index+1} — ${formatDateForTitle(day.date, "")}\n`;
         day.items.forEach(item => {
           text += `${item.time} - ${item.title} ${item.completed ? "(בוצע)" : ""}\n`;
           if (item.note) text += `  📍 ${item.note}\n`;
         });
-
         text += "\n";
       });
-
       if (navigator.clipboard && window.isSecureContext) {
-        try {
-          await navigator.clipboard.writeText(text);
-          showToast("הועתק ללוח ✔");
-        } catch {
-          showToast("שגיאה בהעתקה ❌");
-        }
+        try { await navigator.clipboard.writeText(text); showToast("הועתק ללוח ✔"); }
+        catch { showToast("שגיאה בהעתקה ❌"); }
       } else {
         const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.cssText = "position:fixed;left:-9999px";
-        document.body.appendChild(ta);
-        ta.select();
-
-        try {
-          document.execCommand("copy");
-          showToast("הועתק ✔");
-        } catch {
-          showToast("לא ניתן להעתיק ❌");
-        }
-
+        ta.value = text; ta.style.cssText = "position:fixed;left:-9999px";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); showToast("הועתק ✔"); }
+        catch { showToast("לא ניתן להעתיק ❌"); }
         ta.remove();
       }
     });
 
+    // Today / Jump now
     $("todayBtn").addEventListener("click", () => {
+      $("headerSecondary").classList.remove("open");
       const idx = findTodayDayIndex();
-
       if (idx !== -1) {
-        currentDayIndex = idx;
-        renderDays();
-        renderActivities(currentDayIndex);
+        currentDayIndex = idx; renderDays(); renderActivities(currentDayIndex);
         showToast("קפצתי להיום 📅");
       } else {
         showToast("אין יום מתוכנן להיום");
@@ -1468,60 +2851,203 @@ ${baseArea ? `- אזור מרכזי: ${baseArea}` : ""}`;
     });
 
     $("jumpNowBtn").addEventListener("click", () => {
+      $("headerSecondary").classList.remove("open");
       const todayIdx = findTodayDayIndex();
-
-      if (todayIdx === -1) {
-        showToast("אין יום מתוכנן להיום 📅");
-        return;
-      }
-
-      currentDayIndex = todayIdx;
-      renderDays();
-      renderActivities(currentDayIndex);
-
+      if (todayIdx === -1) { showToast("אין יום מתוכנן להיום 📅"); return; }
+      currentDayIndex = todayIdx; renderDays(); renderActivities(currentDayIndex);
       setTimeout(() => {
         const nowEl = document.querySelector(".now-item");
-
-        if (nowEl) {
-          nowEl.scrollIntoView({ behavior: "smooth", block: "center" });
-          showToast("קפיצה לפעילות הנוכחית ⏱️");
-        } else {
-          showToast("לא נמצאה פעילות פעילה כרגע");
-        }
+        if (nowEl) { nowEl.scrollIntoView({ behavior: "smooth", block: "center" }); showToast("קפיצה לפעילות הנוכחית ⏱️"); }
+        else showToast("לא נמצאה פעילות פעילה כרגע");
       }, 100);
     });
+    $("jumpNowBtnHeader") && $("jumpNowBtnHeader").addEventListener("click", () => $("jumpNowBtn").click());
 
+    // Backup / Restore
+    $("backupBtn").addEventListener("click", () => {
+      $("headerSecondary").classList.remove("open");
+      exportBackup();
+    });
+    $("restoreBtn").addEventListener("click", () => {
+      $("headerSecondary").classList.remove("open");
+      $("restoreInput").click();
+    });
+
+    let _pendingRestoreData = null;
+    $("restoreInput").addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (!file) { showToast("לא נבחר קובץ"); return; }
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const backup = JSON.parse(e.target.result);
+          if (((!backup.trips || !Array.isArray(backup.trips)) && (!backup.days || !Array.isArray(backup.days))) ||
+              !backup.settings || typeof backup.settings !== "object") {
+            showToast("קובץ גיבוי לא תקין ❌"); event.target.value = ""; return;
+          }
+          _pendingRestoreData = backup;
+          confirmRestore(() => { doRestore(_pendingRestoreData); _pendingRestoreData = null; });
+        } catch (err) {
+          console.error(err); showToast("שגיאה בקריאת הגיבוי ❌");
+        }
+        event.target.value = "";
+      };
+      reader.readAsText(file);
+    });
+
+    // Add activity
+    $("addBtn").addEventListener("click", openSheet);
+    $("sheetClose").addEventListener("click", closeSheet);
+    $("addCancelBtn").addEventListener("click", closeSheet);
+    $("addSaveBtn").addEventListener("click", handleSave);
+
+    // Delete activity from within Edit Activity sheet (reuses existing confirm dialog + delete logic)
+    $("addDeleteBtn").addEventListener("click", () => {
+      if (editingDayIndex === null || editingItemIndex === null) return;
+      confirmDeleteActivity(() => {
+        const day = days[editingDayIndex];
+        day.items.splice(editingItemIndex, 1);
+        saveDays();
+        closeSheet();
+        renderDays();
+        renderActivities(currentDayIndex);
+        showToast("הפעילות נמחקה 🗑️");
+      });
+    });
+
+    $("addWithReminderBtn").addEventListener("click", () => {
+      if (isSavingActivity) return;
+      isSavingActivity = true;
+      $("addSaveBtn").disabled = true;
+      $("addWithReminderBtn").disabled = true;
+
+      const titleCheck = $("addTitle").value.trim();
+      if (!titleCheck) {
+        showToast("חסר שם פעילות");
+        isSavingActivity = false;
+        $("addSaveBtn").disabled = false;
+        $("addWithReminderBtn").disabled = false;
+        return;
+      }
+      const dateVal = $("addDate").value || todayISO();
+      const timeVal = $("addTime").value || "12:00";
+      const noteVal = $("addNote").value.trim();
+      const reminderMin = parseInt($("addReminder").value, 10);
+      if (editingDayIndex !== null && editingItemIndex !== null) {
+        editItem(editingDayIndex, editingItemIndex);
+      } else {
+        addItem();
+      }
+      downloadCalendarFile(titleCheck, dateVal, timeVal, noteVal, reminderMin < 0 ? null : reminderMin);
+
+      isSavingActivity = false;
+      $("addSaveBtn").disabled = false;
+      $("addWithReminderBtn").disabled = false;
+    });
+
+    // AI strip + AI button
+    $("aiStripBtn").addEventListener("click", openAISheet);
+    $("aiBtn").addEventListener("click", openAISheet);
+    $("aiSheetClose").addEventListener("click", closeAISheet);
+    $("aiSendBtn").addEventListener("click", runAI);
+    $("aiPromptInput").addEventListener("keydown", (e) => { if (e.key === "Enter") runAI(); });
+    $("aiClearBtn").addEventListener("click", () => {
+      $("aiOutput").innerText = "הכנס תיאור של הטיול ולחץ שלח — ה-AI יציע תוכנית יום מפורטת 🗺️";
+      $("aiOutput").classList.remove("loading");
+      $("aiImportBtn").style.display = "none";
+      $("aiPromptInput").value = "";
+      lastAIPlan = [];
+    });
+    $("aiImportBtn").addEventListener("click", () => {
+      if (lastAIPlan.length === 0) return;
+      let day = days[currentDayIndex];
+      if (!day) {
+        day = { date: todayISO(), items: [] };
+        days.push(day);
+        days.sort((a, b) => new Date(a.date) - new Date(b.date));
+        currentDayIndex = days.indexOf(day);
+      }
+      lastAIPlan.forEach(a => {
+        day.items.push({ time: a.time || "12:00", title: a.title || "", note: a.note || "", completed: false });
+      });
+      day.items.sort((a, b) => a.time.localeCompare(b.time));
+      saveDays(); renderDays(); renderActivities(currentDayIndex);
+      showToast(`${lastAIPlan.length} פעילויות יובאו ✔`);
+      closeAISheet();
+    });
+
+    // Backdrop: close all sheets
+    $("sheetBackdrop").addEventListener("click", () => {
+      closeSheet(); closeAISheet(); closeTripSheet();
+      closeNewTripSheet(); closeFirstDaySheet();
+      closeConfirmSheet("confirmDeleteActivitySheet");
+      closeConfirmSheet("confirmDeleteTripSheet");
+      closeConfirmSheet("confirmResetSheet");
+      closeConfirmSheet("confirmRestoreSheet");
+    });
+
+    // QA button
     $("qaBtn").addEventListener("click", () => {
+      $("headerSecondary").classList.remove("open");
       const checks = [
-        Boolean($("addBtn")),
-        Boolean($("activityList")),
-        Boolean($("sheet")),
-        Boolean(window.localStorage),
-        typeof escapeHtml === "function",
-        typeof todayISO === "function"
+        Boolean($("addBtn")), Boolean($("activityList")), Boolean($("sheet")),
+        Boolean(window.localStorage), typeof escapeHtml === "function", typeof todayISO === "function"
       ];
-
       showToast(checks.every(Boolean) ? "QA בסיסי עבר ✅" : "QA מצא בעיה ❌");
     });
 
+    /* ── Init ── */
     if (localStorage.getItem(KEY_THEME) === "dark") {
       document.documentElement.setAttribute("data-theme", "dark");
     }
 
-    $("global-city").value = settings.city;
-    $("global-hotel").value = settings.hotel;
+    $("global-city").value     = settings.city;
+    $("global-hotel").value    = settings.hotel;
     $("global-basearea").value = settings.baseArea;
-    $("global-apikey").value = settings.apiKey || "";
-    $("headerCity").innerText = settings.city || "My Trip";
+    $("global-apikey").value   = settings.apiKey || "";
+    $("headerCity").innerText  = settings.city || "My Trip";
 
+    const activeTrip = getActiveTrip();
+    if (activeTrip) days = activeTrip.days;
+
+    currentDayIndex = 0;
     renderDays();
-
-    if (days.length > 0) {
-      renderActivities(currentDayIndex);
-    }
-
+    renderActivities(currentDayIndex);
     showToast("TripMaster Ready 🚀");
-  });
+
+    /* ── Sleep / Wake lifecycle ── */
+    function persistStateBeforeSleep() {
+      try { saveDays(); saveTrips(); localStorage.setItem(KEY_ACTIVE_TRIP, activeTripId || ""); } catch(e) {}
+    }
+    function reloadStateAfterWake() {
+      try {
+        trips = JSON.parse(localStorage.getItem(KEY_TRIPS) || "[]");
+        activeTripId = localStorage.getItem(KEY_ACTIVE_TRIP) || null;
+        const activeTrip = getActiveTrip();
+        if (activeTrip) { days = activeTrip.days || []; }
+        else { days = JSON.parse(localStorage.getItem(KEY_DAYS) || "[]"); }
+        if (currentDayIndex >= days.length) currentDayIndex = 0;
+        renderDays(); renderActivities(currentDayIndex);
+      } catch(e) {}
+    }
+    document.addEventListener("visibilitychange", () => {
+      document.hidden ? persistStateBeforeSleep() : reloadStateAfterWake();
+    });
+    window.addEventListener("pagehide", persistStateBeforeSleep);
+    window.addEventListener("beforeunload", persistStateBeforeSleep);
+    window.addEventListener("pageshow", () => reloadStateAfterWake());
+
+  }); // DOMContentLoaded
+  </script>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch((err) => {
+          console.warn("TripMaster: Service Worker registration failed", err);
+        });
+      });
+    }
   </script>
 </body>
 </html>
