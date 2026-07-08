@@ -460,6 +460,15 @@
       margin-bottom: 6px;
     }
 
+    /* REMINDERS-001 follow-up: subtle reminder status inside Hero Card */
+    .hero-reminder-sub {
+      font-size: .68rem;
+      color: var(--sub2);
+      font-weight: 600;
+      margin-bottom: 6px;
+      letter-spacing: 0.02em;
+    }
+
     .hero-title {
       font-size: 1.15rem;
       font-weight: 700;
@@ -1653,8 +1662,31 @@
     let lastAIPlan       = [];
     let isSavingActivity = false; // BUG-001 preventive guard: blocks duplicate rapid-tap saves
 
-    let days = JSON.parse(localStorage.getItem(KEY_DAYS) || "[]");
-    let trips = JSON.parse(localStorage.getItem(KEY_TRIPS) || "[]");
+    /* ── BOOT-001 fix: safe localStorage JSON read ──
+       Reads a raw localStorage value and parses it as JSON.
+       - Missing/null raw value -> returns fallback (no backup needed, nothing to lose).
+       - Unparseable raw value -> preserves the raw string under a timestamped
+         backup key (so it is never silently lost / overwritten later by
+         pagehide/beforeunload/visibilitychange saves), warns in console,
+         and returns fallback so boot can continue instead of throwing. ── */
+    function safeParseJSON(key, fallback) {
+      const raw = localStorage.getItem(key);
+      if (raw === null || raw === undefined) return fallback;
+      try {
+        return JSON.parse(raw);
+      } catch (err) {
+        try {
+          localStorage.setItem(`${key}_corrupt_backup_${Date.now()}`, raw);
+        } catch (backupErr) {
+          console.warn("TripMaster: failed to back up corrupt value for", key, backupErr);
+        }
+        console.warn("TripMaster: corrupt JSON in localStorage key", key, err);
+        return fallback;
+      }
+    }
+
+    let days = safeParseJSON(KEY_DAYS, []);
+    let trips = safeParseJSON(KEY_TRIPS, []);
     let activeTripId = localStorage.getItem(KEY_ACTIVE_TRIP) || null;
 
     /* ── Storage ── */
@@ -1702,7 +1734,7 @@
     function goHome() {
       activeTripId = null;
       localStorage.setItem(KEY_ACTIVE_TRIP, "");
-      days = JSON.parse(localStorage.getItem(KEY_DAYS) || "[]");
+      days = safeParseJSON(KEY_DAYS, []);
       currentDayIndex = 0;
       renderDays();
       renderActivities(0);
@@ -1899,9 +1931,9 @@
     }
 
     /* ── Settings ── */
-    let settings = JSON.parse(
-      localStorage.getItem(KEY_SETTINGS) ||
-      JSON.stringify({ city: "", hotel: "", baseArea: "", defaultReminderMin: 30, apiKey: "" })
+    let settings = safeParseJSON(
+      KEY_SETTINGS,
+      { city: "", hotel: "", baseArea: "", defaultReminderMin: 30, apiKey: "" }
     );
 
     function saveSettings() {
@@ -2198,6 +2230,38 @@
       return diff > 0 ? diff : null;
     }
 
+    /* ── Reminders v2 (REMINDERS-002): subtle status label for timeline rows
+       and the Hero Card (today only).
+       This distinguishes the REMINDER countdown from the ACTIVITY countdown:
+         - minutesUntilActivity = activity time - now
+         - minutesUntilReminder = minutesUntilActivity - reminderMin
+       Pure function: reads day/item only, never mutates data, never saves. ── */
+    function getReminderSubLabel(day, item) {
+      if (!day || day.date !== todayISO()) return "";
+      if (item.completed || !item.time) return "";
+      const [ih, im] = item.time.split(":").map(Number);
+      if (isNaN(ih) || isNaN(im)) return "";
+      const itemMin = ih * 60 + im;
+      const now = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      const minutesUntilActivity = itemMin - nowMin;
+
+      // After the activity's own time -> unchanged from v1.
+      if (minutesUntilActivity <= 0) return "עבר";
+
+      // No reminder set -> no reminder countdown (activity countdown line,
+      // rendered elsewhere, is left untouched).
+      if (item.reminderMin == null || item.reminderMin < 0) return "";
+
+      const minutesUntilReminder = minutesUntilActivity - item.reminderMin;
+
+      if (minutesUntilReminder > 0) {
+        return `🔔 תזכורת בעוד ${minutesUntilReminder} דקות`;
+      }
+      // We're inside the reminder window but before the activity itself.
+      return "🔔 הגיע זמן תזכורת";
+    }
+
     /* ── Render Hero Card ── */
     function renderHeroCard(day, dayIndex) {
       const inner = $("heroCardInner");
@@ -2222,8 +2286,26 @@
 
       const heroOriginalIndex = nowIdx !== -1 ? nowIdx : 0;
       const heroItem = day.items[heroOriginalIndex];
-      const isNow = nowIdx !== -1 && day.date === todayISO();
+
+      // REMINDERS-001 follow-up: findNowItemIndex() returns either the closest
+      // PAST item, or (only when no past item exists) a fallback to the next
+      // FUTURE item. nowIdx !== -1 alone can't distinguish these two cases,
+      // so a lone future activity was incorrectly labeled "עכשיו". We check
+      // the hero item's own time against the clock instead.
+      let isNow = false;
+      if (day.date === todayISO() && heroItem && heroItem.time) {
+        const [heroH, heroM] = heroItem.time.split(":").map(Number);
+        if (!isNaN(heroH) && !isNaN(heroM)) {
+          const nowMinCheck = new Date().getHours() * 60 + new Date().getMinutes();
+          isNow = nowMinCheck >= (heroH * 60 + heroM);
+        }
+      }
       const isNext = !isNow;
+
+      // REMINDERS-001 follow-up: reuse the same sub-label logic already used
+      // in the Timeline so the Hero Card can also show the reminder
+      // countdown / "🔔 הגיע זמן תזכורת" / "עבר".
+      const heroReminderSub = getReminderSubLabel(day, heroItem);
 
       const untilMin = minutesUntilNext(day, nowIdx);
       const nextItem = (nowIdx !== -1 && day.items[nowIdx + 1]) ? day.items[nowIdx + 1] : null;
@@ -2257,6 +2339,7 @@
               ${isNow ? "עכשיו" : "הבא בתור"}
             </div>
             <div class="hero-time">${escapeHtml(heroItem.time || "--:--")}</div>
+            ${heroReminderSub ? `<div class="hero-reminder-sub">${heroReminderSub}</div>` : ""}
             <div class="hero-title">${escapeHtml(heroItem.title)}</div>
             ${note ? `<div class="hero-location">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2371,6 +2454,7 @@
       timelineItems.forEach(({ item, originalIndex }, arrIdx) => {
         const isNow = originalIndex === nowItemIndex;
         const catIcon = getCategoryIcon(item);
+        const reminderSub = getReminderSubLabel(day, item);
 
         const div = document.createElement("div");
         div.className = `item ${item.completed ? "completed" : ""} ${isNow ? "now-item" : ""}`;
@@ -2379,6 +2463,7 @@
         div.innerHTML = `
           <div class="item-time-col">
             <div class="item-time">${escapeHtml(item.time || "--:--")}</div>
+            ${reminderSub ? `<div class="item-time-sub">${reminderSub}</div>` : ""}
           </div>
           <div class="item-line-col">
             <div class="item-line-top" style="${arrIdx === 0 ? "flex:0 0 14px" : ""}"></div>
@@ -3021,11 +3106,11 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
     }
     function reloadStateAfterWake() {
       try {
-        trips = JSON.parse(localStorage.getItem(KEY_TRIPS) || "[]");
+        trips = safeParseJSON(KEY_TRIPS, []);
         activeTripId = localStorage.getItem(KEY_ACTIVE_TRIP) || null;
         const activeTrip = getActiveTrip();
         if (activeTrip) { days = activeTrip.days || []; }
-        else { days = JSON.parse(localStorage.getItem(KEY_DAYS) || "[]"); }
+        else { days = safeParseJSON(KEY_DAYS, []); }
         if (currentDayIndex >= days.length) currentDayIndex = 0;
         renderDays(); renderActivities(currentDayIndex);
       } catch(e) {}
@@ -3036,6 +3121,16 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
     window.addEventListener("pagehide", persistStateBeforeSleep);
     window.addEventListener("beforeunload", persistStateBeforeSleep);
     window.addEventListener("pageshow", () => reloadStateAfterWake());
+
+    /* ── REMINDERS-001 follow-up: lightweight time-based UI refresh ──
+       Purely visual re-render so the reminder countdown / "עבר" / "עכשיו" labels can
+       appear as the clock moves, even if the user never taps anything.
+       Does NOT save data, mutate activities, close sheets, or touch
+       localStorage — it only re-renders the currently visible day. */
+    setInterval(() => {
+      if (document.hidden) return;
+      renderActivities(currentDayIndex);
+    }, 30000);
 
   }); // DOMContentLoaded
   </script>
