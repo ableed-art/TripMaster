@@ -1214,6 +1214,23 @@
       padding-bottom: calc(env(safe-area-inset-bottom) + 24px) !important;
     }
 
+    .about-sheet {
+      height: auto !important;
+      max-height: 80%;
+      padding-bottom: calc(env(safe-area-inset-bottom) + 24px) !important;
+    }
+
+    .about-body { font-size: .92rem; line-height: 1.55; }
+    .about-body h4 { margin: 16px 0 6px; font-size: .88rem; color: var(--sub); }
+    .about-body ul { margin: 0 0 8px; padding-inline-start: 20px; }
+    .about-body li { margin-bottom: 4px; }
+    .about-version-badge {
+      display: inline-block; font-size: .8rem; font-weight: 600;
+      background: var(--accent-soft, rgba(0,0,0,.06)); color: var(--accent, inherit);
+      padding: 3px 10px; border-radius: 100px; margin-bottom: 10px;
+    }
+
+
     .confirm-body {
       text-align: center;
       padding: 8px 4px 20px;
@@ -1376,6 +1393,10 @@
         <button class="header-sec-btn" id="qaBtn" type="button">
           <span class="sec-icon">✅</span>
           QA
+        </button>
+        <button class="header-sec-btn" id="aboutBtn" type="button">
+          <span class="sec-icon">ℹ️</span>
+          אודות
         </button>
       </div>
     </div>
@@ -1643,6 +1664,39 @@
     </div>
   </div>
 
+  <!-- ══ ABOUT SHEET ══ -->
+  <div class="sheet about-sheet" id="aboutSheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3>ℹ️ אודות TripMaster</h3>
+      <button class="sheet-close" id="aboutSheetClose" type="button">✕</button>
+    </div>
+    <div class="about-body">
+      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1008</span>
+
+      <h4>🔒 פרטיות</h4>
+      <div>
+        כל הנתונים נשמרים מקומית על המכשיר שלך בלבד.<br>
+        אין חשבון, אין שרת, ואין סנכרון ענן כרגע.
+      </div>
+
+      <h4>🧪 איך לבדוק (Beta)</h4>
+      <ul>
+        <li>נסו להוסיף, לערוך ולמחוק פעילויות בכמה ימים</li>
+        <li>עברו בין טיולים ובדקו שהנתונים נשמרים נכון</li>
+        <li>הפעילו מצב טיסה ובדקו שהאפליקציה עדיין נפתחת</li>
+        <li>נסו גיבוי ואז שחזור, ווודאו שהכל חזר כמו שהיה</li>
+        <li>אם משהו נראה שבור, מוזר או נעלם — זה בדיוק מה שאנחנו רוצים לדעת</li>
+      </ul>
+
+      <h4>💬 משוב / דיווח באג</h4>
+      <div class="row" style="margin-top:4px">
+        <button class="btn btn-muted" id="aboutCopyFeedbackBtn" type="button">📋 העתק תבנית משוב</button>
+        <button class="btn btn-primary" id="aboutSendFeedbackBtn" type="button">📧 שלח משוב</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
   <input type="file" id="restoreInput" accept=".json" style="display:none">
 
@@ -1655,6 +1709,13 @@
     const KEY_THEME       = "tm_theme_clean";
     const KEY_TRIPS       = "tm_trips";
     const KEY_ACTIVE_TRIP = "tm_active_trip";
+
+    // ── Beta readiness (v1008) ──
+    const APP_VERSION = "v1008";
+    // Fill in a real support address here to enable "שלח משוב" via mailto.
+    // Left blank on purpose: opens the mail app with subject/body prefilled,
+    // letting the tester pick their own mail account / fill the "To" field.
+    const FEEDBACK_EMAIL = "tripmaster.app@gmail.com";
 
     let currentDayIndex  = 0;
     let editingDayIndex  = null;
@@ -1957,6 +2018,24 @@
     function closeConfirmSheet(sheetId) {
       $(sheetId).classList.remove("open");
       $("sheetBackdrop").classList.remove("open");
+    }
+
+    /* ── About / Beta feedback (v1008) ── */
+    function openAboutSheet() {
+      $("aboutVersionBadge").innerText = "TripMaster " + APP_VERSION;
+      openConfirmSheet("aboutSheet");
+    }
+    function closeAboutSheet() {
+      closeConfirmSheet("aboutSheet");
+    }
+    function buildFeedbackTemplate() {
+      return [
+        "TripMaster Beta — דיווח משוב",
+        "גרסה: " + APP_VERSION,
+        "מכשיר: ",
+        "תיאור הבעיה: ",
+        "צעדים לשחזור: "
+      ].join("\n");
     }
 
     let _pendingDeleteActivity = null;
@@ -2685,7 +2764,7 @@
       const backup = {
         app: "TripMaster", backupVersion: 2, exportedAt: new Date().toISOString(),
         trips, activeTripId,
-        homeDays: JSON.parse(localStorage.getItem(KEY_DAYS) || "[]"),
+        homeDays: safeParseJSON(KEY_DAYS, []),
         settings, theme: localStorage.getItem(KEY_THEME) || "light"
       };
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8" });
@@ -3069,6 +3148,7 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
       closeConfirmSheet("confirmDeleteTripSheet");
       closeConfirmSheet("confirmResetSheet");
       closeConfirmSheet("confirmRestoreSheet");
+      closeAboutSheet();
     });
 
     // QA button
@@ -3079,6 +3159,31 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
         Boolean(window.localStorage), typeof escapeHtml === "function", typeof todayISO === "function"
       ];
       showToast(checks.every(Boolean) ? "QA בסיסי עבר ✅" : "QA מצא בעיה ❌");
+    });
+
+    // About / Beta feedback
+    $("aboutBtn").addEventListener("click", () => {
+      $("headerSecondary").classList.remove("open");
+      openAboutSheet();
+    });
+    $("aboutSheetClose").addEventListener("click", closeAboutSheet);
+
+    $("aboutCopyFeedbackBtn").addEventListener("click", async () => {
+      const template = buildFeedbackTemplate();
+      try {
+        await navigator.clipboard.writeText(template);
+        showToast("התבנית הועתקה — הדביקו באימייל או בהודעה 📋");
+      } catch (err) {
+        console.warn("TripMaster: clipboard copy failed", err);
+        showToast("לא ניתן להעתיק אוטומטית, אנא העתיקו ידנית");
+      }
+    });
+
+    $("aboutSendFeedbackBtn").addEventListener("click", () => {
+      const subject = encodeURIComponent("TripMaster Beta Feedback — " + APP_VERSION);
+      const body = encodeURIComponent(buildFeedbackTemplate());
+      const to = encodeURIComponent(FEEDBACK_EMAIL || "");
+      window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
     });
 
     /* ── Init ── */
