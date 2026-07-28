@@ -1415,10 +1415,16 @@
       </div>
       <label>אזור מרכזי</label>
       <input id="global-basearea" placeholder="Paddington / Soho / etc" />
-      <label>🔑 Anthropic API Key</label>
-      <input id="global-apikey" type="password" placeholder="sk-ant-..." autocomplete="off" />
-      <div style="font-size:.78rem;color:var(--sub);margin-top:-6px;margin-bottom:10px">
-        נשמר רק במכשיר שלך. מתאים לניסוי אישי בלבד.
+      <!-- AI-DISABLE-001 (v1009): hidden alongside the AI helper entry points.
+           Input, its saved value, and its event listener are untouched —
+           only visibility changes — so re-enabling AI later does not require
+           restoring this field from scratch. -->
+      <div id="apiKeyFieldWrap" style="display:none">
+        <label>🔑 Anthropic API Key</label>
+        <input id="global-apikey" type="password" placeholder="sk-ant-..." autocomplete="off" />
+        <div style="font-size:.78rem;color:var(--sub);margin-top:-6px;margin-bottom:10px">
+          נשמר רק במכשיר שלך. מתאים לניסוי אישי בלבד.
+        </div>
       </div>
     </div>
   </div>
@@ -1460,8 +1466,14 @@
       <div class="timeline-list" id="activityList"></div>
     </div>
 
-    <!-- AI suggestion strip -->
-    <div class="ai-suggestion-strip" id="aiStripBtn">
+    <!-- AI suggestion strip —
+         AI-DISABLE-001 (v1009): hidden for public beta. The AI helper currently
+         sends the user's Anthropic API key directly from the browser
+         (see runAI()), which is not safe for external testers. Postponed
+         until a backend/proxy exists (see AI-PROXY-001). Markup, function,
+         and event listener are left intact so this can be re-enabled by
+         removing the inline style once a proxy is in place. -->
+    <div class="ai-suggestion-strip" id="aiStripBtn" style="display:none">
       <div class="ai-strip-icon">💡</div>
       <div class="ai-strip-text">
         <div class="ai-strip-title">וגם הצעות AI</div>
@@ -1479,7 +1491,8 @@
   <!-- ══ BOTTOM BAR ══ -->
   <div class="bottom-bar">
     <div class="bottom-actions">
-      <button class="fab-secondary" id="aiBtn" type="button" title="AI">🤖</button>
+      <!-- AI-DISABLE-001 (v1009): hidden alongside aiStripBtn, same reason. -->
+      <button class="fab-secondary" id="aiBtn" type="button" title="AI" style="display:none">🤖</button>
       <button class="fab-primary" id="addBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -1532,7 +1545,10 @@
     </div>
   </div>
 
-  <!-- ══ AI SHEET ══ -->
+  <!-- ══ AI SHEET ══ —
+       AI-DISABLE-001 (v1009): no longer reachable from normal UI since both
+       aiStripBtn and aiBtn are hidden. Left in place untouched (not deleted)
+       so re-enabling AI later is a matter of un-hiding the entry points. -->
   <div class="sheet" id="aiSheet">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
@@ -1672,7 +1688,7 @@
       <button class="sheet-close" id="aboutSheetClose" type="button">✕</button>
     </div>
     <div class="about-body">
-      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1008</span>
+      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1009</span>
 
       <h4>🔒 פרטיות</h4>
       <div>
@@ -1710,8 +1726,8 @@
     const KEY_TRIPS       = "tm_trips";
     const KEY_ACTIVE_TRIP = "tm_active_trip";
 
-    // ── Beta readiness (v1008) ──
-    const APP_VERSION = "v1008";
+    // ── Beta readiness (v1009) ──
+    const APP_VERSION = "v1009";
     // Fill in a real support address here to enable "שלח משוב" via mailto.
     // Left blank on purpose: opens the mail app with subject/body prefilled,
     // letting the tester pick their own mail account / fill the "To" field.
@@ -2020,7 +2036,7 @@
       $("sheetBackdrop").classList.remove("open");
     }
 
-    /* ── About / Beta feedback (v1008) ── */
+    /* ── About / Beta feedback (v1009) ── */
     function openAboutSheet() {
       $("aboutVersionBadge").innerText = "TripMaster " + APP_VERSION;
       openConfirmSheet("aboutSheet");

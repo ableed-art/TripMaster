@@ -1,4 +1,4 @@
-const CACHE_NAME = "tripmaster-v1008";
+const CACHE_NAME = "tripmaster-v1009";
 
 // Core assets required for the app shell to work offline.
 // If any of these fail to cache, installation fails (as intended).
