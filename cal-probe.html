@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>TripMaster Calendar Probe</title>
+<style>
+  :root { --navy:#0B2239; --navy2:#123A5C; --teal:#14B8A6; --tealcta:#0E7490; --bg:#F7F9FB; --sub:#4A5C6E; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--navy); padding:16px 14px 40px; }
+  h1 { font-size:1.05rem; margin-bottom:2px; }
+  .sub { font-size:.78rem; color:var(--sub); margin-bottom:16px; line-height:1.5; }
+  h2 { font-size:.82rem; text-transform:uppercase; letter-spacing:.05em; color:var(--sub); margin:20px 0 8px; }
+  .card { background:#fff; border:1px solid #DDE3EA; border-radius:14px; padding:12px 14px; }
+  table { width:100%; border-collapse:collapse; font-size:.8rem; }
+  td { padding:5px 0; vertical-align:top; border-bottom:1px solid #F0F3F6; }
+  td:first-child { color:var(--sub); padding-inline-end:10px; }
+  td:last-child { text-align:end; font-weight:600; word-break:break-word; }
+  .yes { color:#047857; } .no { color:#B91C1C; }
+  button { width:100%; min-height:54px; border:none; border-radius:14px; background:var(--tealcta);
+           color:#fff; font-size:.92rem; font-weight:700; margin-top:9px; cursor:pointer; padding:10px 16px; line-height:1.3; }
+  button.alt { background:var(--navy); }
+  button.ghost { background:#fff; color:var(--navy); border:1px solid #DDE3EA; }
+  #log { background:var(--navy); color:#D7E3EC; border-radius:14px; padding:12px 14px; margin-top:10px;
+         font-family:ui-monospace,monospace; font-size:.72rem; line-height:1.55; white-space:pre-wrap;
+         word-break:break-word; min-height:90px; }
+  .t { color:var(--teal); }
+</style>
+</head>
+<body>
+
+<h1>TripMaster Calendar Probe</h1>
+<div class="sub">
+  Standalone diagnostic. <strong>Not part of TripMaster v1011.</strong> Nothing here reads or writes app data.
+  Run this on the Android device that failed, and inside the TWA if you can, then send the log.
+</div>
+
+<h2>Environment</h2>
+<div class="card"><table id="env"></table></div>
+
+<h2>Path tests</h2>
+<button id="b1">1 &nbsp;Web Share the .ics &nbsp;(what RC2 does)</button>
+<button id="b2" class="alt">2 &nbsp;intent: ACTION_INSERT &nbsp;(Android only)</button>
+<button id="b3" class="alt">3 &nbsp;Google Calendar template URL</button>
+<button id="b4" class="ghost">4 &nbsp;Plain .ics download &nbsp;(baseline)</button>
+
+<h2>Log</h2>
+<div id="log">Ready.</div>
+<button id="copy" class="ghost">Copy log</button>
+
+<script>
+(function () {
+  var logEl = document.getElementById("log");
+  var lines = [];
+  function log(s) { lines.push(s); logEl.textContent = lines.join("\n"); }
+
+  // ---- Fixed sample event: 14 Sep 2026, 10:30, 60 min, 30-min reminder ----
+  var EV = {
+    title: "Tower of London",
+    note: "1 Tower Hill, London",
+    start: new Date(2026, 8, 14, 10, 30),
+    reminderMin: 30
+  };
+  EV.end = new Date(EV.start.getTime() + 3600000);
+
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function icsLocal(d) {
+    return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) +
+           "T" + pad(d.getHours()) + pad(d.getMinutes()) + "00";
+  }
+  function icsUTC(d) {
+    return d.getUTCFullYear() + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate()) +
+           "T" + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + "00Z";
+  }
+  function esc(s) {
+    return String(s || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;")
+                          .replace(/,/g, "\\,").replace(/\n/g, "\\n");
+  }
+
+  // Mirrors TripMaster's downloadCalendarFile() output shape.
+  function buildIcs() {
+    return [
+      "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//TripMaster//HE", "BEGIN:VEVENT",
+      "SUMMARY:" + esc(EV.title), "DTSTART:" + icsLocal(EV.start), "DTEND:" + icsLocal(EV.end),
+      "DESCRIPTION:" + esc(EV.note),
+      "BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:reminder", "TRIGGER:-PT" + EV.reminderMin + "M", "END:VALARM",
+      "END:VEVENT", "END:VCALENDAR"
+    ].join("\r\n");
+  }
+
+  function icsBlob() { return new Blob([buildIcs()], { type: "text/calendar;charset=utf-8" }); }
+
+  // ---- Environment report ----------------------------------------------
+  function probeType(mime, name) {
+    if (typeof File !== "function" || !navigator.canShare) return "n/a";
+    try {
+      var f = new File([new Blob(["x"], { type: mime })], name, { type: mime });
+      return navigator.canShare({ files: [f] }) ? "true" : "FALSE";
+    } catch (e) { return "threw: " + e.name; }
+  }
+
+  var rows = [
+    ["User agent", navigator.userAgent],
+    ["Secure context", String(window.isSecureContext)],
+    ["Display mode", window.matchMedia("(display-mode: standalone)").matches ? "standalone" : "browser"],
+    ["Origin", location.origin],
+    ["typeof File", typeof File],
+    ["navigator.share", typeof navigator.share],
+    ["navigator.canShare", typeof navigator.canShare],
+    ["canShare files text/calendar", probeType("text/calendar", "e.ics")],
+    ["canShare files text/plain", probeType("text/plain", "e.txt")],
+    ["canShare files image/png", probeType("image/png", "e.png")],
+    ["canShare text only", (function () {
+        try { return navigator.canShare ? String(navigator.canShare({ text: "x" })) : "n/a"; }
+        catch (e) { return "threw"; } })()]
+  ];
+
+  var tbl = document.getElementById("env");
+  rows.forEach(function (r) {
+    var tr = tbl.insertRow();
+    tr.insertCell().textContent = r[0];
+    var c = tr.insertCell();
+    c.textContent = r[1];
+    if (r[1] === "true") c.className = "yes";
+    if (r[1] === "FALSE" || r[1] === "undefined") c.className = "no";
+  });
+
+  log("Probe loaded. canShare(text/calendar) = " + probeType("text/calendar", "e.ics"));
+  log("Compare it against text/plain and image/png above:");
+  log("  calendar FALSE + plain true  -> MIME allowlist is the blocker");
+  log("  all three FALSE              -> file sharing unsupported here");
+
+  // ---- 1. Web Share (identical gate to RC2) -----------------------------
+  document.getElementById("b1").addEventListener("click", function () {
+    log("\n--- 1. Web Share ---");
+    var f = null;
+    try {
+      if (typeof File === "function") f = new File([icsBlob()], "probe.ics", { type: "text/calendar" });
+    } catch (e) { log("File ctor threw: " + e.name); }
+    if (!f) { log("RESULT: no File -> RC2 would download"); return; }
+
+    var ok = typeof navigator.share === "function" &&
+             typeof navigator.canShare === "function" &&
+             navigator.canShare({ files: [f] });
+    log("gate canShare({files}) = " + ok);
+    if (!ok) { log("RESULT: gate false -> RC2 downloads. Cause = detection, not a throw."); return; }
+
+    navigator.share({ files: [f], title: EV.title })
+      .then(function () { log("RESULT: share resolved (sheet appeared)"); })
+      .catch(function (e) { log("RESULT: share REJECTED " + e.name + " :: " + e.message); });
+  });
+
+  // ---- 2. intent: ACTION_INSERT ----------------------------------------
+  // Chrome for Android intent scheme. Extras use CalendarContract key names.
+  document.getElementById("b2").addEventListener("click", function () {
+    log("\n--- 2. intent: ACTION_INSERT ---");
+    var e = encodeURIComponent;
+    var uri = "intent:#Intent;action=android.intent.action.INSERT" +
+      ";type=vnd.android.cursor.dir/event" +
+      ";S.title=" + e(EV.title) +
+      ";S.description=" + e(EV.note) +
+      ";S.eventLocation=" + e(EV.note) +
+      ";l.beginTime=" + EV.start.getTime() +
+      ";l.endTime=" + EV.end.getTime() +
+      ";B.allDay=false" +
+      ";S.browser_fallback_url=" + e(location.href + "?intentfail=1") +
+      ";end";
+    log("URI: " + uri);
+    log("Expect: calendar 'new event' screen, prefilled.");
+    log("If nothing happens or you return here with ?intentfail=1, the intent was blocked.");
+    window.location.href = uri;
+  });
+
+  // ---- 3. Google Calendar template URL ---------------------------------
+  document.getElementById("b3").addEventListener("click", function () {
+    log("\n--- 3. Google Calendar template ---");
+    var e = encodeURIComponent;
+    var url = "https://calendar.google.com/calendar/render?action=TEMPLATE" +
+      "&text=" + e(EV.title) +
+      "&dates=" + icsUTC(EV.start) + "/" + icsUTC(EV.end) +
+      "&details=" + e(EV.note) +
+      "&location=" + e(EV.note);
+    log("URL: " + url);
+    log("NOTE: this format carries NO reminder value. Google applies its default.");
+    log("Needs a network connection.");
+    window.open(url, "_blank");
+  });
+
+  // ---- 4. Baseline download --------------------------------------------
+  document.getElementById("b4").addEventListener("click", function () {
+    log("\n--- 4. Download baseline ---");
+    var url = URL.createObjectURL(icsBlob());
+    var a = document.createElement("a");
+    a.href = url; a.download = "probe.ics"; a.click();
+    URL.revokeObjectURL(url);
+    log("RESULT: download triggered. Can you open it from the notification shade?");
+  });
+
+  document.getElementById("copy").addEventListener("click", function () {
+    var txt = rows.map(function (r) { return r[0] + ": " + r[1]; }).join("\n") + "\n\n" + lines.join("\n");
+    if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function () { log("\n[log copied]"); });
+    else log("\n[clipboard unavailable — screenshot instead]");
+  });
+
+  if (location.search.indexOf("intentfail=1") !== -1) {
+    log("\n!! Returned via browser_fallback_url -> intent: was BLOCKED or no handler.");
+  }
+})();
+</script>
+</body>
+</html>
