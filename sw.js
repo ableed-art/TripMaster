@@ -1,4 +1,4 @@
-const CACHE_NAME = "tripmaster-v1010";
+const CACHE_NAME = "tripmaster-v1011";
 
 // Core assets required for the app shell to work offline.
 // If any of these fail to cache, installation fails (as intended).
@@ -14,6 +14,7 @@ const CORE_ASSETS = [
 const OPTIONAL_ASSETS = [
   "./icon-192.png",
   "./icon-512.png",
+  "./icon-512-maskable.png",
 ];
 
 self.addEventListener("install", (e) => {
