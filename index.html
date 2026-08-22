@@ -13,62 +13,111 @@
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 
   <style>
+    /* ── BRAND-001 (v1020): Navy + Teal design tokens ──
+       Palette swap only. Every token name is unchanged, so the 114 existing
+       CSS classes pick up the new brand without any rule being rewritten.
+       Contrast is measured, not estimated:
+         #FFFFFF on #0E7490 = 5.36:1   (CTA teal, white text — AA)
+         #FFFFFF on #0B2239 = 16.13:1  (navy surfaces)
+         #0B2239 on #14B8A6 = 6.48:1   (accent teal, navy text)
+         #4A5C6E on #FFFFFF = 6.89:1   (secondary text)
+       DO NOT set --primary to #14B8A6: white on that is 2.49:1 and fails.
+       Accent teal is for fills behind dark text only. ── */
     :root {
-      --primary: #4f46e5;
-      --primary-dark: #3730a3;
-      --primary-light: #6366f1;
-      --primary-soft: rgba(79,70,229,0.09);
-      --primary-soft2: rgba(79,70,229,0.15);
-      --bg: #f4f4f8;
-      --bg2: #eeeef4;
+      --primary: #0E7490;
+      --on-primary: #FFFFFF;
+      --primary-dark: #0B2239;
+      --primary-light: #14B8A6;
+      --primary-soft: rgba(14,116,144,0.09);
+      --primary-soft2: rgba(14,116,144,0.15);
+      --accent: #14B8A6;
+      --accent-soft: rgba(20,184,166,0.12);
+      --accent-border: rgba(20,184,166,0.25);
+      --navy: #0B2239;
+      --navy2: #123A5C;
+      --on-navy: #FFFFFF;
+      --on-navy-sub: #B9C9D6;
+      --bg: #F7F9FB;
+      --bg2: #EFF3F7;
       --card: #ffffff;
-      --card2: #fafafa;
-      --text: #0f1117;
-      --text2: #1e2130;
-      --sub: #6b7280;
-      --sub2: #9ca3af;
-      --border: #e8e8ef;
-      --border-soft: #f0f0f5;
-      --danger: #ef4444;
-      --danger-soft: rgba(239,68,68,0.08);
-      --success: #10b981;
-      --now-bg: linear-gradient(135deg, #fffbeb 0%, #fff8e6 100%);
-      --now-border: #f59e0b;
-      --now-badge: #f59e0b;
+      --card2: #FAFCFD;
+      --text: #0B2239;
+      --text2: #16304C;
+      --sub: #4A5C6E;
+      --sub2: #94A3B8;
+      --border: #DDE3EA;
+      --border-soft: #EDF1F5;
+      --danger: #B91C1C;
+      --danger-soft: rgba(185,28,28,0.08);
+      --danger-border: rgba(185,28,28,0.2);
+      --success: #047857;
+      --success-soft: rgba(4,120,87,0.10);
+      --success-border: rgba(4,120,87,0.22);
+      --warning: #B45309;
+      --disabled: #94A3B8;
+      --now-bg: linear-gradient(135deg, #FFF8ED 0%, #FFF3E0 100%);
+      --now-border: #B45309;
+      --now-badge: #B45309;
       --shadow-xs: 0 1px 2px rgba(0,0,0,.04);
       --shadow: 0 2px 8px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
       --shadow-md: 0 4px 20px rgba(0,0,0,.08), 0 1px 4px rgba(0,0,0,.04);
       --shadow-lg: 0 8px 40px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
-      --shadow-primary: 0 4px 20px rgba(79,70,229,.28);
+      --shadow-primary: 0 4px 20px rgba(11,34,57,.22);
+      --toast-bg: rgba(11,34,57,0.95);
       --radius-xs: 8px;
       --radius-sm: 12px;
       --radius: 16px;
       --radius-lg: 20px;
       --radius-xl: 24px;
       --font: 'Rubik', sans-serif;
-      --hero-gradient: linear-gradient(135deg, #667eea 0%, #4f46e5 100%);
+      --hero-gradient: linear-gradient(135deg, #123A5C 0%, #0B2239 100%);
     }
 
+    /* ── BRAND-001 (v1020): dark theme mapping ──
+       On dark surfaces the CTA teal #0E7490 is too dark to read as an accent,
+       so dark mode promotes --primary to #2DD4BF (8.66:1 on navy) and pairs it
+       with dark text. Without this block dark mode would inherit the light
+       palette's CTA and lose contrast. ── */
     [data-theme="dark"] {
-      --bg: #0a0c12;
-      --bg2: #0f1117;
-      --card: #141822;
-      --card2: #1a1f2e;
-      --text: #f0f2f8;
-      --text2: #d0d4e8;
-      --sub: #7b83a0;
-      --sub2: #505870;
-      --border: #1e2438;
-      --border-soft: #161b28;
+      --primary: #14B8A6;
+      --on-primary: #0B2239;
+      --primary-dark: #0E7490;
+      --primary-light: #2DD4BF;
+      --primary-soft: rgba(20,184,166,0.14);
+      --primary-soft2: rgba(20,184,166,0.20);
+      --accent: #2DD4BF;
+      --accent-soft: rgba(45,212,191,0.14);
+      --accent-border: rgba(45,212,191,0.3);
+      --on-navy: #F0F5F9;
+      --on-navy-sub: #8FA6B8;
+      --bg: #060D16;
+      --bg2: #0A1622;
+      --card: #0F2033;
+      --card2: #16293D;
+      --text: #EAF1F7;
+      --text2: #CBD9E5;
+      --sub: #8FA6B8;
+      --sub2: #5A7186;
+      --border: #1C3247;
+      --border-soft: #142536;
+      --danger: #F87171;
+      --danger-soft: rgba(248,113,113,0.12);
+      --danger-border: rgba(248,113,113,0.25);
+      --success: #34D399;
+      --success-soft: rgba(52,211,153,0.12);
+      --success-border: rgba(52,211,153,0.25);
+      --warning: #FBBF24;
+      --disabled: #5A7186;
       --shadow-xs: 0 1px 2px rgba(0,0,0,.4);
       --shadow: 0 2px 8px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.3);
       --shadow-md: 0 4px 20px rgba(0,0,0,.6), 0 1px 4px rgba(0,0,0,.4);
       --shadow-lg: 0 8px 40px rgba(0,0,0,.7), 0 2px 8px rgba(0,0,0,.5);
-      --now-bg: linear-gradient(135deg, #1c1408 0%, #201608 100%);
-      --now-border: #d97706;
-      --primary-soft: rgba(99,87,255,0.12);
-      --primary-soft2: rgba(99,87,255,0.18);
-      --hero-gradient: linear-gradient(135deg, #4338ca 0%, #3730a3 100%);
+      --shadow-primary: 0 4px 20px rgba(0,0,0,.5);
+      --toast-bg: rgba(15,32,51,0.96);
+      --now-bg: linear-gradient(135deg, #241A08 0%, #2B1F0A 100%);
+      --now-border: #FBBF24;
+      --now-badge: #FBBF24;
+      --hero-gradient: linear-gradient(135deg, #16293D 0%, #0B2239 100%);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -90,10 +139,15 @@
     /* ═══════════════════════════════════════
        HEADER — redesigned
     ═══════════════════════════════════════ */
+    /* ── BRAND-001 (v1020): navy header ──
+       v1011 shipped a navy theme_color status bar above a white header, which
+       read as a mismatched strip. The header now carries the brand navy in
+       both themes so the status bar and app shell are continuous. Child
+       elements read their colour from --on-navy / --on-navy-sub. ── */
     .header {
-      background: var(--card);
+      background: var(--navy);
       padding-top: env(safe-area-inset-top);
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid rgba(255,255,255,0.10);
       position: sticky;
       top: 0;
       z-index: 100;
@@ -116,8 +170,8 @@
       height: 40px;
       border-radius: 12px;
       border: none;
-      background: var(--border-soft);
-      color: var(--sub);
+      background: rgba(255,255,255,0.12);
+      color: var(--on-navy);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -125,7 +179,7 @@
       flex-shrink: 0;
       transition: background 0.15s, color 0.15s, transform 0.1s;
     }
-    .header-menu-btn:active { background: var(--border); color: var(--text); transform: scale(0.92); }
+    .header-menu-btn:active { background: rgba(255,255,255,0.22); color: var(--on-navy); transform: scale(0.92); }
     .header-menu-btn svg { width: 18px; height: 18px; }
 
     /* Center: trip info */
@@ -144,13 +198,20 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      color: var(--text);
+      color: var(--on-navy);
     }
 
     .header-trip-dates {
       font-size: .72rem;
-      color: var(--sub);
+      color: var(--on-navy-sub);
       font-weight: 500;
+      /* DATES-001 (v1020 RC3): "8.10–11.10" is two weak-LTR numeric runs
+         separated by a neutral dash. Inside the RTL page the bidi algorithm
+         reorders them to "11.10–8.10". Isolating this element as LTR fixes
+         the display order. Presentation only — no date logic changed. */
+      direction: ltr;
+      unicode-bidi: isolate;
+      text-align: center;
       margin-top: 1px;
       white-space: nowrap;
       overflow: hidden;
@@ -186,8 +247,8 @@
       height: 36px;
       border-radius: 10px;
       border: none;
-      background: var(--primary);
-      color: #fff;
+      background: var(--accent);
+      color: #0B2239;
       font-size: .75rem;
       font-weight: 700;
       font-family: var(--font);
@@ -199,7 +260,7 @@
       transition: opacity 0.15s, transform 0.1s;
       white-space: nowrap;
       letter-spacing: -0.01em;
-      box-shadow: 0 2px 10px rgba(79,70,229,.3);
+      box-shadow: 0 2px 10px rgba(11,34,57,.22);
     }
     .header-switch-btn:active { opacity: 0.85; transform: scale(0.96); }
     .header-switch-btn svg { width: 13px; height: 13px; }
@@ -353,8 +414,8 @@
     .chip.active {
       border-color: var(--primary);
       background: var(--primary);
-      color: #fff;
-      box-shadow: 0 3px 12px rgba(79,70,229,.28);
+      color: var(--on-primary);
+      box-shadow: 0 3px 12px rgba(11,34,57,.20);
     }
     .chip.active .chip-dot { opacity: 0.7; }
 
@@ -426,9 +487,9 @@
     }
 
     .hero-badge.now {
-      background: rgba(16,185,129,0.12);
-      color: #059669;
-      border: 1px solid rgba(16,185,129,0.2);
+      background: var(--success-soft);
+      color: var(--success);
+      border: 1px solid var(--success-border);
     }
 
     .hero-badge.next {
@@ -526,7 +587,7 @@
       width: 26px;
       height: 26px;
       border-radius: 8px;
-      background: rgba(255,255,255,0.92);
+      background: var(--card);
       border: none;
       display: flex;
       align-items: center;
@@ -591,7 +652,7 @@
 
     .hero-btn-nav {
       background: var(--primary);
-      color: #fff;
+      color: var(--on-primary);
       box-shadow: var(--shadow-primary);
     }
     .hero-btn svg { width: 15px; height: 15px; }
@@ -629,7 +690,7 @@
       align-items: center;
       gap: 6px;
       background: var(--primary);
-      color: #fff;
+      color: var(--on-primary);
       border: none;
       border-radius: var(--radius);
       padding: 12px 24px;
@@ -840,7 +901,7 @@
       align-items: center;
       gap: 3px;
       background: var(--primary);
-      color: #fff;
+      color: var(--on-primary);
       font-size: .6rem;
       font-weight: 700;
       border-radius: 5px;
@@ -874,8 +935,8 @@
       color: var(--sub2);
     }
 
-    .done:active { background: rgba(79,70,229,.1); transform: scale(0.9); color: var(--primary); }
-    .delete:active { background: rgba(239,68,68,.1); transform: scale(0.9); }
+    .done:active { background: var(--primary-soft2); transform: scale(0.9); color: var(--primary); }
+    .delete:active { background: var(--danger-soft); transform: scale(0.9); }
     .delete { color: var(--sub2); }
 
     /* Show more */
@@ -994,7 +1055,7 @@
       border-radius: var(--radius);
       border: none;
       background: var(--primary);
-      color: #fff;
+      color: var(--on-primary);
       font-size: .92rem;
       font-weight: 700;
       font-family: var(--font);
@@ -1104,7 +1165,7 @@
       border-radius: var(--radius-sm);
       border: none;
       background: var(--primary);
-      color: white;
+      color: var(--on-primary);
       font-weight: 700;
       font-family: var(--font);
       font-size: .9rem;
@@ -1134,6 +1195,145 @@
     /* ═══════════════════════════════════════
        FORMS
     ═══════════════════════════════════════ */
+    /* ── MENU-001 (v1020 fix): product menu sheet ──
+       Built on the existing .sheet system so it inherits the backdrop, slide
+       animation, scrolling and safe-area handling already proven by the other
+       sheets. #settingsArea is no longer a hidden header panel — it is the
+       menu body. ── */
+    .menu-sheet { height: 88%; }
+    .menu-sheet #settingsArea {
+      display: block;
+      background: none;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      margin: 0;
+      max-height: none;
+      overflow: visible;
+      color: var(--text);
+    }
+    .menu-quick {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .menu-quick-btn {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px; min-height: 68px; padding: 8px 4px;
+      border-radius: var(--radius-sm); border: 1px solid var(--border);
+      background: var(--card); color: var(--text);
+      font-family: var(--font); font-size: .72rem; font-weight: 600;
+      line-height: 1.2; text-align: center; cursor: pointer;
+      transition: transform .1s, border-color .15s;
+    }
+    .menu-quick-btn:active { transform: scale(0.96); border-color: var(--primary); }
+    .menu-quick-btn .sec-icon { font-size: 1.15rem; line-height: 1; }
+    .menu-list { display: flex; flex-direction: column; gap: 8px; }
+    .menu-item {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; min-height: 54px; padding: 10px 14px;
+      border-radius: var(--radius-sm); border: 1px solid var(--border);
+      background: var(--card); color: var(--text);
+      font-family: var(--font); font-size: .88rem; font-weight: 600;
+      text-align: start; cursor: pointer; transition: transform .1s, border-color .15s;
+    }
+    .menu-item:active { transform: scale(0.98); border-color: var(--primary); }
+    .menu-item .sec-icon { font-size: 1.05rem; line-height: 1; flex-shrink: 0; }
+    .menu-item-danger { color: var(--danger); border-color: var(--danger-border); }
+    .menu-item-danger:active { border-color: var(--danger); }
+    .menu-danger { border-top-color: var(--danger-border); }
+
+    /* ── v1020 settings sections: Preferences / Access / Trip Tools ──
+       Scoped to the settings panel. Selected state is conveyed by border
+       weight, background and a ✓ glyph, never by colour alone. ── */
+    .sec { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 4px; }
+    .sec-head {
+      width: 100%; min-height: 52px; display: flex; align-items: center;
+      justify-content: space-between; gap: 10px;
+      background: none; border: none; padding: 12px 2px; cursor: pointer;
+      font-family: var(--font); color: var(--text); text-align: start;
+      /* MENU-002 (v1020 RC3): make the whole row a reliable Android tap target.
+         touch-action removes the double-tap-zoom delay; the child spans are
+         pointer-events:none so a tap on the label or chevron always resolves to
+         the button itself rather than a child node. */
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .sec-head > * { pointer-events: none; }
+    .sec-head:active { opacity: .6; }
+    .sec-title { font-size: .92rem; font-weight: 700; letter-spacing: -0.01em; }
+    .sec-chevron { font-size: .8rem; color: var(--sub); transition: transform .2s; }
+    .sec.open .sec-chevron { transform: rotate(180deg); }
+    .sec-body { display: none; padding-bottom: 8px; }
+    .sec.open .sec-body { display: block; }
+    .sec-note {
+      font-size: .76rem; color: var(--sub); line-height: 1.55; margin-top: 8px;
+    }
+    .sec-note-strong {
+      background: var(--primary-soft); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 10px 12px; margin: 0 0 12px;
+      color: var(--text2);
+    }
+    .opt-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .opt-row.opt-wrap { flex-wrap: wrap; }
+    .opt {
+      flex: 1 1 auto; min-height: 48px; padding: 8px 12px;
+      border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+      background: var(--card); color: var(--text);
+      font-family: var(--font); font-size: .8rem; font-weight: 600;
+      line-height: 1.3; cursor: pointer; transition: all .15s;
+    }
+    .opt-wrap .opt { flex: 0 1 auto; }
+    .opt:active { transform: scale(0.97); }
+    .opt.on {
+      border-color: var(--primary); border-width: 2px;
+      background: var(--primary-soft); color: var(--primary);
+    }
+    .opt.on::before { content: "✓ "; font-weight: 800; }
+    .tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tool-card {
+      display: flex; flex-direction: column; gap: 4px;
+      min-height: 76px; padding: 12px;
+      border-radius: var(--radius-sm); border: 1px solid var(--border);
+      background: var(--card); text-align: start;
+      font-family: var(--font); color: var(--text);
+    }
+    .tool-card.enabled { cursor: pointer; border-color: var(--primary); }
+    .tool-card.enabled:active { transform: scale(0.98); }
+    .tool-card.soon { opacity: .72; cursor: default; }
+    .tool-icon { font-size: 1.1rem; line-height: 1; }
+    .tool-label { font-size: .82rem; font-weight: 700; letter-spacing: -0.01em; }
+    .tool-sub { font-size: .7rem; color: var(--sub); line-height: 1.4; }
+    .tool-soon-chip {
+      align-self: flex-start; font-size: .64rem; font-weight: 700;
+      color: var(--sub); background: var(--bg2);
+      border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px;
+    }
+    #settingsArea textarea {
+      width: 100%; font-family: var(--font); font-size: .88rem;
+      padding: 10px 12px; border-radius: var(--radius-sm);
+      border: 1.5px solid var(--border); background: var(--card);
+      color: var(--text); resize: vertical; margin-bottom: 10px;
+    }
+    #settingsArea textarea:focus, #settingsArea input:focus {
+      outline: none; border-color: var(--primary);
+    }
+
+    /* GCAL-001 (v1020): secondary calendar action, visually subordinate to the
+       primary ICS button so it never reads as the recommended path. */
+    .btn-link {
+      background: none; border: none; color: var(--primary);
+      font-weight: 600; min-height: 48px; width: 100%;
+      font-family: var(--font); font-size: .86rem; cursor: pointer;
+      margin-top: 8px; text-decoration: underline; text-underline-offset: 3px;
+    }
+    .btn-link:active { opacity: .7; }
+    .gcal-note {
+      font-size: .74rem; color: var(--sub); line-height: 1.5;
+      margin: 2px 0 4px; text-align: center;
+    }
+
     .row { display: flex; gap: 10px; }
     .row > * { flex: 1; }
 
@@ -1213,8 +1413,8 @@
 
     .btn-primary {
       background: var(--primary);
-      color: #fff;
-      box-shadow: 0 2px 12px rgba(79,70,229,.25);
+      color: var(--on-primary);
+      box-shadow: 0 2px 12px rgba(11,34,57,.20);
     }
     .btn-muted {
       background: var(--border-soft);
@@ -1223,7 +1423,7 @@
     }
     .btn-danger {
       background: var(--danger-soft);
-      border: 1.5px solid rgba(239,68,68,.2);
+      border: 1.5px solid var(--danger-border);
       color: var(--danger);
     }
 
@@ -1292,7 +1492,7 @@
       left: 50%;
       bottom: 90px;
       transform: translateX(-50%) translateY(10px);
-      background: rgba(15,17,23,0.94);
+      background: var(--toast-bg);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
       color: white;
@@ -1318,11 +1518,18 @@
     /* ═══════════════════════════════════════
        SETTINGS AREA (in card)
     ═══════════════════════════════════════ */
+    /* BRAND-001 (v1020): the settings panel lives inside .header, which is now
+       navy. It keeps its own light surface so forms stay readable. */
     #settingsArea {
       display: none;
-      padding: 0 14px 14px;
-      border-top: 1px solid var(--border-soft);
-      margin-top: 8px;
+      padding: 14px;
+      background: var(--bg);
+      color: var(--text);
+      border-top: none;
+      border-radius: var(--radius) var(--radius) 0 0;
+      margin-top: 4px;
+      max-height: 70vh;
+      overflow-y: auto;
     }
     #settingsArea label { margin-top: 10px; }
 
@@ -1356,7 +1563,7 @@
       <!-- Center: trip name + dates -->
       <div class="header-center" id="headerCenter">
         <div class="header-trip-name" id="headerCity">TripMaster</div>
-        <div class="header-trip-dates" id="headerTripDates"></div>
+        <div class="header-trip-dates" id="headerTripDates" dir="ltr"></div>
       </div>
 
       <!-- Right: switch trip + theme -->
@@ -1376,78 +1583,6 @@
       </div>
     </div>
 
-    <!-- Secondary actions strip (hidden by default, toggle by hamburger) -->
-    <div class="header-secondary" id="headerSecondary">
-      <div class="header-secondary-inner">
-        <button class="header-sec-btn" id="homeBtn" type="button">
-          <span class="sec-icon">🏠</span>
-          הום
-        </button>
-        <button class="header-sec-btn" id="newTripBtn" type="button">
-          <span class="sec-icon">🧳</span>
-          טיול חדש
-        </button>
-        <button class="header-sec-btn" id="todayBtn" type="button">
-          <span class="sec-icon">📅</span>
-          היום
-        </button>
-        <button class="header-sec-btn" id="jumpNowBtn" type="button">
-          <span class="sec-icon">⏱️</span>
-          עכשיו
-        </button>
-        <button class="header-sec-btn" id="exportBtn" type="button">
-          <span class="sec-icon">📤</span>
-          ייצא
-        </button>
-        <button class="header-sec-btn" id="backupBtn" type="button">
-          <span class="sec-icon">💾</span>
-          גיבוי
-        </button>
-        <button class="header-sec-btn" id="restoreBtn" type="button">
-          <span class="sec-icon">📂</span>
-          שחזור
-        </button>
-        <button class="header-sec-btn" id="resetBtn" type="button">
-          <span class="sec-icon">↩️</span>
-          איפוס
-        </button>
-        <button class="header-sec-btn" id="qaBtn" type="button">
-          <span class="sec-icon">✅</span>
-          QA
-        </button>
-        <button class="header-sec-btn" id="aboutBtn" type="button">
-          <span class="sec-icon">ℹ️</span>
-          אודות
-        </button>
-      </div>
-    </div>
-
-    <!-- Settings area -->
-    <div id="settingsArea">
-      <div class="row" style="margin-top:14px">
-        <div>
-          <label>עיר</label>
-          <input id="global-city" placeholder="London" />
-        </div>
-        <div>
-          <label>מלון</label>
-          <input id="global-hotel" placeholder="שם המלון" />
-        </div>
-      </div>
-      <label>אזור מרכזי</label>
-      <input id="global-basearea" placeholder="Paddington / Soho / etc" />
-      <!-- AI-DISABLE-001 (v1009): hidden alongside the AI helper entry points.
-           Input, its saved value, and its event listener are untouched —
-           only visibility changes — so re-enabling AI later does not require
-           restoring this field from scratch. -->
-      <div id="apiKeyFieldWrap" style="display:none">
-        <label>🔑 Anthropic API Key</label>
-        <input id="global-apikey" type="password" placeholder="sk-ant-..." autocomplete="off" />
-        <div style="font-size:.78rem;color:var(--sub);margin-top:-6px;margin-bottom:10px">
-          נשמר רק במכשיר שלך. מתאים לניסוי אישי בלבד.
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- ══ MAIN CONTENT ══ -->
@@ -1526,6 +1661,208 @@
   <!-- ══ SHEET BACKDROP ══ -->
   <div class="sheet-backdrop" id="sheetBackdrop"></div>
 
+  <!-- ══ MENU SHEET ══
+         MENU-001 (v1020 fix): #settingsArea was display:none with nothing ever
+         showing it, so trip settings were unreachable in v1011/RC2 and the new
+         v1020 sections inherited that. The hamburger now opens a real product
+         menu built on the existing .sheet system (same backdrop, scroll and
+         safe-area handling as every other sheet). All action buttons are the
+         SAME nodes with the SAME ids, relocated — every existing handler binds
+         unchanged. -->
+  <div class="sheet menu-sheet" id="menuSheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <div class="sheet-title">תפריט</div>
+        <button class="sheet-close" id="menuSheetClose" type="button">✕</button>
+      </div>
+
+      <div class="menu-quick">
+          <button class="menu-quick-btn" id="homeBtn" type="button">
+          <span class="sec-icon">🏠</span>
+          הום
+          </button>
+          <button class="menu-quick-btn" id="newTripBtn" type="button">
+          <span class="sec-icon">🧳</span>
+          טיול חדש
+          </button>
+          <button class="menu-quick-btn" id="todayBtn" type="button">
+          <span class="sec-icon">📅</span>
+          היום
+          </button>
+          <button class="menu-quick-btn" id="jumpNowBtn" type="button">
+          <span class="sec-icon">⏱️</span>
+          עכשיו
+          </button>
+      </div>
+
+      <div id="settingsArea">
+      <!-- FIELDS-001 (v1020 RC3): the עיר / מלון / אזור מרכזי block was removed
+           outright rather than hidden, together with its inputs, listeners and
+           init/restore/reset assignments. Legacy settings.city/.hotel/.baseArea
+           values inside older backups are still carried through untouched by
+           normalizeSettings(), so old backups keep restoring correctly. -->
+      <!-- AI-DISABLE-001 (v1009): hidden alongside the AI helper entry points.
+           Input, its saved value, and its event listener are untouched —
+           only visibility changes — so re-enabling AI later does not require
+           restoring this field from scratch. -->
+      <div id="apiKeyFieldWrap" style="display:none">
+        <label>🔑 Anthropic API Key</label>
+        <input id="global-apikey" type="password" placeholder="sk-ant-..." autocomplete="off" />
+        <div style="font-size:.78rem;color:var(--sub);margin-top:-6px;margin-bottom:10px">
+          נשמר רק במכשיר שלך. מתאים לניסוי אישי בלבד.
+        </div>
+      </div>
+
+      <!-- PREFS-001 (v1020): Trip Preferences. Stored under settings.prefs.
+           All optional, no onboarding, no gating. Nothing consumes these yet —
+           they are captured and shown back only. -->
+      <div class="sec">
+        <button class="sec-head" id="prefsHead" type="button" aria-expanded="false" aria-controls="prefsBody">
+          <span class="sec-title">🧭 העדפות טיול</span>
+          <span class="sec-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div class="sec-body" id="prefsBody">
+          <label>קצב הטיול</label>
+          <div class="opt-row" id="prefPace">
+            <button class="opt" type="button" data-val="relaxed">רגוע</button>
+            <button class="opt" type="button" data-val="balanced">מאוזן</button>
+            <button class="opt" type="button" data-val="packed">צפוף</button>
+          </div>
+
+          <label>תחבורה מועדפת</label>
+          <div class="opt-row opt-wrap" id="prefTransport">
+            <button class="opt" type="button" data-val="walk">הליכה</button>
+            <button class="opt" type="button" data-val="public">תחבורה ציבורית</button>
+            <button class="opt" type="button" data-val="taxi">מוניות / רכב</button>
+            <button class="opt" type="button" data-val="train">רכבות</button>
+          </div>
+
+          <label>מרחק הליכה מקסימלי (ק״מ)</label>
+          <input id="prefMaxWalk" type="number" min="0" max="50" step="0.5" placeholder="3" />
+
+          <label>רמת תקציב</label>
+          <div class="opt-row" id="prefBudget">
+            <button class="opt" type="button" data-val="low">חסכוני</button>
+            <button class="opt" type="button" data-val="mid">בינוני</button>
+            <button class="opt" type="button" data-val="high">מפנק</button>
+          </div>
+
+          <label>הערות חופשיות</label>
+          <textarea id="prefNotes" rows="2" placeholder="מה חשוב לכם בטיול הזה?"></textarea>
+          <div class="sec-note">ההעדפות נשמרות במכשיר בלבד ונכללות בגיבוי.</div>
+        </div>
+      </div>
+
+      <!-- ACCESS-001 (v1020): TripMaster Access foundation.
+           Practical travel-needs language only. No medical question, no
+           diagnosis field, and no accessibility claim: TripMaster has no
+           verified accessibility data source, so this stores and displays
+           preferences and does nothing else. -->
+      <div class="sec">
+        <button class="sec-head" id="accessHead" type="button" aria-expanded="false" aria-controls="accessBody">
+          <span class="sec-title">♿ TripMaster Access</span>
+          <span class="sec-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div class="sec-body" id="accessBody">
+          <div class="sec-note sec-note-strong">
+            TripMaster עוזר לתכנן לפי העדפות שהזנת. אנחנו לא בודקים נתוני נגישות באופן עצמאי — כדאי לאמת מול המקום או הספק לפני ההגעה.
+          </div>
+
+          <label>העדפות תנועה</label>
+          <div class="opt-row opt-wrap" id="accessToggles">
+            <button class="opt" type="button" data-key="stepFree">מסלול ללא מדרגות</button>
+            <button class="opt" type="button" data-key="avoidStairs">להימנע ממדרגות</button>
+            <button class="opt" type="button" data-key="elevatorNeeded">נדרשת מעלית</button>
+            <button class="opt" type="button" data-key="shortWalks">מרחקי הליכה קצרים</button>
+            <button class="opt" type="button" data-key="companion">נסיעה עם מלווה</button>
+            <button class="opt" type="button" data-key="quietPreference">העדפה למקומות שקטים</button>
+          </div>
+
+          <label>כיסא גלגלים</label>
+          <div class="opt-row" id="accessWheelchair">
+            <button class="opt" type="button" data-val="none">לא רלוונטי</button>
+            <button class="opt" type="button" data-val="manual">ידני</button>
+            <button class="opt" type="button" data-val="electric">ממונע</button>
+          </div>
+
+          <label>צרכים והעדפות לתכנון</label>
+          <textarea id="accessNotes" rows="2" placeholder="מה יעזור לכם בתכנון?"></textarea>
+          <div class="sec-note">אין צורך לפרט מידע רפואי. נשמר במכשיר בלבד.</div>
+        </div>
+      </div>
+
+      <!-- TOOLS-001 (v1020): Trip Tools, placed inside the existing settings
+           panel rather than a new bottom nav tab, so the app shell is
+           unchanged. Cards render from PARTNER_CONFIG. With
+           PARTNERS_LIVE = false every commercial card is a non-interactive
+           "בקרוב" placeholder and no URL is reachable. -->
+      <div class="sec">
+        <button class="sec-head" id="toolsHead" type="button" aria-expanded="false" aria-controls="toolsBody">
+          <span class="sec-title">🧰 כלים לטיול</span>
+          <span class="sec-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div class="sec-body" id="toolsBody">
+          <div class="tools-grid" id="toolsGrid"></div>
+          <div class="sec-note" id="toolsDisclosure" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- Data utilities: available, but out of the top-level toolbar. -->
+      <div class="sec">
+        <button class="sec-head" id="dataHead" type="button" aria-expanded="false" aria-controls="dataBody">
+          <span class="sec-title">💾 נתונים וגיבוי</span>
+          <span class="sec-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div class="sec-body" id="dataBody">
+          <div class="menu-list">
+          <button class="menu-item" id="backupBtn" type="button">
+          <span class="sec-icon">💾</span>
+          גיבוי
+          </button>
+          <button class="menu-item" id="restoreBtn" type="button">
+          <span class="sec-icon">📂</span>
+          שחזור
+          </button>
+          <button class="menu-item" id="exportBtn" type="button">
+          <span class="sec-icon">📤</span>
+          ייצא
+          </button>
+          </div>
+          <div class="sec-note">הגיבוי נשמר כקובץ במכשיר שלכם. שחזור מחליף את הנתונים הקיימים.</div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="menu-list">
+          <button class="menu-item" id="aboutBtn" type="button">
+          <span class="sec-icon">ℹ️</span>
+          אודות
+          </button>
+        </div>
+      </div>
+
+      <!-- Destructive action, deliberately last and visually separated. -->
+      <div class="sec menu-danger">
+        <div class="menu-list">
+          <button class="menu-item menu-item-danger" id="resetBtn" type="button">
+          <span class="sec-icon">↩️</span>
+          איפוס
+          </button>
+        </div>
+        <div class="sec-note">איפוס מוחק את כל הטיולים והנתונים מהמכשיר. מומלץ לגבות קודם.</div>
+      </div>
+
+      <!-- QA-001: internal check tool. Hidden from normal users; the handler and
+           element are intact so it can be re-enabled by removing this style. -->
+      <div id="qaWrap" style="display:none">
+        <button class="menu-item" id="qaBtn" type="button">
+          <span class="sec-icon">✅</span>
+          QA
+        </button>
+      </div>
+    </div><!-- /settingsArea -->
+  </div><!-- /menuSheet -->
+
   <!-- ══ ADD/EDIT SHEET ══ -->
   <div class="sheet" id="sheet">
     <div class="sheet-handle"></div>
@@ -1568,6 +1905,12 @@
         <button class="btn btn-muted" id="addWithReminderBtn" type="button">📅 שמור ליומן עם תזכורת</button>
         <button class="btn btn-primary" id="addSaveBtn" type="button">שמור</button>
       </div>
+      <!-- GCAL-001 (v1020): secondary path only. The ICS button above stays the
+           primary action because it is the only route that carries reminderMin
+           exactly and works offline. The reminder limitation is disclosed here,
+           at the point of the tap, not in a help screen. -->
+      <button class="btn btn-link" id="addGoogleCalBtn" type="button">פתח ב-Google Calendar</button>
+      <div class="gcal-note">נפתח ב-Google Calendar עם הפרטים מוכנים. התזכורת שבחרתם לא עוברת — Google מגדיר תזכורת ברירת מחדל. דורש חיבור לאינטרנט.</div>
       <button class="btn btn-danger" id="addDeleteBtn" style="margin-top:10px; display:none" type="button">🗑 מחק פעילות</button>
       <button class="btn btn-muted" id="addCancelBtn" style="margin-top:10px" type="button">ביטול</button>
     </div>
@@ -1716,7 +2059,7 @@
       <button class="sheet-close" id="aboutSheetClose" type="button">✕</button>
     </div>
     <div class="about-body">
-      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1011</span>
+      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1020</span>
 
       <h4>🔒 פרטיות</h4>
       <div>
@@ -1755,7 +2098,7 @@
     const KEY_ACTIVE_TRIP = "tm_active_trip";
 
     // ── Beta readiness (v1009) ──
-    const APP_VERSION = "v1011";
+    const APP_VERSION = "v1020";
     // Fill in a real support address here to enable "שלח משוב" via mailto.
     // Left blank on purpose: opens the mail app with subject/body prefilled,
     // letting the tester pick their own mail account / fill the "To" field.
@@ -1850,13 +2193,9 @@
     /* ── Header info ── */
     function updateHeaderInfo() {
       const activeTrip = getActiveTrip();
-      const cityName = settings.city || "My Trip";
-      
-      if (activeTrip) {
-        $("headerCity").innerText = activeTrip.name;
-      } else {
-        $("headerCity").innerText = cityName;
-      }
+      // FIELDS-001 (v1020 RC3): active trip name, else the product name.
+      // No longer falls back to settings.city.
+      $("headerCity").innerText = (activeTrip && activeTrip.name) ? activeTrip.name : "TripMaster";
 
       // dates from days array
       if (days.length > 0) {
@@ -2036,10 +2375,62 @@
     }
 
     /* ── Settings ── */
-    let settings = safeParseJSON(
-      KEY_SETTINGS,
-      { city: "", hotel: "", baseArea: "", defaultReminderMin: 30, apiKey: "" }
-    );
+    /* ── SETTINGS-NORM-001 (v1020) ──
+       v1011 built the settings default inline and doRestore() replaced the whole
+       object with backup.settings, so restoring a pre-v1020 backup would have
+       deleted prefs/access, and a backup with no settings key would have made
+       `settings` undefined mid-session. DEFAULT_SETTINGS is now the single
+       source of shape and normalizeSettings() fills any missing branch.
+       Additive only: no existing field is renamed, removed, or re-typed, and
+       no localStorage key changes. ── */
+    const DEFAULT_SETTINGS = {
+      // FIELDS-001 (v1020 RC3): city / hotel / baseArea are no longer active
+      // fields, so they are absent here. They are NOT purged from stored data:
+      // normalizeSettings() spreads the incoming object over these defaults, so
+      // any legacy value in an older backup is preserved untouched.
+      defaultReminderMin: 30, apiKey: "",
+      prefs: {
+        v: 1,
+        pace: null,            // "relaxed" | "balanced" | "packed" | null
+        transport: [],         // "walk" | "public" | "taxi" | "train"
+        maxWalkKm: null,       // number | null
+        budget: null,          // "low" | "mid" | "high" | null
+        food: [],              // free tags
+        attractions: [],       // free tags
+        notes: ""
+      },
+      access: {
+        v: 1,
+        stepFree: false,
+        avoidStairs: false,
+        elevatorNeeded: false,
+        shortWalks: false,
+        wheelchair: "none",    // "none" | "manual" | "electric"
+        companion: false,
+        quietPreference: false,
+        notes: ""
+      }
+    };
+
+    // Fills missing branches without overwriting anything the user already has.
+    function normalizeSettings(raw) {
+      const src = (raw && typeof raw === "object") ? raw : {};
+      const out = Object.assign({}, DEFAULT_SETTINGS, src);
+      out.prefs  = Object.assign({}, DEFAULT_SETTINGS.prefs,  (src.prefs  && typeof src.prefs  === "object") ? src.prefs  : {});
+      out.access = Object.assign({}, DEFAULT_SETTINGS.access, (src.access && typeof src.access === "object") ? src.access : {});
+      if (["none", "manual", "electric"].indexOf(out.access.wheelchair) === -1) {
+        out.access.wheelchair = "none";
+      }
+      // Object.assign is shallow, so the array defaults would otherwise be
+      // shared by reference with DEFAULT_SETTINGS and across calls. Always
+      // hand back a fresh array.
+      ["transport", "food", "attractions"].forEach((k) => {
+        out.prefs[k] = Array.isArray(out.prefs[k]) ? out.prefs[k].slice() : [];
+      });
+      return out;
+    }
+
+    let settings = normalizeSettings(safeParseJSON(KEY_SETTINGS, DEFAULT_SETTINGS));
 
     function saveSettings() {
       localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
@@ -2061,7 +2452,16 @@
     }
     function closeConfirmSheet(sheetId) {
       $(sheetId).classList.remove("open");
-      $("sheetBackdrop").classList.remove("open");
+      syncBackdrop();
+    }
+
+    /* MENU-003 (v1020 RC3): confirmation sheets now stack over an open menu.
+       Unconditionally clearing the backdrop on close would leave the menu
+       visible but undimmed and un-dismissable by tapping outside. Re-derive
+       the backdrop from whatever is still open instead. */
+    function syncBackdrop() {
+      const stillOpen = document.querySelector(".sheet.open");
+      $("sheetBackdrop").classList.toggle("open", !!stillOpen);
     }
 
     /* ── About / Beta feedback (v1009) ── */
@@ -2853,6 +3253,261 @@
         });
     }
 
+    /* ══ v1020 MODULE: Trip Tools / Preferences / Access ══════════════════ */
+
+    /* ── PARTNER-001 (v1020): inert commercial foundation ──
+       Structure only. PARTNERS_LIVE is false, every entry has url: null and
+       enabled: false, and renderTools() refuses to make a card interactive
+       unless BOTH the master flag and a real https URL are present. No
+       affiliate disclosure is shown while nothing is live, because disclosing
+       partner links that do not exist is just noise. Config is a frozen
+       constant, not localStorage: it is configuration, not user data, so it
+       adds no migration or backup surface. ── */
+    const PARTNERS_LIVE = false;
+
+    const PARTNER_CONFIG = Object.freeze({
+      version: 1,
+      disclosure: "חלק מהקישורים הם קישורי שותפים. המחיר עבורכם לא משתנה, וזה עוזר לנו לפתח את TripMaster.",
+      partners: Object.freeze([
+        { id: "docs_backup", category: "documents", label: "מסמכים וגיבוי",
+          description: "גיבוי וייצוא של הטיולים",  icon: "🗂️",
+          url: null, enabled: true,  internal: "backup", priority: 10 },
+        { id: "esim",        category: "esim",      label: "eSIM",
+          description: "חבילות גלישה לחו״ל",       icon: "📶",
+          url: null, enabled: false, priority: 20 },
+        { id: "insurance",   category: "insurance", label: "ביטוח נסיעות",
+          description: "השוואת ביטוחי נסיעות",     icon: "🛡️",
+          url: null, enabled: false, priority: 30 },
+        { id: "activities",  category: "activities",label: "אטרקציות ופעילויות",
+          description: "כרטיסים וסיורים",          icon: "🎟️",
+          url: null, enabled: false, priority: 40 },
+        { id: "hotels",      category: "hotels",    label: "מלונות",
+          description: "לינה ליעד",                icon: "🏨",
+          url: null, enabled: false, priority: 50 },
+        { id: "luggage",     category: "luggage",   label: "שמירת מזוודות",
+          description: "אחסון בין צ׳ק־אין לצ׳ק־אאוט", icon: "🧳",
+          url: null, enabled: false, priority: 60 },
+        { id: "transport",   category: "transport", label: "תחבורה",
+          description: "העברות ונסיעות",           icon: "🚆",
+          url: null, enabled: false, priority: 70 },
+        { id: "accessibility", category: "accessibility", label: "נגישות",
+          description: "שירותים לצרכי נגישות",     icon: "♿",
+          url: null, enabled: false, priority: 80 }
+      ])
+    });
+
+    function partnerIsLive(p) {
+      return !!(PARTNERS_LIVE && p.enabled && typeof p.url === "string" && p.url.indexOf("https://") === 0);
+    }
+
+    function renderTools() {
+      const grid = $("toolsGrid");
+      if (!grid) return;
+      grid.innerHTML = "";
+      let anyLive = false;
+
+      PARTNER_CONFIG.partners
+        .slice()
+        .sort((a, b) => a.priority - b.priority)
+        .forEach((p) => {
+          const live     = partnerIsLive(p);
+          const internal = p.enabled && p.internal === "backup";
+          const usable   = live || internal;
+          if (live) anyLive = true;
+
+          const card = document.createElement(usable ? "button" : "div");
+          card.className = "tool-card " + (usable ? "enabled" : "soon");
+          if (usable) card.type = "button";
+
+          const icon = document.createElement("div");
+          icon.className = "tool-icon"; icon.textContent = p.icon;
+          const label = document.createElement("div");
+          label.className = "tool-label"; label.textContent = p.label;
+          const sub = document.createElement("div");
+          sub.className = "tool-sub"; sub.textContent = p.description;
+          card.appendChild(icon); card.appendChild(label); card.appendChild(sub);
+
+          if (!usable) {
+            const chip = document.createElement("span");
+            chip.className = "tool-soon-chip"; chip.textContent = "בקרוב";
+            card.appendChild(chip);
+          }
+
+          if (internal) {
+            card.addEventListener("click", () => {
+              // MENU-003 (v1020 RC3): backup does not close the menu.
+              exportBackup();
+            });
+          } else if (live) {
+            card.addEventListener("click", () => {
+              window.open(p.url, "_blank", "noopener");
+            });
+          }
+          grid.appendChild(card);
+        });
+
+      // Disclosure appears only once a real partner link exists.
+      const disc = $("toolsDisclosure");
+      if (disc) {
+        disc.textContent = anyLive ? PARTNER_CONFIG.disclosure : "";
+        disc.style.display = anyLive ? "" : "none";
+      }
+    }
+
+    /* ── MENU-001 (v1020 fix) ──
+       Uses the same open/closed convention as every other sheet, so the
+       backdrop, animation and z-index behaviour are the proven ones. */
+    function openMenuSheet() {
+      $("menuSheet").classList.add("open");
+      $("sheetBackdrop").classList.add("open");
+    }
+    function closeMenuSheet() {
+      $("menuSheet").classList.remove("open");
+      $("sheetBackdrop").classList.remove("open");
+    }
+
+    /* ── Collapsible sections ── */
+    function wireSection(headId, secEl) {
+      const head = $(headId);
+      if (!head || !secEl) return;
+      head.addEventListener("click", () => {
+        const open = secEl.classList.toggle("open");
+        head.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    }
+
+    /* ── PREFS-001 / ACCESS-001 wiring ── */
+    function paintOptRow(rowId, currentValue) {
+      const row = $(rowId);
+      if (!row) return;
+      Array.prototype.forEach.call(row.querySelectorAll(".opt"), (b) => {
+        b.classList.toggle("on", b.dataset.val === currentValue);
+      });
+    }
+
+    function paintMultiRow(rowId, list) {
+      const row = $(rowId);
+      if (!row) return;
+      Array.prototype.forEach.call(row.querySelectorAll(".opt"), (b) => {
+        b.classList.toggle("on", list.indexOf(b.dataset.val) !== -1);
+      });
+    }
+
+    function paintToggleRow(rowId, obj) {
+      const row = $(rowId);
+      if (!row) return;
+      Array.prototype.forEach.call(row.querySelectorAll(".opt"), (b) => {
+        b.classList.toggle("on", !!obj[b.dataset.key]);
+      });
+    }
+
+    function renderPrefsAndAccess() {
+      paintOptRow("prefPace", settings.prefs.pace);
+      paintMultiRow("prefTransport", settings.prefs.transport);
+      paintOptRow("prefBudget", settings.prefs.budget);
+      if ($("prefMaxWalk")) $("prefMaxWalk").value = settings.prefs.maxWalkKm != null ? settings.prefs.maxWalkKm : "";
+      if ($("prefNotes"))   $("prefNotes").value   = settings.prefs.notes || "";
+      paintToggleRow("accessToggles", settings.access);
+      paintOptRow("accessWheelchair", settings.access.wheelchair);
+      if ($("accessNotes")) $("accessNotes").value = settings.access.notes || "";
+    }
+
+    function wirePrefsAndAccess() {
+      wireSection("prefsHead",  $("prefsHead")  && $("prefsHead").parentElement);
+      wireSection("accessHead", $("accessHead") && $("accessHead").parentElement);
+      wireSection("toolsHead",  $("toolsHead")  && $("toolsHead").parentElement);
+      // MENU-002 (v1020 RC3): dataHead shipped with the menu rebuild but was
+      // never passed to wireSection(), so the row rendered and did nothing.
+      wireSection("dataHead",   $("dataHead")   && $("dataHead").parentElement);
+
+      // Single-select rows: tapping the active option clears it (all optional).
+      [["prefPace", "pace"], ["prefBudget", "budget"]].forEach(([rowId, key]) => {
+        const row = $(rowId);
+        if (!row) return;
+        row.addEventListener("click", (e) => {
+          const btn = e.target.closest(".opt");
+          if (!btn) return;
+          settings.prefs[key] = (settings.prefs[key] === btn.dataset.val) ? null : btn.dataset.val;
+          saveSettings();
+          paintOptRow(rowId, settings.prefs[key]);
+        });
+      });
+
+      const tRow = $("prefTransport");
+      if (tRow) tRow.addEventListener("click", (e) => {
+        const btn = e.target.closest(".opt");
+        if (!btn) return;
+        const list = settings.prefs.transport;
+        const i = list.indexOf(btn.dataset.val);
+        if (i === -1) list.push(btn.dataset.val); else list.splice(i, 1);
+        saveSettings();
+        paintMultiRow("prefTransport", list);
+      });
+
+      const mw = $("prefMaxWalk");
+      if (mw) mw.addEventListener("input", () => {
+        const v = parseFloat(mw.value);
+        settings.prefs.maxWalkKm = isNaN(v) ? null : v;
+        saveSettings();
+      });
+
+      const pn = $("prefNotes");
+      if (pn) pn.addEventListener("input", () => {
+        settings.prefs.notes = pn.value;
+        saveSettings();
+      });
+
+      const aTog = $("accessToggles");
+      if (aTog) aTog.addEventListener("click", (e) => {
+        const btn = e.target.closest(".opt");
+        if (!btn) return;
+        settings.access[btn.dataset.key] = !settings.access[btn.dataset.key];
+        saveSettings();
+        paintToggleRow("accessToggles", settings.access);
+      });
+
+      const wc = $("accessWheelchair");
+      if (wc) wc.addEventListener("click", (e) => {
+        const btn = e.target.closest(".opt");
+        if (!btn) return;
+        settings.access.wheelchair = btn.dataset.val;
+        saveSettings();
+        paintOptRow("accessWheelchair", settings.access.wheelchair);
+      });
+
+      const an = $("accessNotes");
+      if (an) an.addEventListener("input", () => {
+        settings.access.notes = an.value;
+        saveSettings();
+      });
+    }
+
+    /* ── GCAL-001 (v1020): Google Calendar template hand-off ──
+       Secondary to the ICS path. Deliberately does NOT touch
+       downloadCalendarFile() or the VALARM output. Google's TEMPLATE format
+       has no reminder parameter, so reminderMin cannot be carried here — that
+       is disclosed in the UI next to the button. Needs a network connection
+       and only helps Google Calendar users, which is why it is not primary. */
+    function openGoogleCalendar(title, dateVal, timeVal, noteVal) {
+      const [year, month, day2] = dateVal.split("-").map(Number);
+      const [hour, min] = timeVal.split(":").map(Number);
+      const startDt = new Date(year, month - 1, day2, hour, min);
+      const endDt   = new Date(startDt.getTime() + 60 * 60 * 1000);
+      const pad = n => String(n).padStart(2, "0");
+      const toUTC = d => `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00Z`;
+      const url = "https://calendar.google.com/calendar/render?action=TEMPLATE"
+        + "&text=" + encodeURIComponent(title || "")
+        + "&dates=" + toUTC(startDt) + "/" + toUTC(endDt)
+        + "&details=" + encodeURIComponent(noteVal || "");
+      try {
+        const a = document.createElement("a");
+        a.href = url; a.target = "_blank"; a.rel = "noopener";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      } catch (err) {
+        window.location.href = url;
+      }
+    }
+
     /* ── Backup / Restore ── */
     function exportBackup() {
       const backup = {
@@ -2878,16 +3533,26 @@
         days = activeTrip
           ? JSON.parse(JSON.stringify(activeTrip.days || []))
           : JSON.parse(JSON.stringify(homeDaysToRestore));
-        settings = backup.settings;
+        // SETTINGS-NORM-001 (v1020): merge, never replace. An older backup has
+        // no prefs/access branch; normalizeSettings() supplies it instead of
+        // letting the restore delete it or leave settings undefined.
+        settings = normalizeSettings(backup.settings);
         localStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
         localStorage.setItem(KEY_ACTIVE_TRIP, activeTripId || "");
         localStorage.setItem(KEY_DAYS, JSON.stringify(homeDaysToRestore));
         localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
       } else {
         days = backup.days || [];
-        trips = [{ id: "trip_" + Date.now(), name: settings.city || "הטיול הראשי", days }];
+        // FIELDS-001 (v1020 RC3): name a legacy single-trip backup from the
+        // city stored in that backup. Previously this read the live settings,
+        // which no longer carries a city, so the original name would be lost.
+        const legacyCity = (backup.settings && backup.settings.city) ? backup.settings.city : "";
+        trips = [{ id: "trip_" + Date.now(), name: legacyCity || "הטיול הראשי", days }];
         activeTripId = trips[0].id;
-        settings = backup.settings;
+        // SETTINGS-NORM-001 (v1020): merge, never replace. An older backup has
+        // no prefs/access branch; normalizeSettings() supplies it instead of
+        // letting the restore delete it or leave settings undefined.
+        settings = normalizeSettings(backup.settings);
         localStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
         localStorage.setItem(KEY_ACTIVE_TRIP, activeTripId || "");
         localStorage.setItem(KEY_DAYS, JSON.stringify(days));
@@ -2900,11 +3565,8 @@
         document.documentElement.removeAttribute("data-theme");
         localStorage.setItem(KEY_THEME, "light");
       }
-      $("global-city").value    = settings.city || "";
-      $("global-hotel").value   = settings.hotel || "";
-      $("global-basearea").value = settings.baseArea || "";
       $("global-apikey").value  = settings.apiKey || "";
-      $("headerCity").innerText = settings.city || "My Trip";
+      renderPrefsAndAccess();   // v1020: repaint from the merged settings
       currentDayIndex = 0;
       renderDays();
       renderActivities(currentDayIndex);
@@ -2938,7 +3600,7 @@
       const systemPrompt = `אתה מתכנן טיולים מקצועי. ענה אך ורק בפורמט JSON הבא, ללא טקסט נוסף:
 {"summary":"תקציר קצר","activities":[{"time":"HH:MM","title":"שם הפעילות","note":"כתובת / טיפ"}]}
 כללים: 5-8 פעילויות, שעות ריאליות 09:00-22:00, כלול ארוחות.
-${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון: ${settings.hotel}` : ""}`;
+`;   // FIELDS-001 (v1020 RC3): stale city/hotel interpolation removed. AI stays hidden.
       try {
         const res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -2980,10 +3642,9 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
     ══════════════════════════════════════ */
 
     // Header menu toggle
-    $("settingsToggle").addEventListener("click", () => {
-      const sec = $("headerSecondary");
-      sec.classList.toggle("open");
-    });
+    // MENU-001 (v1020 fix): the hamburger now opens the product menu sheet.
+    $("settingsToggle").addEventListener("click", openMenuSheet);
+    $("menuSheetClose").addEventListener("click", closeMenuSheet);
 
     // Theme
     $("themeBtn").addEventListener("click", () => {
@@ -3003,7 +3664,7 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
 
     // New trip
     $("newTripBtn").addEventListener("click", () => {
-      $("headerSecondary").classList.remove("open");
+      closeMenuSheet();
       openNewTripSheet();
     });
     $("newTripSheetClose").addEventListener("click", closeNewTripSheet);
@@ -3039,32 +3700,29 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
 
     // Home
     $("homeBtn").addEventListener("click", () => {
-      $("headerSecondary").classList.remove("open");
+      closeMenuSheet();
       goHome();
     });
 
     // Settings inputs
-    $("global-city").addEventListener("input", () => {
-      settings.city = $("global-city").value;
-      saveSettings();
-      $("headerCity").innerText = settings.city || "My Trip";
-    });
-    $("global-hotel").addEventListener("input", () => { settings.hotel = $("global-hotel").value; saveSettings(); });
-    $("global-basearea").addEventListener("input", () => { settings.baseArea = $("global-basearea").value; saveSettings(); });
     $("global-apikey").addEventListener("input", () => { settings.apiKey = $("global-apikey").value; saveSettings(); });
 
     // Reset
     $("resetBtn").addEventListener("click", () => {
-      $("headerSecondary").classList.remove("open");
+      // MENU-003 (v1020 RC3): utility actions no longer auto-close the menu.
+      // The confirm sheet stacks above it, and after a reset the next likely
+      // action is Restore — which is right here in the same menu.
       confirmReset(() => {
         days = []; trips = []; activeTripId = null;
-        settings = { city: "", hotel: "", baseArea: "", defaultReminderMin: 30, apiKey: "" };
+        // SETTINGS-NORM-001 (v1020): rebuild from the shared default so a reset
+        // restores the full shape (prefs/access) instead of a partial object.
+        settings = normalizeSettings({});
         localStorage.removeItem(KEY_DAYS); localStorage.removeItem(KEY_SETTINGS);
         localStorage.removeItem(KEY_THEME); localStorage.removeItem(KEY_TRIPS);
         localStorage.removeItem(KEY_ACTIVE_TRIP);
         renderDays(); renderActivities(0);
-        $("global-city").value = ""; $("global-hotel").value = "";
-        $("global-basearea").value = ""; $("global-apikey").value = "";
+        $("global-apikey").value = "";
+        renderPrefsAndAccess();   // v1020: clear the new controls too
         $("headerCity").innerText = "My Trip";
         document.documentElement.removeAttribute("data-theme");
         showToast("כל הנתונים נמחקו 🗑️");
@@ -3073,7 +3731,7 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
 
     // Export text
     $("exportBtn").addEventListener("click", async () => {
-      $("headerSecondary").classList.remove("open");
+      // MENU-003 (v1020 RC3): stays open; the result is a toast, not a screen.
       let text = "";
       days.forEach((day, index) => {
         text += `יום ${index+1} — ${formatDateForTitle(day.date, "")}\n`;
@@ -3098,7 +3756,7 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
 
     // Today / Jump now
     $("todayBtn").addEventListener("click", () => {
-      $("headerSecondary").classList.remove("open");
+      closeMenuSheet();
       const idx = findTodayDayIndex();
       if (idx !== -1) {
         currentDayIndex = idx; renderDays(); renderActivities(currentDayIndex);
@@ -3109,7 +3767,7 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
     });
 
     $("jumpNowBtn").addEventListener("click", () => {
-      $("headerSecondary").classList.remove("open");
+      closeMenuSheet();
       const todayIdx = findTodayDayIndex();
       if (todayIdx === -1) { showToast("אין יום מתוכנן להיום 📅"); return; }
       currentDayIndex = todayIdx; renderDays(); renderActivities(currentDayIndex);
@@ -3123,11 +3781,12 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
 
     // Backup / Restore
     $("backupBtn").addEventListener("click", () => {
-      $("headerSecondary").classList.remove("open");
+      // MENU-003 (v1020 RC3): stays open; downloading a file is not navigation.
       exportBackup();
     });
     $("restoreBtn").addEventListener("click", () => {
-      $("headerSecondary").classList.remove("open");
+      // MENU-003 (v1020 RC3): stays open behind the file picker and the
+      // restore confirmation, so the user is not stranded mid-flow.
       $("restoreInput").click();
     });
 
@@ -3203,6 +3862,41 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
       $("addWithReminderBtn").disabled = false;
     });
 
+    // GCAL-001 (v1020): mirrors the ICS handler's save-then-hand-off order, so
+    // the activity is stored either way and cancelling in Google Calendar can
+    // never lose it. Deliberately separate from downloadCalendarFile().
+    $("addGoogleCalBtn").addEventListener("click", () => {
+      if (isSavingActivity) return;
+      isSavingActivity = true;
+      $("addSaveBtn").disabled = true;
+      $("addWithReminderBtn").disabled = true;
+      $("addGoogleCalBtn").disabled = true;
+
+      const titleCheck = $("addTitle").value.trim();
+      if (!titleCheck) {
+        showToast("\u05d7\u05e1\u05e8 \u05e9\u05dd \u05e4\u05e2\u05d9\u05dc\u05d5\u05ea");
+        isSavingActivity = false;
+        $("addSaveBtn").disabled = false;
+        $("addWithReminderBtn").disabled = false;
+        $("addGoogleCalBtn").disabled = false;
+        return;
+      }
+      const dateVal = $("addDate").value || todayISO();
+      const timeVal = $("addTime").value || "12:00";
+      const noteVal = $("addNote").value.trim();
+      if (editingDayIndex !== null && editingItemIndex !== null) {
+        editItem(editingDayIndex, editingItemIndex);
+      } else {
+        addItem();
+      }
+      openGoogleCalendar(titleCheck, dateVal, timeVal, noteVal);
+
+      isSavingActivity = false;
+      $("addSaveBtn").disabled = false;
+      $("addWithReminderBtn").disabled = false;
+      $("addGoogleCalBtn").disabled = false;
+    });
+
     // AI strip + AI button
     $("aiStripBtn").addEventListener("click", openAISheet);
     $("aiBtn").addEventListener("click", openAISheet);
@@ -3243,11 +3937,12 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
       closeConfirmSheet("confirmResetSheet");
       closeConfirmSheet("confirmRestoreSheet");
       closeAboutSheet();
+      closeMenuSheet();   // MENU-001 (v1020 fix)
     });
 
     // QA button
     $("qaBtn").addEventListener("click", () => {
-      $("headerSecondary").classList.remove("open");
+      closeMenuSheet();
       const checks = [
         Boolean($("addBtn")), Boolean($("activityList")), Boolean($("sheet")),
         Boolean(window.localStorage), typeof escapeHtml === "function", typeof todayISO === "function"
@@ -3257,7 +3952,7 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
 
     // About / Beta feedback
     $("aboutBtn").addEventListener("click", () => {
-      $("headerSecondary").classList.remove("open");
+      closeMenuSheet();
       openAboutSheet();
     });
     $("aboutSheetClose").addEventListener("click", closeAboutSheet);
@@ -3285,11 +3980,13 @@ ${settings.city ? `עיר: ${settings.city}` : ""}${settings.hotel ? ` מלון:
       document.documentElement.setAttribute("data-theme", "dark");
     }
 
-    $("global-city").value     = settings.city;
-    $("global-hotel").value    = settings.hotel;
-    $("global-basearea").value = settings.baseArea;
     $("global-apikey").value   = settings.apiKey || "";
-    $("headerCity").innerText  = settings.city || "My Trip";
+    $("headerCity").innerText  = "TripMaster";   // FIELDS-001 (v1020 RC3)
+
+    // v1020: Trip Tools / Preferences / Access
+    wirePrefsAndAccess();
+    renderPrefsAndAccess();
+    renderTools();
 
     const activeTrip = getActiveTrip();
     if (activeTrip) days = activeTrip.days;
