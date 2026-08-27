@@ -2,13 +2,14 @@
 // index.html is only ever picked up when sw.js itself changes AND the cache
 // name changes. Bumped for RC5 testing so local QA definitely loads this
 // build. The final v1030 release may return this to "tripmaster-v1030".
-const CACHE_NAME = "tripmaster-v1030-rc5";
+const CACHE_NAME = "tripmaster-v1030-rc6";
 
 // Core assets required for the app shell to work offline.
 // If any of these fail to cache, installation fails (as intended).
 const CORE_ASSETS = [
   "./",
   "./index.html",
+  "./styles.css",
   "./manifest.json",
   "./sw.js",
 ];
