@@ -13,6 +13,46 @@
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
 
+  <script>
+  /* ══ DIR-BOOT-001 (v1040) ═══════════════════════════════════════════════
+     Cold-boot direction flash. <html> ships as lang="he" dir="rtl", and the
+     saved language is only applied by applyLanguage() inside
+     DOMContentLoaded — i.e. after config.js, i18n.js, the stylesheet and the
+     first paint. An English/Russian/Spanish/Portuguese user therefore saw a
+     right-to-left frame before the layout flipped.
+
+     This reads ONE key, synchronously, before the body is parsed, and sets
+     the two attributes applyLanguage() would have set anyway. It is a
+     repaint optimisation, not a source of truth: applyLanguage() still runs
+     later and still wins, so a wrong or stale value here is corrected
+     within the same boot and can never leave the app in a bad state.
+
+     Constraints deliberately respected:
+       - No network, no new file, no new storage key, no write of any kind.
+       - Runs BEFORE the BOOT-GUARD script and shares nothing with it. It
+         declares no globals and cannot throw out of its own try/catch, so a
+         missing config.js/i18n.js still reaches the guard unchanged.
+       - The key name and the lang/dir pairs are duplicated from
+         KEY_SETTINGS and LANG_META on purpose: config.js and i18n.js have
+         not loaded yet. Keep the two in sync when a language is activated;
+         an unknown code here simply falls through and changes nothing. ══ */
+  (function () {
+    try {
+      var raw = localStorage.getItem("tm_settings_clean");
+      if (!raw) return;
+      var lang = JSON.parse(raw).language;
+      var DIRS = {
+        he: ["he", "rtl"], en: ["en", "ltr"], ar: ["ar", "rtl"],
+        ru: ["ru", "ltr"], es: ["es", "ltr"], pt: ["pt-BR", "ltr"]
+      };
+      var m = DIRS[lang];
+      if (!m) return;
+      document.documentElement.lang = m[0];
+      document.documentElement.dir  = m[1];
+    } catch (e) { /* no storage, corrupt JSON: leave the shipped defaults */ }
+  })();
+  </script>
+
 </head>
 
 <body>
@@ -40,7 +80,7 @@
         <button class="header-icon-btn" id="themeBtn" type="button" data-i18n-title="header_theme_title" title="ערכת נושא">
           🌓
         </button>
-        <button class="header-switch-btn" id="switchTripBtn" type="button">
+        <button class="header-switch-btn" id="switchTripBtn" type="button" data-i18n-aria-label="aria_sheet_trips" aria-label="החלפת טיול">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="17 1 21 5 17 9"/>
             <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
@@ -57,13 +97,43 @@
   <!-- ══ MAIN CONTENT ══ -->
   <div class="container">
 
+    <!-- HOME-DASH-001 (v1040-RC2): Home is a dashboard/hub, never a hidden
+         itinerary container. currentView and activeTripId are independent in JS. -->
+    <section class="home-dashboard" id="homeDashboard" aria-labelledby="homeDashboardTitle" style="display:none">
+      <div class="home-dashboard-head">
+        <div>
+          <h2 id="homeDashboardTitle" data-i18n="home_dashboard_title">Home</h2>
+          <p data-i18n="home_dashboard_sub">Your trips, current plan and what comes next.</p>
+        </div>
+      </div>
+      <div id="homeDashboardBody"></div>
+    </section>
+
+    <div id="plannerView">
     <!-- Days strip -->
     <div class="days-strip-wrap">
       <div class="days-strip-header">
         <span class="days-strip-label" data-i18n="days_label">ימים</span>
         <span class="days-strip-meta" id="currentSub"></span>
+        <!-- DAY-DEL-001 (v1040): a visible delete control for the selected
+             day. Before v1040 the only way to delete a day was a long-press /
+             right-click on its chip, which then raised the ACTIVITY delete
+             confirmation. Hidden by renderDays() whenever there is no day. -->
+        <button class="strip-danger-btn" id="deleteDayBtn" type="button"
+                data-i18n-aria-label="aria_day_delete" aria-label="מחק את היום הזה"
+                data-i18n-title="day_delete_title" title="מחיקת היום" style="display:none">🗑</button>
       </div>
       <div class="chips" id="dayChips"></div>
+    </div>
+
+    <!-- ACCESS-PROFILE-001 (v1040 / D5): read-only echo of the saved Access
+         profile. Informational only — nothing here is matched against the
+         activities, and the note says so. Rendered empty (and hidden) unless
+         at least one preference is actually set. -->
+    <div class="access-profile" id="accessProfileStrip" style="display:none">
+      <div class="access-profile-head" id="accessProfileTitle" data-i18n="access_profile_title">העדפות הנגישות שלכם</div>
+      <div class="access-profile-chips" id="accessProfileChips"></div>
+      <div class="access-profile-note" data-i18n="access_profile_note">מוצג לתזכורת בזמן התכנון. TripMaster לא בדק את הפעילויות מול ההעדפות האלה.</div>
     </div>
 
     <!-- Hero card: current / next activity -->
@@ -110,6 +180,7 @@
         </svg>
       </div>
     </div>
+    </div><!-- /#plannerView -->
 
   </div>
 
@@ -138,11 +209,11 @@
          safe-area handling as every other sheet). All action buttons are the
          SAME nodes with the SAME ids, relocated — every existing handler binds
          unchanged. -->
-  <div class="sheet menu-sheet" id="menuSheet">
+  <div class="sheet menu-sheet" id="menuSheet" role="dialog" aria-modal="true" aria-labelledby="menuSheetTitle">
       <div class="sheet-handle"></div>
       <div class="sheet-head">
-        <div class="sheet-title" data-i18n="menu_title">תפריט</div>
-        <button class="sheet-close" id="menuSheetClose" type="button">✕</button>
+        <div class="sheet-title" id="menuSheetTitle" data-i18n="menu_title">תפריט</div>
+        <button class="sheet-close" id="menuSheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
       </div>
 
       <div class="menu-quick">
@@ -161,6 +232,16 @@
           <button class="menu-quick-btn" id="jumpNowBtn" type="button">
           <span class="sec-icon">⏱️</span>
           <span data-i18n="menu_now">עכשיו</span>
+          </button>
+          <!-- OVERVIEW-001 (v1040) -->
+          <button class="menu-quick-btn" id="overviewBtn" type="button">
+          <span class="sec-icon">🗺️</span>
+          <span data-i18n="menu_overview">סקירה</span>
+          </button>
+          <!-- TRIPMETA-001 (v1040): rename + destination + time zone -->
+          <button class="menu-quick-btn" id="tripDetailsBtn" type="button">
+          <span class="sec-icon">✏️</span>
+          <span data-i18n="menu_trip_details">פרטי טיול</span>
           </button>
       </div>
 
@@ -221,8 +302,13 @@
           <div class="opt-row opt-wrap" id="prefTransport">
             <button class="opt" type="button" data-val="walk" data-i18n="prefs_transport_walk">הליכה</button>
             <button class="opt" type="button" data-val="public" data-i18n="prefs_transport_public">תחבורה ציבורית</button>
-            <button class="opt" type="button" data-val="taxi" data-i18n="prefs_transport_taxi">מוניות / רכב</button>
+            <button class="opt" type="button" data-val="taxi" data-i18n="prefs_transport_taxi">מוניות / נסיעות</button>
             <button class="opt" type="button" data-val="train" data-i18n="prefs_transport_train">רכבות</button>
+          </div>
+
+          <label data-i18n="mobility_self_drive_label">נהיגה עצמית</label>
+          <div class="opt-row opt-wrap" id="prefNoSelfDrive">
+            <button class="opt" type="button" data-key="noSelfDrive" data-i18n="mobility_no_self_drive">לא מתכנן נהיגה עצמית</button>
           </div>
 
           <label data-i18n="prefs_max_walk">מרחק הליכה מקסימלי (ק״מ)</label>
@@ -238,6 +324,7 @@
           <label data-i18n="prefs_notes">הערות חופשיות</label>
           <textarea id="prefNotes" rows="2" data-i18n-placeholder="prefs_notes_ph" placeholder="מה חשוב לכם בטיול הזה?"></textarea>
           <div class="sec-note" data-i18n="prefs_note">ההעדפות נשמרות במכשיר בלבד ונכללות בגיבוי.</div>
+          <div class="sec-note sec-note-strong" data-i18n="mobility_info_note">העדפות התחבורה הן מידע לתכנון בלבד. TripMaster עדיין לא מחשב מסלולים, זמני נסיעה או מרחקי הליכה.</div>
         </div>
       </div>
 
@@ -282,7 +369,7 @@
            unchanged. Cards render from PARTNER_CONFIG. With
            PARTNERS_LIVE = false every commercial card is a non-interactive
            "בקרוב" placeholder and no URL is reachable. -->
-      <div class="sec">
+      <div class="sec" id="toolsSection">
         <button class="sec-head" id="toolsHead" type="button" aria-expanded="false" aria-controls="toolsBody">
           <span class="sec-title" data-i18n="tools_title">🧰 כלים לטיול</span>
           <span class="sec-chevron" aria-hidden="true">▾</span>
@@ -350,28 +437,63 @@
   </div><!-- /menuSheet -->
 
   <!-- ══ ADD/EDIT SHEET ══ -->
-  <div class="sheet" id="sheet">
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
       <h3 id="sheetTitle">הוסף פעילות</h3>
-      <button class="sheet-close" id="sheetClose" type="button">✕</button>
+      <button class="sheet-close" id="sheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
     <div id="addPane">
       <div class="row">
         <div>
-          <label data-i18n="field_date">תאריך</label>
+          <label for="addDate" data-i18n="field_date">תאריך</label>
           <input type="date" id="addDate" />
         </div>
         <div>
-          <label data-i18n="field_time">שעה</label>
+          <label for="addTime" data-i18n="field_time">שעה</label>
           <input type="time" id="addTime" />
         </div>
       </div>
-      <label data-i18n="field_title">כותרת</label>
+      <!-- ENDTIME-001 (v1040 / B4): optional. Left blank, the activity keeps
+           behaving exactly as it did before v1040 — one hour in every export.
+           No conflict detection is attached to this field. -->
+      <label for="addEndTime" data-i18n="field_end_time">שעת סיום</label>
+      <input type="time" id="addEndTime" />
+      <div class="field-note" data-i18n="field_end_time_note">בלי שעת סיום, הפעילות מיוצאת ליומן כשעה אחת — בדיוק כמו קודם.</div>
+
+      <label for="addTitle" data-i18n="field_title">כותרת</label>
       <input id="addTitle" data-i18n-placeholder="field_title_ph" placeholder="למשל: Natural History Museum" />
-      <label data-i18n="field_note">הערה</label>
-      <textarea id="addNote" data-i18n-placeholder="field_note_ph" placeholder="כתובת / לינק / הערה"></textarea>
-      <label data-i18n="field_reminder">🔔 תזכורת</label>
+
+      <!-- LOCATION-001 (v1040 / B1): the field navigation and calendar export
+           actually use. Before v1040 both used the free-form note, so a note
+           like "לקנות כרטיסים מראש" became a Maps query. Legacy notes are
+           left exactly as they are and are never parsed for an address. -->
+      <label for="addLocation" data-i18n="field_location">מיקום</label>
+      <input id="addLocation" data-i18n-placeholder="field_location_ph" placeholder="שם המקום או כתובת לניווט" />
+      <div class="field-note" data-i18n="field_location_note">המיקום משמש לניווט ולייצוא ליומן. ההערה נשארת הערה חופשית.</div>
+
+      <label for="addNote" data-i18n="field_note">הערה</label>
+      <textarea id="addNote" data-i18n-placeholder="field_note_ph" placeholder="לינק, טלפון, מה לזכור"></textarea>
+
+      <!-- CATEGORY-001 (v1040 / E5): getCategoryIcon() already preferred
+           item.category over the title-keyword guess; it simply had no
+           control. Options are rendered by renderCategoryOptions(). -->
+      <label for="addCategory" data-i18n="field_category">סוג פעילות</label>
+      <select id="addCategory"></select>
+
+      <!-- ACCESS-ACT-001 (v1040 / D1,D2): the traveller's own research. The
+           wording never claims TripMaster checked anything. -->
+      <label for="addAccessStatus" data-i18n="field_access_status">נגישות הפעילות</label>
+      <select id="addAccessStatus">
+        <option value="" data-i18n="access_status_unknown">לא נבדק</option>
+        <option value="stepfree" data-i18n="access_status_stepfree">בדקתי — ללא מדרגות</option>
+        <option value="problem" data-i18n="access_status_problem">בדקתי — יש בעיה</option>
+      </select>
+      <label for="addAccessNote" data-i18n="field_access_note">הערת נגישות</label>
+      <textarea id="addAccessNote" rows="2" data-i18n-placeholder="field_access_note_ph" placeholder="למשל: רמפה בכניסה הצדדית, מעלית לא פעילה אחרי 18:00"></textarea>
+      <div class="field-note" data-i18n="access_activity_note">המידע הזה נשמר על ידכם ומוצג כפי שהזנתם. TripMaster לא בודק נגישות של מקומות.</div>
+
+      <label for="addReminder" data-i18n="field_reminder">🔔 תזכורת</label>
       <select id="addReminder">
         <option value="-1" data-i18n="rem_none">ללא תזכורת</option>
         <option value="10" data-i18n="rem_10">10 דקות לפני</option>
@@ -382,7 +504,7 @@
       </select>
       <!-- CAL-COPY-001 (v1011): clarify that the in-app reminder is a label only,
            and that a real pop-up alert comes from the phone's calendar app after
-           saving to calendar (downloadCalendarFile() already writes a VALARM).
+           saving to calendar (exportActivityToIcs() already writes a VALARM).
            Copy only — no logic, no data-model, no ICS change. -->
       <div style="font-size:.78rem;color:var(--sub);margin-top:-6px;margin-bottom:10px;line-height:1.5" data-i18n="cal_help">התזכורת מוצגת בתוך TripMaster בלבד. להתראה אמיתית גם כשהאפליקציה סגורה — שמרו את הפעילות ליומן. ההתראה תופעל דרך יומן הטלפון.</div>
       <div class="row sheet-actions" style="margin-top:4px">
@@ -404,11 +526,11 @@
        AI-DISABLE-001 (v1009): no longer reachable from normal UI since both
        aiStripBtn and aiBtn are hidden. Left in place untouched (not deleted)
        so re-enabling AI later is a matter of un-hiding the entry points. -->
-  <div class="sheet" id="aiSheet">
+  <div class="sheet" id="aiSheet" role="dialog" aria-modal="true" aria-labelledby="aiSheetTitle">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h3>🤖 תכנון יום עם AI</h3>
-      <button class="sheet-close" id="aiSheetClose" type="button">✕</button>
+      <h3 id="aiSheetTitle">🤖 תכנון יום עם AI</h3>
+      <button class="sheet-close" id="aiSheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
     <div class="ai-input-row">
       <input id="aiPromptInput" placeholder="למשל: יום בלונדון, אוהב מוזיאונים, 3 ילדים קטנים" />
@@ -424,21 +546,21 @@
   </div>
 
   <!-- ══ TRIP SWITCH SHEET ══ -->
-  <div class="sheet" id="tripSheet">
+  <div class="sheet" id="tripSheet" role="dialog" aria-modal="true" aria-labelledby="tripSheetTitle">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h3 data-i18n="trip_sheet_title">🔄 החלפת טיול</h3>
-      <button class="sheet-close" id="tripSheetClose" type="button">✕</button>
+      <h3 id="tripSheetTitle" data-i18n="trip_sheet_title">🔄 החלפת טיול</h3>
+      <button class="sheet-close" id="tripSheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
     <div id="tripList"></div>
   </div>
 
   <!-- ══ NEW TRIP SHEET ══ -->
-  <div class="sheet" id="newTripSheet">
+  <div class="sheet" id="newTripSheet" role="dialog" aria-modal="true" aria-labelledby="newTripSheetTitle">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h3 data-i18n="newtrip_title">🧳 טיול חדש</h3>
-      <button class="sheet-close" id="newTripSheetClose" type="button">✕</button>
+      <h3 id="newTripSheetTitle" data-i18n="newtrip_title">🧳 טיול חדש</h3>
+      <button class="sheet-close" id="newTripSheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
     <label data-i18n="newtrip_name">שם הטיול</label>
     <input id="newTripNameInput" placeholder="London 2026" autocomplete="off" />
@@ -449,11 +571,11 @@
   </div>
 
   <!-- ══ FIRST DAY SHEET ══ -->
-  <div class="sheet" id="firstDaySheet">
+  <div class="sheet" id="firstDaySheet" role="dialog" aria-modal="true" aria-labelledby="firstDaySheetTitle">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h3 data-i18n="firstday_title">📅 יום ראשון בטיול</h3>
-      <button class="sheet-close" id="firstDaySheetClose" type="button">✕</button>
+      <h3 id="firstDaySheetTitle" data-i18n="firstday_title">📅 יום ראשון בטיול</h3>
+      <button class="sheet-close" id="firstDaySheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
     <label data-i18n="firstday_label">בחר את תאריך היום הראשון</label>
     <input type="date" id="firstDayDateInput" />
@@ -464,11 +586,11 @@
   </div>
 
   <!-- ══ CONFIRM: delete activity ══ -->
-  <div class="sheet confirm-sheet" id="confirmDeleteActivitySheet">
+  <div class="sheet confirm-sheet" id="confirmDeleteActivitySheet" role="dialog" aria-modal="true" aria-labelledby="confirmDeleteActivityHead">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h3 data-i18n="confirm_del_act_title">מחיקת פעילות</h3>
-      <button class="sheet-close" id="confirmDeleteActivityClose" type="button">✕</button>
+      <h3 id="confirmDeleteActivityHead" data-i18n="confirm_del_act_title">מחיקת פעילות</h3>
+      <button class="sheet-close" id="confirmDeleteActivityClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
     <div class="confirm-body">
       <span class="confirm-icon">🗑</span>
@@ -482,11 +604,11 @@
   </div>
 
   <!-- ══ CONFIRM: delete trip ══ -->
-  <div class="sheet confirm-sheet" id="confirmDeleteTripSheet">
+  <div class="sheet confirm-sheet" id="confirmDeleteTripSheet" role="dialog" aria-modal="true" aria-labelledby="confirmDeleteTripHead">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h3 data-i18n="confirm_del_trip_title">מחיקת טיול</h3>
-      <button class="sheet-close" id="confirmDeleteTripClose" type="button">✕</button>
+      <h3 id="confirmDeleteTripHead" data-i18n="confirm_del_trip_title">מחיקת טיול</h3>
+      <button class="sheet-close" id="confirmDeleteTripClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
     <div class="confirm-body">
       <span class="confirm-icon">🧳</span>
@@ -500,11 +622,11 @@
   </div>
 
   <!-- ══ CONFIRM: reset ══ -->
-  <div class="sheet confirm-sheet" id="confirmResetSheet">
+  <div class="sheet confirm-sheet" id="confirmResetSheet" role="dialog" aria-modal="true" aria-labelledby="confirmResetHead">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h3 data-i18n="confirm_reset_title">איפוס מלא</h3>
-      <button class="sheet-close" id="confirmResetClose" type="button">✕</button>
+      <h3 id="confirmResetHead" data-i18n="confirm_reset_title">איפוס מלא</h3>
+      <button class="sheet-close" id="confirmResetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
     <div class="confirm-body">
       <span class="confirm-icon">⚠️</span>
@@ -518,11 +640,11 @@
   </div>
 
   <!-- ══ CONFIRM: restore ══ -->
-  <div class="sheet confirm-sheet" id="confirmRestoreSheet">
+  <div class="sheet confirm-sheet" id="confirmRestoreSheet" role="dialog" aria-modal="true" aria-labelledby="confirmRestoreHead">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h3 data-i18n="confirm_restore_title">שחזור גיבוי</h3>
-      <button class="sheet-close" id="confirmRestoreClose" type="button">✕</button>
+      <h3 id="confirmRestoreHead" data-i18n="confirm_restore_title">שחזור גיבוי</h3>
+      <button class="sheet-close" id="confirmRestoreClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
     <div class="confirm-body">
       <span class="confirm-icon">📂</span>
@@ -535,15 +657,87 @@
     </div>
   </div>
 
-  <!-- ══ ABOUT SHEET ══ -->
-  <div class="sheet about-sheet" id="aboutSheet">
+  <!-- ══ CONFIRM: delete day ══
+       DAY-DEL-001 (v1040 / A1): deleting a day used to raise the ACTIVITY
+       confirmation, which named neither the day nor the activities it was
+       about to take with it. This dialog names the date and states the
+       activity count, and its wording never says "activity". -->
+  <div class="sheet confirm-sheet" id="confirmDeleteDaySheet" role="dialog" aria-modal="true" aria-labelledby="confirmDeleteDayHead">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h3 data-i18n="about_title">ℹ️ אודות TripMaster</h3>
-      <button class="sheet-close" id="aboutSheetClose" type="button">✕</button>
+      <h3 id="confirmDeleteDayHead" data-i18n="confirm_del_day_title">מחיקת יום</h3>
+      <button class="sheet-close" id="confirmDeleteDayClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
+    </div>
+    <div class="confirm-body">
+      <span class="confirm-icon">📅</span>
+      <div class="confirm-title" id="confirmDeleteDayTitle"></div>
+      <div class="confirm-msg" id="confirmDeleteDayMsg"></div>
+      <div class="confirm-actions">
+        <button class="btn btn-danger" id="confirmDeleteDayOk" type="button" data-i18n="btn_delete_day">מחק יום</button>
+        <button class="btn btn-muted" id="confirmDeleteDayCancel" type="button" data-i18n="btn_cancel">ביטול</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TRIP DETAILS SHEET ══
+       TRIPMETA-001 (v1040 / B2,B3,C2): rename, destination and destination
+       time zone in one place. All three are optional and additive; a trip
+       saved before v1040 simply has none of them. -->
+  <div class="sheet" id="tripDetailsSheet" role="dialog" aria-modal="true" aria-labelledby="tripDetailsHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="tripDetailsHead" data-i18n="trip_details_title">✏️ פרטי הטיול</h3>
+      <button class="sheet-close" id="tripDetailsClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
+    </div>
+    <label for="tripNameInput" data-i18n="trip_name_label">שם הטיול</label>
+    <input id="tripNameInput" autocomplete="off" />
+    <label for="tripDestinationInput" data-i18n="trip_destination_label">יעד</label>
+    <input id="tripDestinationInput" data-i18n-placeholder="trip_destination_ph" placeholder="למשל: לונדון, בריטניה" autocomplete="off" />
+    <label for="tripTimezoneSelect" data-i18n="trip_timezone_label">אזור זמן ביעד</label>
+    <select id="tripTimezoneSelect"></select>
+    <div class="field-note" data-i18n="trip_timezone_note">אזור הזמן משמש רק לייצוא ליומן, כדי שהשעה שכתבתם תישמר כשעון היעד.</div>
+
+    <!-- TRIPBASE-001 (v1040-RC2): optional user-owned accommodation/base.
+         No search, geocoding, partner data or routing is implied. -->
+    <div class="trip-base-fields">
+      <div class="trip-base-heading" data-i18n="trip_base_section">🏨 בסיס / מלון בטיול</div>
+      <label for="tripBaseNameInput" data-i18n="trip_base_name_label">שם מקום הלינה</label>
+      <input id="tripBaseNameInput" data-i18n-placeholder="trip_base_name_ph" placeholder="למשל: Hotel Central" autocomplete="off" />
+      <label for="tripBaseLocationInput" data-i18n="trip_base_location_label">כתובת / מיקום</label>
+      <input id="tripBaseLocationInput" data-i18n-placeholder="trip_base_location_ph" placeholder="כתובת או תיאור מיקום" autocomplete="off" />
+      <label for="tripBaseNoteInput" data-i18n="trip_base_note_label">הערה</label>
+      <textarea id="tripBaseNoteInput" rows="2" data-i18n-placeholder="trip_base_note_ph" placeholder="למשל: קבלה 24/7 או כניסה צדדית"></textarea>
+      <div class="field-note" data-i18n="trip_base_info_note">נשמר כמידע שלכם בלבד. TripMaster לא מאמת את המלון ולא מחשב ממנו מסלולים.</div>
+    </div>
+    <div class="row" style="margin-top:4px">
+      <button class="btn btn-muted" id="tripDetailsCancelBtn" type="button" data-i18n="btn_cancel">ביטול</button>
+      <button class="btn btn-primary" id="tripDetailsSaveBtn" type="button" data-i18n="btn_save">שמור</button>
+    </div>
+  </div>
+
+  <!-- ══ TRIP OVERVIEW SHEET ══
+       OVERVIEW-001 (v1040 / C1): read-only on purpose. No editing, no drag
+       and drop, no print layout, no sharing — v1 answers one question,
+       "what does my whole trip look like". -->
+  <div class="sheet" id="overviewSheet" role="dialog" aria-modal="true" aria-labelledby="overviewHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="overviewHead" data-i18n="overview_title">🗺️ סקירת הטיול</h3>
+      <button class="sheet-close" id="overviewClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
+    </div>
+    <div class="overview-meta" id="overviewMeta"></div>
+    <div id="overviewBody"></div>
+  </div>
+
+  <!-- ══ ABOUT SHEET ══ -->
+  <div class="sheet about-sheet" id="aboutSheet" role="dialog" aria-modal="true" aria-labelledby="aboutHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="aboutHead" data-i18n="about_title">ℹ️ אודות TripMaster</h3>
+      <button class="sheet-close" id="aboutSheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
     <div class="about-body">
-      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1030</span>
+      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1040</span>
 
       <h4 data-i18n="about_privacy_h">🔒 פרטיות</h4>
       <div>
@@ -568,7 +762,10 @@
     </div>
   </div>
 
-  <div id="toast"></div>
+  <!-- A11Y-001 (v1040 / D6): the toast is the app's only status channel, so
+       it is a polite live region. aria-atomic keeps the text and the Undo
+       action from being announced as two unrelated fragments. -->
+  <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <input type="file" id="restoreInput" accept=".json" style="display:none">
 
   <script src="./config.js"></script>
@@ -725,6 +922,9 @@
       applyLanguageAttributes();
       applyStaticTranslations();
       renderLanguageOptions();
+      // v1040: these two are built by JS, so data-i18n cannot reach them.
+      renderCategoryOptions();
+      renderAccessProfile();
     }
 
     /* Changing language saves immediately and repaints in place. The menu
@@ -738,8 +938,8 @@
       saveSettings();
       applyLanguage();
       renderTools();
-      renderDays();
-      renderActivities(currentDayIndex);
+      renderCurrentView();
+      updateHeaderInfo();
       showToast(t("toast_language_changed"));
     }
 
@@ -773,24 +973,469 @@
       }
     }
 
-    let days = safeParseJSON(KEY_DAYS, []);
-    let trips = safeParseJSON(KEY_TRIPS, []);
-    let activeTripId = localStorage.getItem(KEY_ACTIVE_TRIP) || null;
+    function normalizeDays(raw) { return Array.isArray(raw) ? raw : []; }
 
-    /* ── Storage ── */
-    function saveDays() {
-      const activeTrip = getActiveTrip();
-      if (activeTrip) {
-        activeTrip.days = JSON.parse(JSON.stringify(days));
-        saveTrips();
-        return;
+    // RC2 model: KEY_DAYS is legacy Home itinerary storage only. New planning
+    // happens exclusively inside trips[]. It is read here solely so a safe
+    // one-time migration can recover it below.
+    let days = normalizeDays(safeParseJSON(KEY_DAYS, []));
+    let trips = normalizeTrips(safeParseJSON(KEY_TRIPS, []));
+    let activeTripId = localStorage.getItem(KEY_ACTIVE_TRIP) || null;
+    let currentView = activeTripId ? "planner" : "home";
+
+    /* ══════════════════════════════════════════════════════════════════
+       STORE-001 (v1040 / A7): one guarded persistence path
+       ──────────────────────────────────────────────────────────────────
+       Before v1040 every important write was a bare localStorage.setItem().
+       A full quota, or a browser in a mode that refuses storage, threw out
+       of the click handler AFTER the model had been mutated and the UI
+       re-rendered — so the app showed a saved change that could not survive
+       a reload, and said nothing.
+
+       writeAll() writes a batch and, on any failure, puts every key it
+       touched back to its previous value before returning false.
+       commitState() wraps that in a model-level transaction:
+
+           snapshot -> mutate -> persist -> commit + render
+                                         -> or roll back and report
+
+       Nothing renders success and no toast claims success unless the write
+       actually landed. Simulate with QuotaExceededError during QA.
+       ══════════════════════════════════════════════════════════════════ */
+    function writeAll(entries) {
+      const previous = [];
+      try {
+        for (let i = 0; i < entries.length; i++) {
+          const key = entries[i][0];
+          previous.push([key, localStorage.getItem(key)]);
+          localStorage.setItem(key, entries[i][1]);
+        }
+        return true;
+      } catch (err) {
+        console.warn("TripMaster: localStorage write failed", err);
+        for (let i = previous.length - 1; i >= 0; i--) {
+          try {
+            if (previous[i][1] === null) localStorage.removeItem(previous[i][0]);
+            else localStorage.setItem(previous[i][0], previous[i][1]);
+          } catch (rollbackErr) {
+            console.warn("TripMaster: rollback failed for", previous[i][0], rollbackErr);
+          }
+        }
+        return false;
       }
-      localStorage.setItem(KEY_DAYS, JSON.stringify(days));
     }
 
+    function reportStorageFailure() { showToast(t("toast_storage_failed")); }
+
+    /* ── SCHEMA-001 (v1040) ──
+       Every field v1040 adds is optional and is read through an accessor, so
+       a trip or activity written by v1010–v1030 is valid exactly as stored
+       and is never rewritten merely for having been opened. normalizeTrips()
+       fills in a missing SHAPE (days array, string name); it never rebuilds
+       an object, so unknown keys on stored data survive untouched. ── */
+    function normalizeTrips(raw) {
+      if (!Array.isArray(raw)) return [];
+      raw.forEach((trip) => {
+        if (!trip || typeof trip !== "object") return;
+        if (!Array.isArray(trip.days)) trip.days = [];
+        if (typeof trip.name !== "string") trip.name = String(trip.name == null ? "" : trip.name);
+      });
+      return raw.filter((trip) => trip && typeof trip === "object" && trip.id);
+    }
+
+    function itemLocation(item)   { return (item && typeof item.location   === "string") ? item.location.trim()   : ""; }
+    function itemNote(item)       { return (item && typeof item.note       === "string") ? item.note.trim()       : ""; }
+    function itemAccessNote(item) { return (item && typeof item.accessNote === "string") ? item.accessNote.trim() : ""; }
+    function itemEndTime(item) {
+      const v = item && item.endTime;
+      return (typeof v === "string" && /^[0-9]{2}:[0-9]{2}$/.test(v)) ? v : "";
+    }
+    function itemAccessStatus(item) {
+      const v = item && item.accessStatus;
+      return (v === "stepfree" || v === "problem") ? v : "";
+    }
+    function itemCategory(item) {
+      const v = item && item.category;
+      return (typeof v === "string" && CATEGORY_ORDER.indexOf(v) !== -1) ? v : "";
+    }
+    function tripDestination(trip) { return (trip && typeof trip.destination === "string") ? trip.destination.trim() : ""; }
+    function tripBase(trip) {
+      const b = trip && trip.base;
+      if (!b || typeof b !== "object") return { name:"", location:"", note:"" };
+      return {
+        name: typeof b.name === "string" ? b.name.trim() : "",
+        location: typeof b.location === "string" ? b.location.trim() : "",
+        note: typeof b.note === "string" ? b.note.trim() : ""
+      };
+    }
+    function tripTimezone(trip) {
+      const v = trip && trip.timezone;
+      return (typeof v === "string" && v && isValidTimeZone(v)) ? v : "";
+    }
+    function activeTripTimezone() { return tripTimezone(getActiveTrip()); }
+
+    /* ── State transaction (A4/A5/A7) ──
+       snapshotState() also captures the HOME days, which live outside
+       trips[] under KEY_DAYS, so an undo of Reset or Restore can put them
+       back. restoreStateFrom() re-establishes the boot-time aliasing
+       invariant: while a trip is active, `days` IS activeTrip.days. ── */
+    function snapshotState() {
+      return JSON.stringify({
+        trips: trips,
+        days: days,
+        activeTripId: activeTripId,
+        currentView: currentView,
+        currentDayIndex: currentDayIndex,
+        homeDays: normalizeDays(safeParseJSON(KEY_DAYS, []))
+      });
+    }
+
+    function restoreStateFrom(json) {
+      const snap = JSON.parse(json);
+      trips = normalizeTrips(Array.isArray(snap.trips) ? snap.trips : []);
+      activeTripId = snap.activeTripId || null;
+      currentView = snap.currentView === "home" ? "home" : (activeTripId ? "planner" : "home");
+      const active = getActiveTrip();
+      if (active) {
+        if (!Array.isArray(active.days)) active.days = [];
+        days = active.days;
+      } else {
+        // Home is no longer an itinerary container in RC2. Any legacy Home
+        // days live under KEY_DAYS until migrated, never in the active view.
+        days = [];
+      }
+      currentDayIndex = (typeof snap.currentDayIndex === "number") ? snap.currentDayIndex : 0;
+      if (currentDayIndex >= days.length) currentDayIndex = Math.max(0, days.length - 1);
+      return snap;
+    }
+
+    /* ACTIVE-TRIP-001 (v1040 / A4): KEY_TRIPS is written on EVERY commit,
+       including while Home is selected. Before v1040, deleting the active
+       trip filtered trips[] in memory and then called goHome(), which wrote
+       KEY_ACTIVE_TRIP but never KEY_TRIPS — so the deleted trip came back on
+       reload, and only the pagehide/visibilitychange handler happened to
+       rescue it later. Writing trips unconditionally costs one small write
+       and makes that class of bug structurally impossible. */
+    function persistState() {
+      const active = getActiveTrip();
+      if (active) active.days = JSON.parse(JSON.stringify(days));
+      const entries = [
+        [KEY_TRIPS, JSON.stringify(trips)],
+        [KEY_ACTIVE_TRIP, activeTripId || ""]
+      ];
+      // KEY_DAYS is a legacy migration inbox only. RC2 never writes planner
+      // content back into it, which prevents Home from becoming a second data path.
+      return writeAll(entries);
+    }
+
+    function commitState(mutate, undoRecord) {
+      const before = snapshotState();
+      try {
+        mutate();
+      } catch (err) {
+        console.warn("TripMaster: mutation failed, rolling back", err);
+        restoreStateFrom(before);
+        reportStorageFailure();
+        return false;
+      }
+      if (!persistState()) {
+        restoreStateFrom(before);
+        reportStorageFailure();
+        return false;
+      }
+      if (undoRecord) setUndo(before, undoRecord);
+      return true;
+    }
+
+    /* saveDays() keeps its name and its call sites. It is now the guarded
+       path and returns a boolean; saveTrips() deliberately does NOT sync
+       activeTrip.days, because createTrip() calls it at a moment when
+       `days` still holds the PREVIOUS trip's days. */
+    function saveDays()  { return persistState(); }
     function saveTrips() {
-      localStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
-      localStorage.setItem(KEY_ACTIVE_TRIP, activeTripId || "");
+      return writeAll([
+        [KEY_TRIPS, JSON.stringify(trips)],
+        [KEY_ACTIVE_TRIP, activeTripId || ""]
+      ]);
+    }
+
+    /* ── UNDO-001 (v1040 / A5) ──
+       One step, not a history. The record is a whole-state snapshot taken
+       immediately before the destructive commit, which is why "restore the
+       exact relevant data" needs no per-operation restore logic and cannot
+       drift out of sync with the model. Reset and Restore additionally carry
+       settings and theme. ── */
+    let _undo = null;
+
+    function setUndo(stateJson, record) {
+      _undo = {
+        state: stateJson,
+        settings: (record && record.settings) || null,
+        theme: (record && record.theme) || null
+      };
+    }
+    function clearUndo() { _undo = null; }
+
+    function performUndo() {
+      if (!_undo) { showToast(t("toast_nothing_to_undo")); return; }
+      const record = _undo;
+      _undo = null;
+      const fallbackState = snapshotState();
+      const fallbackSettings = JSON.stringify(settings);
+      let snap;
+      try {
+        snap = restoreStateFrom(record.state);
+        if (record.settings) settings = normalizeSettings(JSON.parse(record.settings));
+      } catch (err) {
+        console.warn("TripMaster: undo could not rebuild state", err);
+        try { restoreStateFrom(fallbackState); } catch (e) {}
+        reportStorageFailure();
+        return;
+      }
+      const active = getActiveTrip();
+      const entries = [
+        [KEY_TRIPS, JSON.stringify(trips)],
+        [KEY_ACTIVE_TRIP, activeTripId || ""],
+        [KEY_DAYS, JSON.stringify(normalizeDays(snap.homeDays))]
+      ];
+      if (record.settings) entries.push([KEY_SETTINGS, JSON.stringify(settingsForStorage())]);
+      if (record.theme)    entries.push([KEY_THEME, record.theme]);
+      if (!writeAll(entries)) {
+        try {
+          restoreStateFrom(fallbackState);
+          settings = normalizeSettings(JSON.parse(fallbackSettings));
+        } catch (e) {}
+        reportStorageFailure();
+        return;
+      }
+      if (record.theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
+      else if (record.theme)       document.documentElement.removeAttribute("data-theme");
+      if (record.settings) {
+        currentLang = settings.language;
+        applyLanguage();
+        renderPrefsAndAccess();
+        renderTools();
+        const keyField = $("global-apikey");
+        if (keyField) keyField.value = "";
+      }
+      renderCurrentView();
+      updateHeaderInfo();
+      showToast(t("toast_undone"));
+    }
+
+    /* ── SNAPSHOT-001 (v1040 / A6) ──
+       Reset and Restore are the two operations that can destroy everything
+       at once. Both now write a recoverable local snapshot FIRST and abort
+       if that write fails, so the destructive step can never run without a
+       recovery path behind it. This is a single overwritten snapshot, not
+       version history, and it never leaves the device. ── */
+    function writeSafetySnapshot(reason) {
+      let payload;
+      try {
+        payload = JSON.stringify({
+          app: "TripMaster",
+          snapshotVersion: 1,
+          reason: reason,
+          createdAt: new Date().toISOString(),
+          trips: trips,
+          activeTripId: activeTripId,
+          homeDays: normalizeDays(safeParseJSON(KEY_DAYS, [])),
+          settings: settingsForStorage(),
+          theme: localStorage.getItem(KEY_THEME) || "light"
+        });
+      } catch (err) {
+        console.warn("TripMaster: could not build safety snapshot", err);
+        return false;
+      }
+      return writeAll([[KEY_SAFETY_SNAPSHOT, payload]]);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       CAL-TIME-001 (v1040 / B5): one canonical calendar time pipeline
+       ──────────────────────────────────────────────────────────────────
+       Until v1040 the ICS path and the Google Calendar path each did their
+       own arithmetic from the raw form fields. ICS emitted a FLOATING local
+       stamp; Google converted the device-local time to UTC. For a user whose
+       device clock differs from the destination, the two exports described
+       two different real instants.
+
+       Both now call activityTimeSpec() and format what it returns.
+
+         - Trip HAS a timezone: the wall clock the user typed belongs to that
+           zone. The instant is resolved with the browser's own IANA data and
+           both exports emit the same UTC stamp. DST is handled by resolving
+           the offset AT the candidate instant and re-resolving once if the
+           first guess landed on the other side of a transition.
+         - Trip has NO timezone (the explicit, tested fallback): the wall
+           clock is emitted as-is, unanchored, by BOTH paths. The receiving
+           calendar interprets it in its own zone, which is what a traveller
+           with no destination set actually means.
+
+       No calendar library, no network, no hand-waving.
+       ══════════════════════════════════════════════════════════════════ */
+    function isValidTimeZone(tz) {
+      if (!tz || typeof tz !== "string") return false;
+      try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return true; }
+      catch (err) { return false; }
+    }
+
+    function deviceTimeZone() {
+      try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; }
+      catch (err) { return ""; }
+    }
+
+    /* Offset of `tz` from UTC, in ms, AT the given instant. */
+    function tzOffsetMs(tz, utcMs) {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: tz, hour12: false,
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit"
+      }).formatToParts(new Date(utcMs));
+      const map = {};
+      parts.forEach((p) => { map[p.type] = p.value; });
+      let hour = parseInt(map.hour, 10);
+      if (hour === 24) hour = 0;   // some ICU builds render midnight as "24"
+      const asIfUTC = Date.UTC(
+        parseInt(map.year, 10), parseInt(map.month, 10) - 1, parseInt(map.day, 10),
+        hour, parseInt(map.minute, 10), parseInt(map.second, 10)
+      );
+      return asIfUTC - utcMs;
+    }
+
+    /* Wall clock in `tz` -> real instant (ms since epoch).
+       Two passes: guess with the offset at the naive instant, then confirm
+       with the offset at the candidate. Across a DST transition the two
+       disagree exactly once, and the second pass is authoritative. A time
+       inside a spring-forward gap does not exist; this returns a defined,
+       deterministic instant for it rather than throwing. */
+    function wallClockToInstant(y, mo, d, h, mi, tz) {
+      const naiveUTC = Date.UTC(y, mo - 1, d, h, mi, 0);
+      const off1 = tzOffsetMs(tz, naiveUTC);
+      let instant = naiveUTC - off1;
+      const off2 = tzOffsetMs(tz, instant);
+      if (off2 !== off1) instant = naiveUTC - off2;
+      return instant;
+    }
+
+    function pad2(n) { return String(n).padStart(2, "0"); }
+
+    function wallStamp(p) {
+      return "" + p.y + pad2(p.mo) + pad2(p.d) + "T" + pad2(p.h) + pad2(p.mi) + "00";
+    }
+    function utcStamp(ms) {
+      const d = new Date(ms);
+      return "" + d.getUTCFullYear() + pad2(d.getUTCMonth() + 1) + pad2(d.getUTCDate())
+           + "T" + pad2(d.getUTCHours()) + pad2(d.getUTCMinutes()) + pad2(d.getUTCSeconds()) + "Z";
+    }
+
+    /* Wall-clock arithmetic on a UTC scratch date, so the DEVICE timezone
+       can never leak into the destination's calendar. */
+    function addWallMinutes(p, minutes) {
+      const scratch = new Date(Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, 0));
+      scratch.setUTCMinutes(scratch.getUTCMinutes() + minutes);
+      return {
+        y: scratch.getUTCFullYear(), mo: scratch.getUTCMonth() + 1, d: scratch.getUTCDate(),
+        h: scratch.getUTCHours(), mi: scratch.getUTCMinutes()
+      };
+    }
+
+    /* THE canonical conversion. Both calendar exports use this and nothing
+       else. `endTimeStr` is optional: with no end time the activity keeps
+       the pre-v1040 duration of exactly one hour (B4). */
+    function activityTimeSpec(dateStr, timeStr, endTimeStr, tz) {
+      const dp = String(dateStr || "").split("-");
+      const tp = String(timeStr || "12:00").split(":");
+      const start = {
+        y: parseInt(dp[0], 10), mo: parseInt(dp[1], 10), d: parseInt(dp[2], 10),
+        h: parseInt(tp[0], 10), mi: parseInt(tp[1], 10)
+      };
+      if (isNaN(start.y) || isNaN(start.mo) || isNaN(start.d)) return null;
+      if (isNaN(start.h)) start.h = 12;
+      if (isNaN(start.mi)) start.mi = 0;
+
+      let end;
+      const ep = String(endTimeStr || "").split(":");
+      const eh = parseInt(ep[0], 10), em = parseInt(ep[1], 10);
+      if (!isNaN(eh) && !isNaN(em)) {
+        end = { y: start.y, mo: start.mo, d: start.d, h: eh, mi: em };
+        // An end at or before the start means the activity runs past
+        // midnight, which is a real thing on a trip (a 23:00 concert).
+        if ((eh * 60 + em) <= (start.h * 60 + start.mi)) end = addWallMinutes(end, 24 * 60);
+      } else {
+        end = addWallMinutes(start, 60);
+      }
+
+      const zone = (tz && isValidTimeZone(tz)) ? tz : "";
+      if (zone) {
+        return {
+          mode: "utc", tz: zone,
+          startMs: wallClockToInstant(start.y, start.mo, start.d, start.h, start.mi, zone),
+          endMs:   wallClockToInstant(end.y,   end.mo,   end.d,   end.h,   end.mi,   zone),
+          start: start, end: end,
+          dtStart: utcStamp(wallClockToInstant(start.y, start.mo, start.d, start.h, start.mi, zone)),
+          dtEnd:   utcStamp(wallClockToInstant(end.y,   end.mo,   end.d,   end.h,   end.mi,   zone))
+        };
+      }
+      return {
+        mode: "floating", tz: "",
+        startMs: null, endMs: null,
+        start: start, end: end,
+        dtStart: wallStamp(start),
+        dtEnd:   wallStamp(end)
+      };
+    }
+
+    /* UID-001 (v1040 / B6): assigned once and then stored, so re-exporting
+       the same activity updates the same calendar entry instead of creating
+       a second one. Generated lazily at export time — boot stays read-only. */
+    function ensureActivityUid(item) {
+      if (item && typeof item.uid === "string" && item.uid) return item.uid;
+      const uid = "tm-" + Date.now().toString(36) + "-"
+                + Math.random().toString(36).slice(2, 10) + "@tripmaster.app";
+      if (item) {
+        item.uid = uid;
+        // Best effort: a failed write only costs UID stability, never data,
+        // so this must not block the export the user just asked for.
+        if (!persistState()) console.warn("TripMaster: could not persist activity UID");
+      }
+      return uid;
+    }
+
+    /* ── A11Y-001 (v1040 / D6): one open/close path for every sheet ──
+       Focus moves into the sheet on open and returns to whatever opened it
+       on close. Escape closes the topmost sheet. The stack is keyed by sheet
+       id so stacked sheets (a confirmation over the menu) unwind correctly. */
+    let _focusReturn = [];
+
+    function openSheetEl(id) {
+      const el = $(id);
+      if (!el) return;
+      const trigger = document.activeElement;
+      const already = el.classList.contains("open");
+      el.classList.add("open");
+      $("sheetBackdrop").classList.add("open");
+      // Re-rendering an open sheet (deleteTrip re-opens the trip list) must
+      // not push a second return-focus record for the same sheet.
+      if (!already) _focusReturn.push({ id: id, trigger: (trigger && trigger.focus) ? trigger : null });
+      window.setTimeout(() => {
+        const target = el.querySelector(".sheet-close") || el;
+        try { target.focus(); } catch (err) {}
+      }, 60);
+    }
+
+    function closeSheetEl(id) {
+      const el = $(id);
+      if (!el) return;
+      const wasOpen = el.classList.contains("open");
+      el.classList.remove("open");
+      syncBackdrop();
+      const ids = _focusReturn.map((r) => r.id);
+      const idx = ids.lastIndexOf(id);
+      if (idx === -1) return;
+      const rec = _focusReturn.splice(idx, 1)[0];
+      if (wasOpen && rec.trigger && document.contains(rec.trigger)) {
+        try { rec.trigger.focus(); } catch (err) {}
+      }
     }
 
     function getActiveTrip() {
@@ -798,86 +1443,307 @@
     }
 
     /* ── Trip management ── */
+    /* STORE-001 (v1040 / A7): returns null when the trip could not be
+       persisted, so the caller cannot render and toast a trip that would
+       vanish on the next reload. The name fallback is localized rather than
+       a Hebrew literal (E-family); in practice the caller already rejects an
+       empty name, so it is a safety net, not a normal path. */
     function createTrip(name) {
-      const newTrip = { id: "trip_" + Date.now(), name: name || "טיול חדש", days: [] };
+      const newTrip = { id: "trip_" + Date.now(), name: name || t("menu_new_trip"), days: [] };
+      const previousTrips = trips.slice();
+      const previousActive = activeTripId;
       trips.push(newTrip);
       activeTripId = newTrip.id;
-      saveTrips();
+      currentView = "planner";
+      if (!saveTrips()) {
+        trips = previousTrips;
+        activeTripId = previousActive;
+        currentView = previousActive ? "planner" : "home";
+        reportStorageFailure();
+        return null;
+      }
+      days = newTrip.days;
       return newTrip;
     }
 
-    function switchTrip(tripId) {
+    function switchTrip(tripId, options) {
+      const opts = options || {};
+      const previous = snapshotState();
       activeTripId = tripId;
       const activeTrip = getActiveTrip();
-      if (!activeTrip) return;
+      if (!activeTrip) { restoreStateFrom(previous); return false; }
       days = activeTrip.days || [];
       currentDayIndex = 0;
-      saveTrips();
-      renderDays();
-      days.length > 0 ? renderActivities(currentDayIndex) : renderActivities(0);
+      currentView = opts.stayHome ? "home" : "planner";
+      if (!saveTrips()) { restoreStateFrom(previous); reportStorageFailure(); return false; }
+      renderCurrentView();
       updateHeaderInfo();
-      showToast(tf("toast_switched_trip", { name: activeTrip.name }));
+      if (!opts.silent) showToast(tf("toast_switched_trip", { name: activeTrip.name }));
+      return true;
     }
 
     function goHome() {
-      activeTripId = null;
-      localStorage.setItem(KEY_ACTIVE_TRIP, "");
-      days = safeParseJSON(KEY_DAYS, []);
+      // HOME-STATE-001: dashboard navigation never clears the selected trip.
+      // activeTripId remains the user's working-trip selection.
+      currentView = "home";
+      const activeTrip = getActiveTrip();
+      days = activeTrip ? (activeTrip.days || []) : [];
       currentDayIndex = 0;
-      renderDays();
-      renderActivities(0);
+      renderCurrentView();
       updateHeaderInfo();
       showToast(t("toast_home"));
+    }
+
+    function continuePlanning(tripId) {
+      if (tripId && tripId !== activeTripId) {
+        switchTrip(tripId, { silent:true });
+        return;
+      }
+      const active = getActiveTrip();
+      if (!active) {
+        if (trips.length === 0) openNewTripSheet();
+        else openTripSheet();
+        return;
+      }
+      currentView = "planner";
+      days = active.days || [];
+      if (currentDayIndex >= days.length) currentDayIndex = 0;
+      renderCurrentView();
+      updateHeaderInfo();
+    }
+
+    function legacyHomeSignature(homeDays) {
+      // FNV-1a over the exact legacy payload. The signature is stored on the
+      // migrated trip so a crash between the two storage writes cannot create
+      // a duplicate on retry. It is not a security hash.
+      const text = JSON.stringify(normalizeDays(homeDays));
+      let h = 0x811c9dc5;
+      for (let i = 0; i < text.length; i++) {
+        h ^= text.charCodeAt(i);
+        h = Math.imul(h, 0x01000193);
+      }
+      return (h >>> 0).toString(16).padStart(8, "0");
+    }
+
+    function migrateLegacyHomeDays() {
+      const legacy = normalizeDays(safeParseJSON(KEY_DAYS, []));
+      if (!legacy.length) return { migrated:false, reused:false };
+      const signature = legacyHomeSignature(legacy);
+      const legacyPayload = JSON.stringify(legacy);
+      // The short FNV signature is only an index hint. Exact payload equality
+      // is mandatory before treating a trip as a prior migration, so even a
+      // theoretical hash collision can never cause different legacy data to
+      // be cleared as "already migrated".
+      const existing = trips.find((trip) => trip
+        && trip.legacyHomeSignature === signature
+        && JSON.stringify(normalizeDays(trip.days)) === legacyPayload);
+      if (existing) {
+        // Interrupted prior migration: trip already landed. Clearing the legacy
+        // inbox is idempotent and cannot overwrite the trip.
+        const adoptExisting = getActiveTrip() ? activeTripId : existing.id;
+        if (!writeAll([[KEY_ACTIVE_TRIP, adoptExisting || ""], [KEY_DAYS, JSON.stringify([])]])) return { migrated:false, error:true };
+        activeTripId = adoptExisting;
+        return { migrated:false, reused:true, trip:existing };
+      }
+
+      const migratedTrip = {
+        id: "trip_home_" + Date.now(),
+        name: t("legacy_home_trip_name"),
+        days: JSON.parse(JSON.stringify(legacy)),
+        migrationSource: "legacy-home",
+        legacyHomeSignature: signature
+      };
+      const nextTrips = trips.concat([migratedTrip]);
+      const nextActive = getActiveTrip() ? activeTripId : migratedTrip.id;
+      // One guarded batch. If the legacy inbox cannot be cleared, the new trip
+      // is rolled back by writeAll() and retry is safe.
+      if (!writeAll([
+        [KEY_TRIPS, JSON.stringify(nextTrips)],
+        [KEY_ACTIVE_TRIP, nextActive || ""],
+        [KEY_DAYS, JSON.stringify([])]
+      ])) return { migrated:false, error:true };
+      trips = normalizeTrips(nextTrips);
+      activeTripId = nextActive;
+      const active = getActiveTrip();
+      days = active ? active.days : [];
+      currentView = "home";
+      return { migrated:true, reused:false, trip:migratedTrip };
+    }
+
+    function tripDateRange(trip) {
+      const valid = (trip && Array.isArray(trip.days) ? trip.days : [])
+        .map(d => d && d.date).filter(d => !!parseDateOnly(d)).sort();
+      return valid.length ? { first: valid[0], last: valid[valid.length - 1] } : null;
+    }
+
+    function daysUntilDate(dateString) {
+      const target = parseDateOnly(dateString);
+      const today = parseDateOnly(todayISO());
+      if (!target || !today) return null;
+      return Math.round((target.getTime() - today.getTime()) / 86400000);
+    }
+
+    function upcomingTrip() {
+      const today = todayISO();
+      const candidates = trips.map(trip => ({ trip, range: tripDateRange(trip) }))
+        .filter(x => x.range && x.range.last >= today)
+        .sort((a,b) => a.range.first.localeCompare(b.range.first));
+      return candidates.length ? candidates[0] : null;
+    }
+
+    function dashboardTripCard(trip, kind) {
+      const card = document.createElement("article");
+      card.className = "home-trip-card" + (kind === "active" ? " is-active" : "");
+      const range = tripDateRange(trip);
+      const base = tripBase(trip);
+      const dest = tripDestination(trip);
+      const count = range ? daysUntilDate(range.first) : null;
+      const title = document.createElement("div");
+      title.className = "home-trip-title";
+      title.textContent = trip.name || t("menu_new_trip");
+      card.appendChild(title);
+      const meta = document.createElement("div");
+      meta.className = "home-trip-meta";
+      const parts = [];
+      if (dest) parts.push(dest);
+      if (range) parts.push((formatDateOnly(range.first, {day:"numeric",month:"short"}) || range.first) + (range.last !== range.first ? " – " + (formatDateOnly(range.last, {day:"numeric",month:"short"}) || range.last) : ""));
+      if (count != null && count > 0) parts.push(tf("home_days_until", { n: count }));
+      else if (count === 0) parts.push(t("home_starts_today"));
+      meta.textContent = parts.join(" · ") || t("home_no_dates");
+      card.appendChild(meta);
+      if (base.name || base.location) {
+        const b = document.createElement("div");
+        b.className = "home-trip-base";
+        b.textContent = "🏨 " + (base.name || base.location) + (base.name && base.location ? " · " + base.location : "");
+        card.appendChild(b);
+      }
+      const actions = document.createElement("div");
+      actions.className = "home-trip-actions";
+      const cont = document.createElement("button");
+      cont.type = "button"; cont.className = "btn btn-primary"; cont.textContent = t("home_continue");
+      cont.addEventListener("click", () => continuePlanning(trip.id));
+      const details = document.createElement("button");
+      details.type = "button"; details.className = "btn btn-muted"; details.textContent = t("menu_trip_details");
+      details.addEventListener("click", () => openTripDetailsSheet(trip.id));
+      const overview = document.createElement("button");
+      overview.type = "button"; overview.className = "btn btn-muted"; overview.textContent = t("menu_overview");
+      overview.addEventListener("click", () => { if (trip.id !== activeTripId) switchTrip(trip.id, {stayHome:true, silent:true}); openOverviewSheet(); });
+      actions.appendChild(cont); actions.appendChild(details); actions.appendChild(overview);
+      card.appendChild(actions);
+      return card;
+    }
+
+    function renderHomeDashboard() {
+      const body = $("homeDashboardBody");
+      if (!body) return;
+      body.innerHTML = "";
+      const active = getActiveTrip();
+      if (active) {
+        const label = document.createElement("div");
+        label.className = "home-section-label"; label.textContent = t("home_active_trip");
+        body.appendChild(label);
+        body.appendChild(dashboardTripCard(active, "active"));
+      } else {
+        const empty = document.createElement("div");
+        empty.className = "home-empty-card";
+        const title = document.createElement("div"); title.className = "home-empty-title";
+        title.textContent = trips.length ? t("home_choose_trip") : t("home_no_trips");
+        const sub = document.createElement("div"); sub.className = "home-empty-sub";
+        sub.textContent = trips.length ? t("home_choose_trip_sub") : t("home_no_trips_sub");
+        const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn btn-primary";
+        btn.textContent = trips.length ? t("header_trips_btn") : t("menu_new_trip");
+        btn.addEventListener("click", () => trips.length ? openTripSheet() : openNewTripSheet());
+        empty.appendChild(title); empty.appendChild(sub); empty.appendChild(btn); body.appendChild(empty);
+      }
+
+      const upcoming = upcomingTrip();
+      if (upcoming && (!active || upcoming.trip.id !== active.id)) {
+        const label = document.createElement("div"); label.className = "home-section-label"; label.textContent = t("home_upcoming_trip");
+        body.appendChild(label); body.appendChild(dashboardTripCard(upcoming.trip, "upcoming"));
+      }
+
+      const others = trips.filter(trip => (!active || trip.id !== active.id) && (!upcoming || trip.id !== upcoming.trip.id));
+      if (others.length) {
+        const label = document.createElement("div"); label.className = "home-section-label"; label.textContent = t("home_other_trips"); body.appendChild(label);
+        const list = document.createElement("div"); list.className = "home-other-list";
+        others.forEach(trip => {
+          const row = document.createElement("button"); row.type = "button"; row.className = "home-other-row";
+          const range = tripDateRange(trip);
+          row.innerHTML = `<span>${escapeHtml(trip.name || t("menu_new_trip"))}</span><small>${escapeHtml(tripDestination(trip) || (range ? (formatDateOnly(range.first,{day:"numeric",month:"short"}) || range.first) : t("home_no_dates")))}</small>`;
+          row.addEventListener("click", () => switchTrip(trip.id, {stayHome:true}));
+          list.appendChild(row);
+        });
+        body.appendChild(list);
+      }
+    }
+
+    function renderCurrentView() {
+      const home = $("homeDashboard");
+      const planner = $("plannerView");
+      const bottom = document.querySelector(".bottom-bar");
+      const active = getActiveTrip();
+      if (currentView === "planner" && !active) currentView = "home";
+      const atHome = currentView === "home";
+      if (home) home.style.display = atHome ? "" : "none";
+      if (planner) planner.style.display = atHome ? "none" : "";
+      if (bottom) bottom.style.display = atHome ? "none" : "";
+      if (atHome) renderHomeDashboard();
+      else {
+        days = active.days || [];
+        renderDays();
+        renderActivities(currentDayIndex);
+      }
+      renderAccessProfile();
     }
 
     /* ── Header info ── */
     function updateHeaderInfo() {
       const activeTrip = getActiveTrip();
-      // FIELDS-001 (v1020 RC3): active trip name, else the product name.
-      // No longer falls back to settings.city.
+      const dateLine = $("headerTripDates");
+      if (currentView === "home") {
+        $("headerCity").innerText = "TripMaster";
+        dateLine.innerText = t("home_dashboard_title");
+        // The same header line is normally a numeric date range and is styled
+        // LTR. Home uses translated copy, so honour the document direction or
+        // Hebrew/Arabic dashboard text would be forced into LTR presentation.
+        dateLine.dir = document.documentElement.dir === "rtl" ? "rtl" : "ltr";
+        dateLine.style.direction = dateLine.dir;
+        return;
+      }
       $("headerCity").innerText = (activeTrip && activeTrip.name) ? activeTrip.name : "TripMaster";
+      dateLine.dir = "ltr";
+      dateLine.style.direction = "ltr";
 
-      // dates from days array
-      if (days.length > 0) {
+      // dates from the active trip only
+      if (activeTrip && days.length > 0) {
         const first = days[0].date;
         const last  = days[days.length - 1].date;
-        const fmt = (d) => {
-          const dt = new Date(d);
-          if (isNaN(dt)) return d;
-          return dt.toLocaleDateString("he-IL", { day: "numeric", month: "numeric" });
-        };
-        $("headerTripDates").innerText = first === last ? fmt(first) : `${fmt(first)}–${fmt(last)}`;
+        // DATEONLY-001: calendar date, formatted in UTC.
+        const fmt = (d) => formatDateOnly(d, { day: "numeric", month: "numeric" }) || d;
+        dateLine.innerText = first === last ? fmt(first) : `${fmt(first)}–${fmt(last)}`;
       } else {
-        $("headerTripDates").innerText = "";
+        dateLine.innerText = "";
       }
     }
 
     /* ── Sheets (trips) ── */
     function openNewTripSheet() {
       $("newTripNameInput").value = "";
-      $("newTripSheet").classList.add("open");
-      $("sheetBackdrop").classList.add("open");
+      openSheetEl("newTripSheet");
     }
-    function closeNewTripSheet() {
-      $("newTripSheet").classList.remove("open");
-      $("sheetBackdrop").classList.remove("open");
-    }
+    function closeNewTripSheet() { closeSheetEl("newTripSheet"); }
     function openFirstDaySheet() {
       $("firstDayDateInput").value = todayISO();
-      $("firstDaySheet").classList.add("open");
-      $("sheetBackdrop").classList.add("open");
+      openSheetEl("firstDaySheet");
     }
-    function closeFirstDaySheet() {
-      $("firstDaySheet").classList.remove("open");
-      $("sheetBackdrop").classList.remove("open");
-    }
+    function closeFirstDaySheet() { closeSheetEl("firstDaySheet"); }
 
     function openTripSheet() {
       const list = document.getElementById("tripList");
       list.innerHTML = "";
 
-      // 🏠 הטיול הראשי — always first, selects Home
-      const isHomeActive = activeTripId == null;
+      // 🏠 Home is a dashboard, not a trip and not an activeTripId state.
+      const isHomeActive = currentView === "home";
       const homeCard = document.createElement("div");
       homeCard.style.cssText = `
         display:flex;align-items:center;gap:14px;
@@ -902,7 +1768,7 @@
       homeNameEl.style.cssText = `font-weight:700;font-size:.95rem;letter-spacing:-0.02em;color:${isHomeActive ? "var(--primary)" : "var(--text)"};`;
 
       const homeSubEl = document.createElement("div");
-      homeSubEl.textContent = isHomeActive ? t("trip_active_sub") : t("trip_home_sub_back");
+      homeSubEl.textContent = t("trip_home_sub_back");
       homeSubEl.style.cssText = "font-size:.76rem;color:var(--sub);margin-top:3px;";
 
       homeTextWrap.appendChild(homeNameEl);
@@ -910,7 +1776,7 @@
 
       const homeBadge = document.createElement("span");
       if (isHomeActive) {
-        homeBadge.textContent = t("trip_badge_active");
+        homeBadge.textContent = t("home_badge_dashboard");
         homeBadge.style.cssText = "font-size:.7rem;font-weight:700;background:var(--primary);color:#fff;border-radius:999px;padding:4px 12px;flex-shrink:0;";
       }
 
@@ -975,42 +1841,87 @@
           card.appendChild(textWrap);
           if (isActive) card.appendChild(badge);
 
+          /* ── TRIP-DEL-001 (v1040 / A3) ──
+             Deleting a trip used to be reachable ONLY through a 600 ms
+             long-press or a right-click on this card. That control was
+             invisible, undiscoverable, and armed on touchstart, so a scroll
+             that began on a card and did not emit a touchmove in time could
+             raise a delete dialog the user never asked for. Both gestures
+             are removed. Deletion is an explicit labelled button and is
+             still behind the existing confirmation. */
+          const actions = document.createElement("div");
+          actions.className = "trip-card-actions";
+
+          const editBtn = document.createElement("button");
+          editBtn.type = "button";
+          editBtn.className = "trip-card-btn";
+          editBtn.textContent = "✏️";
+          editBtn.title = t("trip_edit_title");
+          editBtn.setAttribute("aria-label", t("trip_edit_title") + " — " + trip.name);
+          editBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            closeTripSheet();
+            openTripDetailsSheet(trip.id);
+          });
+
+          const delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "trip-card-btn trip-card-btn-danger";
+          delBtn.textContent = "🗑";
+          delBtn.title = t("btn_delete_trip");
+          delBtn.setAttribute("aria-label", t("btn_delete_trip") + " — " + trip.name);
+          delBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            deleteTrip(trip.id);
+          });
+
+          actions.appendChild(editBtn);
+          actions.appendChild(delBtn);
+          card.appendChild(actions);
+
           card.addEventListener("click", () => {
             closeTripSheet();
             if (!isActive) switchTrip(trip.id);
           });
-          card.addEventListener("contextmenu", (e) => { e.preventDefault(); deleteTrip(trip.id); });
-
-          let longPressTimer = null;
-          card.addEventListener("touchstart", () => {
-            longPressTimer = setTimeout(() => { longPressTimer = null; deleteTrip(trip.id); }, 600);
-          }, { passive: true });
-          card.addEventListener("touchend", () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } });
-          card.addEventListener("touchmove", () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } });
 
           list.appendChild(card);
         });
       }
 
-      document.getElementById("tripSheet").classList.add("open");
-      document.getElementById("sheetBackdrop").classList.add("open");
+      openSheetEl("tripSheet");
     }
 
-    function closeTripSheet() {
-      document.getElementById("tripSheet").classList.remove("open");
-      document.getElementById("sheetBackdrop").classList.remove("open");
-    }
+    function closeTripSheet() { closeSheetEl("tripSheet"); }
 
     function deleteTrip(tripId) {
       if (tripId === "home") { showToast(t("toast_cant_delete_home")); return; }
       const trip = trips.find(t => t.id === tripId);
       if (!trip) return;
       confirmDeleteTrip(trip.name, () => {
+        /* ── ACTIVE-TRIP-001 (v1040 / A4) — CONFIRMED defect, fixed ──
+           The old path filtered trips[] in memory and then, for the ACTIVE
+           trip, called goHome(). goHome() wrote KEY_ACTIVE_TRIP but never
+           KEY_TRIPS, so the filtered array was never persisted and the
+           deleted trip reappeared on the next reload. It only ever survived
+           because the pagehide / visibilitychange handler happened to call
+           saveTrips() later — exactly the kind of rescue this release is
+           meant to stop relying on. commitState() persists both keys inside
+           the same transaction, or rolls the deletion back entirely. */
         const wasActive = activeTripId === tripId;
-        trips = trips.filter(t => t.id !== tripId);
-        if (wasActive) { goHome(); } else { saveTrips(); }
+        const ok = commitState(() => {
+          trips = trips.filter(x => x.id !== tripId);
+          if (wasActive) {
+            activeTripId = null;
+            days = [];
+            currentDayIndex = 0;
+            currentView = "home";
+          }
+        }, {});
+        if (!ok) return;
+        renderCurrentView();
+        updateHeaderInfo();
         openTripSheet();
-        showToast(tf("toast_trip_deleted", { name: trip.name }));
+        showUndoToast(tf("toast_trip_deleted", { name: trip.name }));
       });
     }
 
@@ -1037,6 +1948,7 @@
         v: 1,
         pace: null,            // "relaxed" | "balanced" | "packed" | null
         transport: [],         // "walk" | "public" | "taxi" | "train"
+        noSelfDrive: false,    // true = user explicitly does not plan to self-drive
         maxWalkKm: null,       // number | null
         budget: null,          // "low" | "mid" | "high" | null
         food: [],              // free tags
@@ -1085,28 +1997,69 @@
     // before any render runs. normalizeSettings() has already validated it.
     currentLang = settings.language;
 
-    function saveSettings() {
-      localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
+    /* ── AI-SECRET-001 (v1040 / E8) ──
+       The hidden AI helper wrote settings.apiKey straight into
+       localStorage and exportBackup() copied `settings` verbatim, so a
+       backup FILE could carry a live Anthropic key off the device. AI stays
+       hidden and inactive, and the field, its input and its listener are all
+       left in place so re-enabling AI later behind a proxy needs no
+       reconstruction — but the secret is now redacted on every path that
+       leaves memory: saveSettings(), exportBackup() and the safety snapshot.
+       Any key already stored by an earlier build is purged once, below. ── */
+    function settingsForStorage(source) {
+      const copy = JSON.parse(JSON.stringify(source === undefined ? settings : source));
+      copy.apiKey = "";
+      return copy;
     }
 
-    /* ── Toast ── */
-    function showToast(text) {
-      const t = $("toast");
-      t.innerText = text;
-      t.classList.add("visible");
+    function saveSettings() {
+      return writeAll([[KEY_SETTINGS, JSON.stringify(settingsForStorage())]]);
+    }
+
+    // One-time purge of a key persisted by v1030 or earlier.
+    if (settings.apiKey) {
+      settings.apiKey = "";
+      saveSettings();
+    }
+
+    /* ── Toast ──
+       UNDO-001 (v1040 / A5): the toast can now carry one action button.
+       Built from real elements rather than innerText so nothing can leave a
+       stray text node behind, and cleared completely on every call. An
+       actionable toast stays up longer, because it asks the user to decide.
+       (The local element variable used to be named `t`, which shadowed the
+       translation function inside this scope.) */
+    function showToast(text, actionLabel, actionFn) {
+      const el = $("toast");
+      el.textContent = "";
+      const msg = document.createElement("span");
+      msg.className = "toast-text";
+      msg.textContent = text;
+      el.appendChild(msg);
+      if (actionLabel && typeof actionFn === "function") {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "toast-action";
+        btn.textContent = actionLabel;
+        btn.addEventListener("click", () => {
+          clearTimeout(showToast._t);
+          el.classList.remove("visible");
+          actionFn();
+        });
+        el.appendChild(btn);
+      }
+      el.classList.add("visible");
       clearTimeout(showToast._t);
-      showToast._t = setTimeout(() => t.classList.remove("visible"), 1900);
+      showToast._t = setTimeout(() => el.classList.remove("visible"), actionLabel ? 6500 : 1900);
+    }
+
+    function showUndoToast(text) {
+      showToast(text, t("undo_action"), performUndo);
     }
 
     /* ── Custom confirm dialogs ── */
-    function openConfirmSheet(sheetId) {
-      $(sheetId).classList.add("open");
-      $("sheetBackdrop").classList.add("open");
-    }
-    function closeConfirmSheet(sheetId) {
-      $(sheetId).classList.remove("open");
-      syncBackdrop();
-    }
+    function openConfirmSheet(sheetId) { openSheetEl(sheetId); }
+    function closeConfirmSheet(sheetId) { closeSheetEl(sheetId); }
 
     /* MENU-003 (v1020 RC3): confirmation sheets now stack over an open menu.
        Unconditionally clearing the backdrop on close would leave the menu
@@ -1267,13 +2220,142 @@
     }
 
     function todayISO() {
+      /* Correct as-is: "today" IS a local question, so local getters on a
+         real instant are what we want here. Only STORED date-only values
+         need the timezone-neutral treatment below. */
       const d = new Date();
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
     }
 
+    /* ── DATEONLY-001 (v1040-RC1) ═══════════════════════════════════════════
+       A day's `date` is a CALENDAR DATE, not an instant. It has no time and
+       no zone: 2026-06-01 is the 1st of June for every user on earth.
+
+       But new Date("2026-06-01") parses the ISO date-only form as UTC
+       midnight, and every LOCAL getter then reads it through the device
+       offset. West of Greenwich that is the PREVIOUS day:
+
+         TZ=America/New_York
+         new Date("2026-06-01")            -> Sun May 31 2026 20:00 EDT
+         .getDate()                        -> 31
+         .toLocaleDateString("en-US")      -> 5/31/2026
+
+       Four call sites did exactly this, so a New York or Los Angeles user
+       saw every day chip, day title, header range and exported date one day
+       early. addNewDay() was worse than cosmetic: it read back 31, added 1,
+       re-serialised through local getters and produced 2026-06-01 again —
+       the SAME date — so "add day" appeared to do nothing.
+
+       Everything below parses into explicit parts and does all arithmetic
+       and formatting in UTC, which makes the device timezone structurally
+       incapable of moving a stored date. The stored YYYY-MM-DD schema is
+       unchanged, so no migration is involved.
+
+       Note on sorting: days.sort((a,b) => new Date(a.date) - new Date(b.date))
+       is left alone deliberately. Both operands take the identical UTC-
+       midnight interpretation, so the difference — and therefore the
+       ordering — is exact in every zone. It was verified, not assumed. ══ */
+    function parseDateOnly(dateString) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateString == null ? "" : dateString).trim());
+      if (!m) return null;
+      const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+      const dt = new Date(Date.UTC(y, mo - 1, d));
+      // Rejects overflow such as 2026-02-30, which Date.UTC would roll over.
+      if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+      return dt;
+    }
+
+    function dateOnlyToISO(dt) {
+      return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,"0")}-${String(dt.getUTCDate()).padStart(2,"0")}`;
+    }
+
+    /* Calendar-day arithmetic. UTC setters roll months, years and leap days
+       correctly and cannot be perturbed by the device offset or by DST. */
+    function addDaysToDateOnly(dateString, n) {
+      const dt = parseDateOnly(dateString);
+      if (!dt) return null;
+      dt.setUTCDate(dt.getUTCDate() + n);
+      return dateOnlyToISO(dt);
+    }
+
+    /* timeZone:"UTC" is mandatory here — the Date is UTC midnight, so any
+       other zone re-introduces the very shift this block exists to remove. */
+    function formatDateOnly(dateString, opts) {
+      const dt = parseDateOnly(dateString);
+      if (!dt) return null;
+      const o = Object.assign({ timeZone: "UTC" }, opts || {});
+      try { return dt.toLocaleDateString(dateLocale(), o); }
+      catch (e) { return dateOnlyToISO(dt); }
+    }
+
+    function dateOnlyWeekday(dateString) {
+      const dt = parseDateOnly(dateString);
+      return dt ? dt.getUTCDay() : -1;
+    }
+
+    function dateOnlyDayNum(dateString) {
+      const dt = parseDateOnly(dateString);
+      return dt ? dt.getUTCDate() : -1;
+    }
+
+    /* ── MAPS-001 (v1040 / B1, G) ──
+       Navigation used to query the free-form NOTE, so "לקנות כרטיסים מראש"
+       or a phone number was handed to Google Maps as a place search. It now
+       uses the dedicated location field and falls back to the activity
+       title. The note is never used as a navigation query. ── */
+    function mapsQuery(item) {
+      const loc = itemLocation(item);
+      return loc || (item && item.title) || "";
+    }
+    function mapsUrl(item) {
+      return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(mapsQuery(item));
+    }
+
+    /* ACCESS-ACT-001 (v1040 / D3): compact, and only ever reflects what the
+       traveller entered. There is no state that means "TripMaster checked". */
+    function accessBadgeHtml(item) {
+      const status = itemAccessStatus(item);
+      if (!status) return "";
+      const label = status === "stepfree" ? t("access_badge_stepfree") : t("access_badge_problem");
+      const icon  = status === "stepfree" ? "♿" : "⚠️";
+      return `<span class="access-badge access-${status}">${icon} ${escapeHtml(label)}</span>`;
+    }
+
+    /* CATEGORY-001 (v1040 / E5): options are rendered rather than static so
+       they follow the active language on every switch. */
+    function renderCategoryOptions() {
+      const sel = $("addCategory");
+      if (!sel) return;
+      const prev = sel.value;
+      sel.innerHTML = "";
+      const auto = document.createElement("option");
+      auto.value = "";
+      auto.textContent = t("cat_auto");
+      sel.appendChild(auto);
+      CATEGORY_ORDER.forEach((key) => {
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = (CATEGORY_ICONS[key] ? CATEGORY_ICONS[key] + "  " : "") + t("cat_" + key);
+        sel.appendChild(opt);
+      });
+      sel.value = prev;
+    }
+
+    /* ── LOCALE-001 (v1040 / E1) ──
+       Every user-facing date used to be formatted with a hardcoded "he-IL",
+       so an English or Spanish UI still printed Hebrew-locale dates. The
+       locale now follows the active language via LANG_META, which already
+       carries a valid BCP-47 tag per language. ── */
+    function dateLocale() {
+      const meta = LANG_META[currentLang] || LANG_META[DEFAULT_LANG];
+      return (meta && meta.lang) ? meta.lang : "he";
+    }
+
     function formatDateForTitle(dateString, fallback) {
-      const d = new Date(dateString);
-      return isNaN(d) ? fallback : d.toLocaleDateString("he-IL");
+      // DATEONLY-001: was new Date(dateString).toLocaleDateString(), which
+      // printed the previous day west of Greenwich.
+      const out = formatDateOnly(dateString);
+      return out === null ? fallback : out;
     }
 
     function findTodayDayIndex() {
@@ -1281,6 +2363,18 @@
       return days.findIndex(d => d.date === t);
     }
 
+    /* ── CATEGORY-001 (v1040 / E5) ──
+       item.category was ALREADY preferred over the guess below before
+       v1040; it simply had no control anywhere in the UI, so in practice
+       every icon came from the keyword list. That list only matches Hebrew
+       and English, so a Russian, Spanish, Portuguese or Arabic title always
+       fell through to the generic pin — a real language bias.
+
+       The smallest honest fix was to give the existing structured field a
+       picker (see #addCategory) rather than grow the heuristic into a
+       six-language keyword table that would still be wrong for the seventh.
+       The guess is kept, unchanged, as the "automatic" fallback so no
+       existing activity changes its icon. ── */
     function getCategoryIcon(item) {
       if (item.category && CATEGORY_ICONS[item.category]) return CATEGORY_ICONS[item.category];
       const t = (item.title || "").toLowerCase();
@@ -1301,14 +2395,15 @@
 
       days.forEach((day, index) => {
         const chip = document.createElement("button");
-        const d = new Date(day.date);
+        // DATEONLY-001: weekday and day number come from UTC getters.
+        const weekday = dateOnlyWeekday(day.date);
         const isToday = day.date === todayStr;
         chip.className = `chip ${index === currentDayIndex ? "active" : ""} ${isToday && index !== currentDayIndex ? "today-chip" : ""}`;
         chip.type = "button";
 
         const dayNames = String(t("day_names_short")).split(",");
-        const dayLabel = isNaN(d) ? tf("day_n", { n: index + 1 }) : (dayNames[d.getDay()] || "");
-        const dayNum   = isNaN(d) ? (index+1) : d.getDate();
+        const dayLabel = weekday < 0 ? tf("day_n", { n: index + 1 }) : (dayNames[weekday] || "");
+        const dayNum   = weekday < 0 ? (index + 1) : dateOnlyDayNum(day.date);
 
         chip.innerHTML = `
           <span class="chip-day-label">${escapeHtml(dayLabel)}</span>
@@ -1322,16 +2417,14 @@
           renderActivities(index);
         });
 
+        chip.setAttribute("aria-current", index === currentDayIndex ? "true" : "false");
+
+        // DAY-DEL-001 (v1040 / A1): the day-specific confirmation. This used
+        // to open confirmDeleteActivity(), whose text promised that one
+        // activity would be deleted while the handler removed the whole day.
         chip.addEventListener("contextmenu", (e) => {
           e.preventDefault();
-          confirmDeleteActivity(() => {
-            days.splice(index, 1);
-            if (currentDayIndex >= days.length) currentDayIndex = Math.max(0, days.length - 1);
-            saveDays();
-            renderDays();
-            days.length > 0 ? renderActivities(currentDayIndex) : renderActivities(0);
-            showToast(t("toast_day_deleted"));
-          });
+          requestDeleteDay(index);
         });
 
         wrap.appendChild(chip);
@@ -1345,17 +2438,76 @@
       addChip.addEventListener("click", addNewDay);
       wrap.appendChild(addChip);
 
+      // DAY-DEL-001 (v1040 / A1): the visible delete control only exists
+      // while there is a day to delete.
+      const delDayBtn = $("deleteDayBtn");
+      if (delDayBtn) delDayBtn.style.display = days.length > 0 ? "" : "none";
+
       updateHeaderInfo();
+    }
+
+    /* ── DAY-DEL-001 (v1040 / A1) + ACT-DEL-001 (A2) ──
+       Two separate confirmations for two separate operations. The day dialog
+       names the date and states how many activities go with it; the activity
+       dialog is untouched and still speaks only about one activity. ── */
+    let _pendingDeleteDay = null;
+
+    function requestDeleteDay(index) {
+      const day = days[index];
+      if (!day) return;
+      currentDayIndex = index;
+      const label = formatDateForTitle(day.date, tf("day_n", { n: index + 1 }));
+      const count = Array.isArray(day.items) ? day.items.length : 0;
+      $("confirmDeleteDayTitle").innerText = tf("confirm_del_day_q_named", { date: label });
+      $("confirmDeleteDayMsg").innerText = count > 0
+        ? tf("confirm_del_day_msg_n", { n: count })
+        : t("confirm_del_day_msg_empty");
+      _pendingDeleteDay = () => deleteDay(index);
+      openConfirmSheet("confirmDeleteDaySheet");
+    }
+
+    function deleteDay(index) {
+      if (!days[index]) return;
+      const ok = commitState(() => {
+        days.splice(index, 1);
+        if (currentDayIndex >= days.length) currentDayIndex = Math.max(0, days.length - 1);
+      }, {});
+      if (!ok) return;
+      renderDays();
+      renderActivities(currentDayIndex);
+      showUndoToast(t("toast_day_deleted"));
+    }
+
+    function deleteActivity(dayIndex, itemIndex) {
+      const day = days[dayIndex];
+      if (!day || !Array.isArray(day.items) || !day.items[itemIndex]) {
+        showToast(t("toast_activity_not_found"));
+        return;
+      }
+      const ok = commitState(() => { day.items.splice(itemIndex, 1); }, {});
+      if (!ok) return;
+      renderDays();
+      renderActivities(currentDayIndex);
+      showUndoToast(t("toast_activity_deleted"));
     }
 
     function addNewDay() {
       if (days.length > 0) {
-        const last = new Date(days[days.length - 1].date);
-        last.setDate(last.getDate() + 1);
-        const nextDate = `${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,"0")}-${String(last.getDate()).padStart(2,"0")}`;
-        days.push({ date: nextDate, items: [] });
-        saveDays();
-        currentDayIndex = days.length - 1;
+        /* DATEONLY-001: this was the damaging one. Parsing the last date as
+           UTC midnight and then reading it back with LOCAL getters produced
+           the SAME date again in every negative-offset zone, so a New York
+           user pressing "add day" got a duplicate instead of the next day.
+           UTC arithmetic also handles month, year and leap boundaries. */
+        const nextDate = addDaysToDateOnly(days[days.length - 1].date, 1);
+        if (!nextDate) { showToast(t("toast_missing_date")); return; }
+        /* STORE-001 (v1040 / A7): adding a day is a real mutation, so it goes
+           through the same guarded commit as every other one. On a failed
+           write the day is rolled back instead of sitting in the strip until
+           the next reload silently drops it. */
+        if (!commitState(() => {
+          days.push({ date: nextDate, items: [] });
+          currentDayIndex = days.length - 1;
+        })) return;
         renderDays();
         renderActivities(currentDayIndex);
         showToast(tf("toast_day_added", { n: days.length }));
@@ -1499,10 +2651,12 @@
       }
 
       const catIcon = getCategoryIcon(heroItem);
-      const note = heroItem.note ? escapeHtml(heroItem.note) : "";
-      const navUrl = heroItem.note
-        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(heroItem.note)}`
-        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(heroItem.title)}`;
+      // MAPS-001 (v1040 / B1, G): location first, title as the fallback, the
+      // free-form note never.
+      const navUrl = mapsUrl(heroItem);
+      const heroLocation = itemLocation(heroItem);
+      const heroNote = itemNote(heroItem);
+      const heroEnd = itemEndTime(heroItem);
 
       inner.innerHTML = `
         <div class="hero-card-top" id="heroTapArea" style="cursor:pointer">
@@ -1512,15 +2666,18 @@
               ${escapeHtml(isNow ? t("hero_badge_now") : t("hero_badge_next"))}
             </div>
             <div class="hero-time">${escapeHtml(heroItem.time || "--:--")}</div>
+            ${heroEnd ? `<div class="hero-endtime">→ ${escapeHtml(heroEnd)}</div>` : ""}
             ${heroReminderSub ? `<div class="hero-reminder-sub">${heroReminderSub}</div>` : ""}
             <div class="hero-title">${escapeHtml(heroItem.title)}</div>
-            ${note ? `<div class="hero-location">
+            ${heroLocation ? `<div class="hero-location">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
                 <circle cx="12" cy="10" r="3"/>
               </svg>
-              ${note}
+              ${escapeHtml(heroLocation)}
             </div>` : ""}
+            ${heroNote ? `<div class="hero-note-line">${escapeHtml(heroNote)}</div>` : ""}
+            ${accessBadgeHtml(heroItem)}
           </div>
           <div class="hero-card-thumb">
             <div class="hero-thumb-placeholder">
@@ -1563,8 +2720,7 @@
         window.open(navUrl, "_blank");
       });
       document.getElementById("heroDoneBtn").addEventListener("click", () => {
-        heroItem.completed = !heroItem.completed;
-        saveDays();
+        if (!commitState(() => { heroItem.completed = !heroItem.completed; })) return;
         renderActivities(currentDayIndex);
       });
       document.getElementById("heroEditBtn").addEventListener("click", (e) => {
@@ -1577,13 +2733,7 @@
         openEditSheet(dayIndex, heroOriginalIndex);
       });
       attachLongPressDelete(document.getElementById("heroTapArea"), () => {
-        confirmDeleteActivity(() => {
-          day.items.splice(heroOriginalIndex, 1);
-          saveDays();
-          renderDays();
-          renderActivities(currentDayIndex);
-          showToast(t("toast_activity_deleted"));
-        });
+        confirmDeleteActivity(() => deleteActivity(dayIndex, heroOriginalIndex));
       });
 
       // Show timeline for the rest of activities
@@ -1636,6 +2786,7 @@
         div.innerHTML = `
           <div class="item-time-col">
             <div class="item-time">${escapeHtml(item.time || "--:--")}</div>
+            ${itemEndTime(item) ? `<div class="item-time-end">${escapeHtml(itemEndTime(item))}</div>` : ""}
             ${reminderSub ? `<div class="item-time-sub">${reminderSub}</div>` : ""}
           </div>
           <div class="item-line-col">
@@ -1647,12 +2798,14 @@
             ${isNow ? `<div class="now-badge-inline">${escapeHtml(t("item_now_badge"))}</div>` : ""}
             <div class="item-category-icon">${catIcon}</div>
             <div class="item-title">${escapeHtml(item.title)}</div>
-            ${item.note ? `<div class="item-note">
+            ${itemLocation(item) ? `<div class="item-note">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
               </svg>
-              ${escapeHtml(item.note)}
+              ${escapeHtml(itemLocation(item))}
             </div>` : ""}
+            ${itemNote(item) ? `<div class="item-note-plain">${escapeHtml(itemNote(item))}</div>` : ""}
+            ${accessBadgeHtml(item)}
           </div>
           <div class="item-actions">
             <div class="done" title="${escapeHtml(t("item_done_title"))}">${item.completed ? "↩" : "✓"}</div>
@@ -1662,30 +2815,17 @@
 
         div.querySelector(".done").addEventListener("click", (e) => {
           e.stopPropagation();
-          item.completed = !item.completed;
-          saveDays();
+          if (!commitState(() => { item.completed = !item.completed; })) return;
           renderActivities(index);
         });
 
         div.querySelector(".delete").addEventListener("click", (e) => {
           e.stopPropagation();
-          confirmDeleteActivity(() => {
-            day.items.splice(originalIndex, 1);
-            saveDays();
-            renderDays();
-            renderActivities(currentDayIndex);
-            showToast(t("toast_activity_deleted"));
-          });
+          confirmDeleteActivity(() => deleteActivity(index, originalIndex));
         });
 
         attachLongPressDelete(div, () => {
-          confirmDeleteActivity(() => {
-            day.items.splice(originalIndex, 1);
-            saveDays();
-            renderDays();
-            renderActivities(currentDayIndex);
-            showToast(t("toast_activity_deleted"));
-          });
+          confirmDeleteActivity(() => deleteActivity(index, originalIndex));
         });
 
         div.querySelector(".item-body").addEventListener("click", () => {
@@ -1696,10 +2836,31 @@
       });
     }
 
-    /* ── Add / Edit item ── */
+    /* ── Add / Edit item ──
+       v1040: both now return { day, item } on success and null on failure,
+       so the calendar handlers export the STORED activity (with its
+       location, end time and Access fields) instead of re-reading the form,
+       and so a failed persist can stop the flow instead of exporting
+       something that was rolled back. ── */
+    function applyActivityFieldsFromForm(item) {
+      const loc = $("addLocation").value.trim();
+      const end = $("addEndTime").value;
+      const cat = $("addCategory").value;
+      const st  = $("addAccessStatus").value;
+      const anote = $("addAccessNote").value.trim();
+      // Only keys the user actually filled are written, so an activity that
+      // uses none of the v1040 fields keeps exactly the shape it had before
+      // and backups do not grow a set of empty strings.
+      if (loc) item.location = loc; else delete item.location;
+      if (/^[0-9]{2}:[0-9]{2}$/.test(end || "")) item.endTime = end; else delete item.endTime;
+      if (CATEGORY_ORDER.indexOf(cat) !== -1) item.category = cat; else delete item.category;
+      if (st === "stepfree" || st === "problem") item.accessStatus = st; else delete item.accessStatus;
+      if (anote) item.accessNote = anote; else delete item.accessNote;
+    }
+
     function addItem() {
       const title = $("addTitle").value.trim();
-      if (!title) { showToast(t("toast_missing_title")); return; }
+      if (!title) { showToast(t("toast_missing_title")); return null; }
 
       const item = {
         time: $("addTime").value || "12:00",
@@ -1708,60 +2869,72 @@
         completed: false,
         reminderMin: parseInt($("addReminder").value, 10)
       };
+      applyActivityFieldsFromForm(item);
 
       const date = $("addDate").value || todayISO();
-      let day = days.find(d => d.date === date);
-      if (!day) {
-        day = { date, items: [] };
-        days.push(day);
-        days.sort((a, b) => new Date(a.date) - new Date(b.date));
-      }
-
-      day.items.push(item);
-      day.items.sort((a, b) => a.time.localeCompare(b.time));
-      saveDays();
-      currentDayIndex = days.indexOf(day);
+      let target = null;
+      const ok = commitState(() => {
+        let day = days.find(d => d.date === date);
+        if (!day) {
+          day = { date, items: [] };
+          days.push(day);
+          days.sort((a, b) => new Date(a.date) - new Date(b.date));
+        }
+        day.items.push(item);
+        day.items.sort((a, b) => a.time.localeCompare(b.time));
+        currentDayIndex = days.indexOf(day);
+        target = day;
+      });
+      if (!ok) return null;
       renderDays();
       renderActivities(currentDayIndex);
       showToast(t("toast_activity_added"));
       closeSheet();
+      return { day: target, item: item };
     }
 
     function editItem(dayIndex, itemIndex) {
       const title = $("addTitle").value.trim();
-      if (!title) { showToast(t("toast_missing_title")); return; }
+      if (!title) { showToast(t("toast_missing_title")); return null; }
 
       const oldDay = days[dayIndex];
-      if (!oldDay || !oldDay.items[itemIndex]) { showToast(t("toast_activity_not_found")); closeSheet(); return; }
+      if (!oldDay || !oldDay.items[itemIndex]) { showToast(t("toast_activity_not_found")); closeSheet(); return null; }
 
       const item = oldDay.items[itemIndex];
-      item.title = title;
-      item.note  = $("addNote").value.trim();
-      item.time  = $("addTime").value || "12:00";
-      item.reminderMin = parseInt($("addReminder").value, 10);
-
       const newDate = $("addDate").value || oldDay.date;
-      if (newDate !== oldDay.date) {
-        oldDay.items.splice(itemIndex, 1);
-        let newDay = days.find(d => d.date === newDate);
-        if (!newDay) {
-          newDay = { date: newDate, items: [] };
-          days.push(newDay);
-          days.sort((a, b) => new Date(a.date) - new Date(b.date));
-        }
-        newDay.items.push(item);
-        newDay.items.sort((a, b) => a.time.localeCompare(b.time));
-        currentDayIndex = days.indexOf(newDay);
-      } else {
-        oldDay.items.sort((a, b) => a.time.localeCompare(b.time));
-        currentDayIndex = dayIndex;
-      }
+      let target = null;
 
-      saveDays();
+      const ok = commitState(() => {
+        item.title = title;
+        item.note  = $("addNote").value.trim();
+        item.time  = $("addTime").value || "12:00";
+        item.reminderMin = parseInt($("addReminder").value, 10);
+        applyActivityFieldsFromForm(item);
+
+        if (newDate !== oldDay.date) {
+          oldDay.items.splice(itemIndex, 1);
+          let newDay = days.find(d => d.date === newDate);
+          if (!newDay) {
+            newDay = { date: newDate, items: [] };
+            days.push(newDay);
+            days.sort((a, b) => new Date(a.date) - new Date(b.date));
+          }
+          newDay.items.push(item);
+          newDay.items.sort((a, b) => a.time.localeCompare(b.time));
+          currentDayIndex = days.indexOf(newDay);
+          target = newDay;
+        } else {
+          oldDay.items.sort((a, b) => a.time.localeCompare(b.time));
+          currentDayIndex = dayIndex;
+          target = oldDay;
+        }
+      });
+      if (!ok) return null;
       renderDays();
       renderActivities(currentDayIndex);
       showToast(t("toast_activity_updated"));
       closeSheet();
+      return { day: target, item: item };
     }
 
     function openSheet() {
@@ -1780,9 +2953,14 @@
       $("addDate").value = selectedDay?.date || todayISO();
       $("addTime").value = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
       $("addReminder").value = String(settings.defaultReminderMin || 30);
+      // v1040 additive fields, cleared for a new activity.
+      $("addEndTime").value = "";
+      $("addLocation").value = "";
+      $("addCategory").value = "";
+      $("addAccessStatus").value = "";
+      $("addAccessNote").value = "";
       $("addDeleteBtn").style.display = "none";
-      $("sheet").classList.add("open");
-      $("sheetBackdrop").classList.add("open");
+      openSheetEl("sheet");
     }
 
     function openEditSheet(dayIndex, itemIndex) {
@@ -1801,15 +2979,18 @@
       $("addTitle").value = item.title || "";
       $("addNote").value = item.note || "";
       $("addReminder").value = String(item.reminderMin != null ? item.reminderMin : (settings.defaultReminderMin || 30));
+      // v1040 additive fields. An activity saved before v1040 has none of
+      // them, and every accessor returns "" for a missing field.
+      $("addEndTime").value = itemEndTime(item);
+      $("addLocation").value = itemLocation(item);
+      $("addCategory").value = itemCategory(item);
+      $("addAccessStatus").value = itemAccessStatus(item);
+      $("addAccessNote").value = itemAccessNote(item);
       $("addDeleteBtn").style.display = "flex";
-      $("sheet").classList.add("open");
-      $("sheetBackdrop").classList.add("open");
+      openSheetEl("sheet");
     }
 
-    function closeSheet() {
-      $("sheet").classList.remove("open");
-      $("sheetBackdrop").classList.remove("open");
-    }
+    function closeSheet() { closeSheetEl("sheet"); }
 
     function handleSave() {
       if (isSavingActivity) return;
@@ -1828,23 +3009,59 @@
       $("addWithReminderBtn").disabled = false;
     }
 
-    /* ── Calendar ICS ── */
-    function downloadCalendarFile(title, dateVal, timeVal, noteVal, reminderMin) {
-      const [year, month, day2] = dateVal.split("-").map(Number);
-      const [hour, min] = timeVal.split(":").map(Number);
-      const startDt = new Date(year, month - 1, day2, hour, min);
-      const endDt   = new Date(startDt.getTime() + 60 * 60 * 1000);
-      const pad = n => String(n).padStart(2, "0");
-      const toICS = d => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+    /* ── Calendar DESCRIPTION (D4) ──
+       The note, plus the traveller's own Access status and note when either
+       exists. The wording is theirs; nothing here asserts that TripMaster
+       verified anything. */
+    function calendarDescription(item) {
+      const parts = [];
+      const note = itemNote(item);
+      if (note) parts.push(note);
+      const status = itemAccessStatus(item);
+      const anote  = itemAccessNote(item);
+      if (status || anote) {
+        const label = status === "stepfree" ? t("access_badge_stepfree")
+                    : status === "problem"  ? t("access_badge_problem")
+                    : t("access_status_unknown");
+        parts.push(t("export_access_line") + ": " + label + (anote ? " — " + anote : ""));
+      }
+      return parts.join("\n");
+    }
+
+    /* ── Calendar ICS ──
+       v1040 (B5/B6/E2): the event is built from activityTimeSpec(), the same
+       function the Google path uses, so both describe one instant. Adds UID,
+       DTSTAMP, LOCATION, and an alarm description that goes through i18n
+       instead of the hardcoded Hebrew "תזכורת:" this file used to emit into
+       every calendar in every language. The delivery block below (share
+       sheet, download fallback) is unchanged from v1011 RC2. */
+    function exportActivityToIcs(day, item) {
+      const spec = activityTimeSpec(day.date, item.time, itemEndTime(item), activeTripTimezone());
+      if (!spec) { showToast(t("toast_missing_date")); return; }
+      const title = item.title || "";
       const icsEscape = s => String(s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");
-      const alarmBlock = (reminderMin != null && reminderMin >= 0) ? [
-        "BEGIN:VALARM","ACTION:DISPLAY",`DESCRIPTION:תזכורת: ${icsEscape(title)}`,`TRIGGER:-PT${reminderMin}M`,"END:VALARM"
+      const reminderMin = (item.reminderMin != null && item.reminderMin >= 0) ? item.reminderMin : null;
+      const alarmBlock = reminderMin != null ? [
+        "BEGIN:VALARM","ACTION:DISPLAY",
+        `DESCRIPTION:${icsEscape(tf("ics_alarm_desc", { title: title }))}`,
+        `TRIGGER:-PT${reminderMin}M`,"END:VALARM"
       ] : [];
-      const icsContent = [
-        "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//TripMaster//HE","BEGIN:VEVENT",
-        `SUMMARY:${icsEscape(title)}`,`DTSTART:${toICS(startDt)}`,`DTEND:${toICS(endDt)}`,
-        `DESCRIPTION:${icsEscape(noteVal)}`,...alarmBlock,"END:VEVENT","END:VCALENDAR"
-      ].join("\r\n");
+      const lines = [
+        "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//TripMaster//v1040//EN","CALSCALE:GREGORIAN",
+        "BEGIN:VEVENT",
+        `UID:${icsEscape(ensureActivityUid(item))}`,
+        `DTSTAMP:${utcStamp(Date.now())}`,
+        `SUMMARY:${icsEscape(title)}`,
+        `DTSTART:${spec.dtStart}`,
+        `DTEND:${spec.dtEnd}`
+      ];
+      const location = itemLocation(item);
+      if (location) lines.push(`LOCATION:${icsEscape(location)}`);
+      const description = calendarDescription(item);
+      if (description) lines.push(`DESCRIPTION:${icsEscape(description)}`);
+      alarmBlock.forEach((l) => lines.push(l));
+      lines.push("END:VEVENT", "END:VCALENDAR");
+      const icsContent = lines.join("\r\n");
       const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
 
       /* ── CAL-SHARE-001 (v1011 RC2) ──
@@ -1964,19 +3181,25 @@
         disc.textContent = anyLive ? t("tools_disclosure", PARTNER_CONFIG.disclosure) : "";
         disc.style.display = anyLive ? "" : "none";
       }
+
+      /* ── TOOLS-001 (v1040 / E6) ──
+         With PARTNERS_LIVE false every commercial card is a dead "coming
+         soon" tile, and the single working card duplicates Backup, which
+         already has its own row under Data & Backup. Making the user scroll
+         a large dead commercial section to reach the real settings is a cost
+         with no benefit, so the section is HIDDEN — not deleted.
+         PARTNER_CONFIG, PARTNERS_LIVE, renderTools() and the markup are all
+         intact and untouched, so activating a partner later restores this
+         section with no rebuild. */
+      const section = $("toolsSection");
+      if (section) section.style.display = anyLive ? "" : "none";
     }
 
     /* ── MENU-001 (v1020 fix) ──
        Uses the same open/closed convention as every other sheet, so the
        backdrop, animation and z-index behaviour are the proven ones. */
-    function openMenuSheet() {
-      $("menuSheet").classList.add("open");
-      $("sheetBackdrop").classList.add("open");
-    }
-    function closeMenuSheet() {
-      $("menuSheet").classList.remove("open");
-      $("sheetBackdrop").classList.remove("open");
-    }
+    function openMenuSheet() { openSheetEl("menuSheet"); }
+    function closeMenuSheet() { closeSheetEl("menuSheet"); }
 
     /* ── Collapsible sections ── */
     function wireSection(headId, secEl) {
@@ -1993,7 +3216,9 @@
       const row = $(rowId);
       if (!row) return;
       Array.prototype.forEach.call(row.querySelectorAll(".opt"), (b) => {
-        b.classList.toggle("on", b.dataset.val === currentValue);
+        const on = b.dataset.val === currentValue;
+        b.classList.toggle("on", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
       });
     }
 
@@ -2001,7 +3226,9 @@
       const row = $(rowId);
       if (!row) return;
       Array.prototype.forEach.call(row.querySelectorAll(".opt"), (b) => {
-        b.classList.toggle("on", list.indexOf(b.dataset.val) !== -1);
+        const on = list.indexOf(b.dataset.val) !== -1;
+        b.classList.toggle("on", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
       });
     }
 
@@ -2009,19 +3236,23 @@
       const row = $(rowId);
       if (!row) return;
       Array.prototype.forEach.call(row.querySelectorAll(".opt"), (b) => {
-        b.classList.toggle("on", !!obj[b.dataset.key]);
+        const on = !!obj[b.dataset.key];
+        b.classList.toggle("on", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
       });
     }
 
     function renderPrefsAndAccess() {
       paintOptRow("prefPace", settings.prefs.pace);
       paintMultiRow("prefTransport", settings.prefs.transport);
+      paintToggleRow("prefNoSelfDrive", { noSelfDrive: settings.prefs.noSelfDrive });
       paintOptRow("prefBudget", settings.prefs.budget);
       if ($("prefMaxWalk")) $("prefMaxWalk").value = settings.prefs.maxWalkKm != null ? settings.prefs.maxWalkKm : "";
       if ($("prefNotes"))   $("prefNotes").value   = settings.prefs.notes || "";
       paintToggleRow("accessToggles", settings.access);
       paintOptRow("accessWheelchair", settings.access.wheelchair);
       if ($("accessNotes")) $("accessNotes").value = settings.access.notes || "";
+      renderAccessProfile();
     }
 
     function wirePrefsAndAccess() {
@@ -2078,11 +3309,21 @@
         paintMultiRow("prefTransport", list);
       });
 
+      const noDrive = $("prefNoSelfDrive");
+      if (noDrive) noDrive.addEventListener("click", (e) => {
+        const btn = e.target.closest(".opt");
+        if (!btn) return;
+        settings.prefs.noSelfDrive = !settings.prefs.noSelfDrive;
+        saveSettings();
+        paintToggleRow("prefNoSelfDrive", { noSelfDrive: settings.prefs.noSelfDrive });
+      });
+
       const mw = $("prefMaxWalk");
       if (mw) mw.addEventListener("input", () => {
         const v = parseFloat(mw.value);
         settings.prefs.maxWalkKm = isNaN(v) ? null : v;
         saveSettings();
+        renderAccessProfile();
       });
 
       const pn = $("prefNotes");
@@ -2098,6 +3339,7 @@
         settings.access[btn.dataset.key] = !settings.access[btn.dataset.key];
         saveSettings();
         paintToggleRow("accessToggles", settings.access);
+        renderAccessProfile();
       });
 
       const wc = $("accessWheelchair");
@@ -2107,6 +3349,7 @@
         settings.access.wheelchair = btn.dataset.val;
         saveSettings();
         paintOptRow("accessWheelchair", settings.access.wheelchair);
+        renderAccessProfile();
       });
 
       const an = $("accessNotes");
@@ -2118,21 +3361,28 @@
 
     /* ── GCAL-001 (v1020): Google Calendar template hand-off ──
        Secondary to the ICS path. Deliberately does NOT touch
-       downloadCalendarFile() or the VALARM output. Google's TEMPLATE format
+       exportActivityToIcs() or the VALARM output. Google's TEMPLATE format
        has no reminder parameter, so reminderMin cannot be carried here — that
        is disclosed in the UI next to the button. Needs a network connection
        and only helps Google Calendar users, which is why it is not primary. */
-    function openGoogleCalendar(title, dateVal, timeVal, noteVal) {
-      const [year, month, day2] = dateVal.split("-").map(Number);
-      const [hour, min] = timeVal.split(":").map(Number);
-      const startDt = new Date(year, month - 1, day2, hour, min);
-      const endDt   = new Date(startDt.getTime() + 60 * 60 * 1000);
-      const pad = n => String(n).padStart(2, "0");
-      const toUTC = d => `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00Z`;
-      const url = "https://calendar.google.com/calendar/render?action=TEMPLATE"
-        + "&text=" + encodeURIComponent(title || "")
-        + "&dates=" + toUTC(startDt) + "/" + toUTC(endDt)
-        + "&details=" + encodeURIComponent(noteVal || "");
+    function exportActivityToGoogle(day, item) {
+      /* CAL-TIME-001 (v1040 / B7): the stamps come from activityTimeSpec(),
+         exactly as the ICS path does, so the two exports can no longer
+         disagree. The old code converted the DEVICE-local time to UTC while
+         ICS emitted a floating local stamp, which meant a user planning a
+         London trip from Israel got two different instants out of the two
+         buttons. Google's TEMPLATE format still has no reminder parameter —
+         that limitation is disclosed next to the button, unchanged. */
+      const spec = activityTimeSpec(day.date, item.time, itemEndTime(item), activeTripTimezone());
+      if (!spec) { showToast(t("toast_missing_date")); return; }
+      ensureActivityUid(item);
+      const description = calendarDescription(item);
+      const location = itemLocation(item);
+      let url = "https://calendar.google.com/calendar/render?action=TEMPLATE"
+        + "&text=" + encodeURIComponent(item.title || "")
+        + "&dates=" + spec.dtStart + "/" + spec.dtEnd;
+      if (description) url += "&details=" + encodeURIComponent(description);
+      if (location)    url += "&location=" + encodeURIComponent(location);
       try {
         const a = document.createElement("a");
         a.href = url; a.target = "_blank"; a.rel = "noopener";
@@ -2144,11 +3394,16 @@
 
     /* ── Backup / Restore ── */
     function exportBackup() {
+      /* backupVersion stays 2 (A8). Every v1040 field rides inside the
+         existing trips/days/items objects, so a v1040 backup restores into
+         v1030 with the new keys simply ignored, and a v1030 backup restores
+         here unchanged. AI-SECRET-001 (E8): settingsForStorage() redacts
+         settings.apiKey, so a backup FILE can no longer carry a live key. */
       const backup = {
         app: "TripMaster", backupVersion: 2, exportedAt: new Date().toISOString(),
         trips, activeTripId,
-        homeDays: safeParseJSON(KEY_DAYS, []),
-        settings, theme: localStorage.getItem(KEY_THEME) || "light"
+        homeDays: normalizeDays(safeParseJSON(KEY_DAYS, [])),
+        settings: settingsForStorage(), theme: localStorage.getItem(KEY_THEME) || "light"
       };
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8" });
       const url  = URL.createObjectURL(blob);
@@ -2167,39 +3422,70 @@
          stale or inactive value still lands on Hebrew. */
       const preservedLang =
         (LANG_META[currentLang] && LANG_META[currentLang].active) ? currentLang : DEFAULT_LANG;
+      /* ── SNAPSHOT-001 (v1040 / A6) ──
+         Restore replaces everything on the device. A recoverable local copy
+         is written FIRST and the whole operation is abandoned if that write
+         fails, so the destructive step can never run without a way back. */
+      if (!writeSafetySnapshot("restore")) { showToast(t("toast_snapshot_failed")); return; }
+      const undoState    = snapshotState();
+      const undoSettings = JSON.stringify(settings);
+      const undoTheme    = localStorage.getItem(KEY_THEME) || "light";
+
+      let nextTrips, nextActiveId, nextHomeDays, nextDays, nextSettings;
       if (backup.trips && Array.isArray(backup.trips)) {
-        trips = JSON.parse(JSON.stringify(backup.trips));
-        activeTripId = backup.activeTripId || null;
-        const homeDaysToRestore = Array.isArray(backup.homeDays) ? backup.homeDays : (Array.isArray(backup.days) ? backup.days : []);
-        const activeTrip = getActiveTrip();
-        days = activeTrip
-          ? JSON.parse(JSON.stringify(activeTrip.days || []))
-          : JSON.parse(JSON.stringify(homeDaysToRestore));
+        nextTrips = normalizeTrips(JSON.parse(JSON.stringify(backup.trips)));
+        nextActiveId = backup.activeTripId || null;
+        nextHomeDays = Array.isArray(backup.homeDays) ? backup.homeDays : (Array.isArray(backup.days) ? backup.days : []);
+        const restoredActive = nextTrips.filter((x) => x.id === nextActiveId)[0] || null;
+        nextDays = restoredActive
+          ? JSON.parse(JSON.stringify(restoredActive.days || []))
+          : JSON.parse(JSON.stringify(nextHomeDays));
         // SETTINGS-NORM-001 (v1020): merge, never replace. An older backup has
         // no prefs/access branch; normalizeSettings() supplies it instead of
         // letting the restore delete it or leave settings undefined.
-        settings = normalizeSettings(backup.settings);
-        localStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
-        localStorage.setItem(KEY_ACTIVE_TRIP, activeTripId || "");
-        localStorage.setItem(KEY_DAYS, JSON.stringify(homeDaysToRestore));
-        localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
+        nextSettings = normalizeSettings(backup.settings);
       } else {
-        days = backup.days || [];
+        nextDays = backup.days || [];
         // FIELDS-001 (v1020 RC3): name a legacy single-trip backup from the
         // city stored in that backup. Previously this read the live settings,
         // which no longer carries a city, so the original name would be lost.
         const legacyCity = (backup.settings && backup.settings.city) ? backup.settings.city : "";
-        trips = [{ id: "trip_" + Date.now(), name: legacyCity || "הטיול הראשי", days }];
-        activeTripId = trips[0].id;
-        // SETTINGS-NORM-001 (v1020): merge, never replace. An older backup has
-        // no prefs/access branch; normalizeSettings() supplies it instead of
-        // letting the restore delete it or leave settings undefined.
-        settings = normalizeSettings(backup.settings);
-        localStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
-        localStorage.setItem(KEY_ACTIVE_TRIP, activeTripId || "");
-        localStorage.setItem(KEY_DAYS, JSON.stringify(days));
-        localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
+        nextTrips = [{ id: "trip_" + Date.now(), name: legacyCity || t("legacy_trip_name"), days: nextDays }];
+        nextActiveId = nextTrips[0].id;
+        // The legacy single-trip payload is already represented by nextTrips.
+        // Do not mirror it back into the deprecated Home itinerary store.
+        nextHomeDays = [];
+        nextSettings = normalizeSettings(backup.settings);
       }
+      nextSettings.language = preservedLang;
+      // AI-SECRET-001 (v1040 / E8): an older backup may still contain a key.
+      // It is never adopted into this session and never re-persisted.
+      nextSettings.apiKey = "";
+      const nextTheme = backup.theme === "dark" ? "dark" : "light";
+
+      /* STORE-001 (v1040 / A7): one guarded batch. A half-written restore —
+         new trips with old settings, or trips written and days not — was
+         previously possible on a quota failure part-way through. */
+      const restored = writeAll([
+        [KEY_TRIPS, JSON.stringify(nextTrips)],
+        [KEY_ACTIVE_TRIP, nextActiveId || ""],
+        [KEY_DAYS, JSON.stringify(nextHomeDays)],
+        [KEY_SETTINGS, JSON.stringify(settingsForStorage(nextSettings))],
+        [KEY_THEME, nextTheme]
+      ]);
+      if (!restored) { reportStorageFailure(); return; }
+
+      trips = nextTrips;
+      activeTripId = nextActiveId;
+      days = getActiveTrip() ? getActiveTrip().days : [];
+      currentView = activeTripId ? "planner" : "home";
+      settings = nextSettings;
+      const migrationAfterRestore = migrateLegacyHomeDays();
+      if (migrationAfterRestore.error) {
+        // Restored data is still intact under KEY_DAYS; do not claim it was migrated.
+        console.warn("TripMaster: legacy Home migration deferred after restore");
+      }
+      setUndo(undoState, { settings: undoSettings, theme: undoTheme });
       /* I18N-RESTORE-001 (v1030 RC3): both branches above have already run
          normalizeSettings(backup.settings) and persisted it. Whatever
          language that produced — "he" from an old backup with no field, or
@@ -2207,17 +3493,9 @@
          favour of the language the user is actually looking at. The backup
          SCHEMA is unchanged: language is still read, still exported, just no
          longer allowed to drive the UI. Re-persisted so a refresh agrees. */
-      settings.language = preservedLang;
-      saveSettings();
-
-      if (backup.theme === "dark") {
-        document.documentElement.setAttribute("data-theme", "dark");
-        localStorage.setItem(KEY_THEME, "dark");
-      } else {
-        document.documentElement.removeAttribute("data-theme");
-        localStorage.setItem(KEY_THEME, "light");
-      }
-      $("global-apikey").value  = settings.apiKey || "";
+      if (nextTheme === "dark") document.documentElement.setAttribute("data-theme", "dark");
+      else document.documentElement.removeAttribute("data-theme");
+      $("global-apikey").value = "";
       renderPrefsAndAccess();   // v1020: repaint from the merged settings
       // I18N-RESTORE-001 (v1030 RC3): settings.language now holds the
       // PRESERVED language, so this keeps currentLang in sync and is a no-op
@@ -2226,20 +3504,14 @@
       applyLanguage();
       renderTools();
       currentDayIndex = 0;
-      renderDays();
-      renderActivities(currentDayIndex);
-      showToast(t("toast_restored"));
+      renderCurrentView();
+      updateHeaderInfo();
+      showUndoToast(t("toast_restored"));
     }
 
     /* ── AI ── */
-    function openAISheet() {
-      $("aiSheet").classList.add("open");
-      $("sheetBackdrop").classList.add("open");
-    }
-    function closeAISheet() {
-      $("aiSheet").classList.remove("open");
-      $("sheetBackdrop").classList.remove("open");
-    }
+    function openAISheet() { openSheetEl("aiSheet"); }
+    function closeAISheet() { closeSheetEl("aiSheet"); }
 
     async function runAI() {
       const prompt = $("aiPromptInput").value.trim();
@@ -2295,6 +3567,250 @@
       }
     }
 
+    /* ══════════════════════════════════════════════════════════════════
+       TRIPMETA-001 (v1040 / B2, B3, C2): trip name, destination, time zone
+       ══════════════════════════════════════════════════════════════════ */
+    let _editingTripId = null;
+
+    /* TZ-001 (B3): the browser already ships the full IANA database, so no
+       backend and no library is needed. Intl.supportedValuesOf() gives the
+       real list where it exists; TZ_FALLBACK covers older engines and is
+       validated entry by entry before anything is offered. */
+    function supportedTimeZones() {
+      let list = [];
+      try {
+        if (typeof Intl.supportedValuesOf === "function") {
+          list = Intl.supportedValuesOf("timeZone") || [];
+        }
+      } catch (err) { list = []; }
+      if (!list.length) list = TZ_FALLBACK.filter(isValidTimeZone);
+      return list;
+    }
+
+    function renderTimezoneOptions(selected) {
+      const sel = $("tripTimezoneSelect");
+      if (!sel) return;
+      sel.innerHTML = "";
+      const none = document.createElement("option");
+      none.value = "";
+      none.textContent = t("trip_timezone_none");
+      sel.appendChild(none);
+
+      const zones = supportedTimeZones().slice();
+      const device = deviceTimeZone();
+      if (device && zones.indexOf(device) === -1) zones.unshift(device);
+      // A zone stored by an older device that this browser no longer lists
+      // must still be selectable, or opening the sheet would silently clear it.
+      if (selected && zones.indexOf(selected) === -1) zones.unshift(selected);
+
+      zones.forEach((tz) => {
+        const opt = document.createElement("option");
+        opt.value = tz;
+        opt.textContent = tz.split("_").join(" ");
+        sel.appendChild(opt);
+      });
+      sel.value = selected || "";
+    }
+
+    function openTripDetailsSheet(tripId) {
+      const trip = tripId
+        ? trips.filter((x) => x.id === tripId)[0]
+        : getActiveTrip();
+      if (!trip) { showToast(t("toast_no_active_trip")); return; }
+      _editingTripId = trip.id;
+      $("tripNameInput").value = trip.name || "";
+      $("tripDestinationInput").value = tripDestination(trip);
+      renderTimezoneOptions(tripTimezone(trip));
+      const base = tripBase(trip);
+      $("tripBaseNameInput").value = base.name;
+      $("tripBaseLocationInput").value = base.location;
+      $("tripBaseNoteInput").value = base.note;
+      openSheetEl("tripDetailsSheet");
+    }
+
+    function closeTripDetailsSheet() {
+      _editingTripId = null;
+      closeSheetEl("tripDetailsSheet");
+    }
+
+    function saveTripDetails() {
+      const trip = trips.filter((x) => x.id === _editingTripId)[0];
+      if (!trip) { showToast(t("toast_no_active_trip")); return; }
+      const name = $("tripNameInput").value.trim();
+      if (!name) { showToast(t("toast_missing_trip_name")); return; }
+      const dest = $("tripDestinationInput").value.trim();
+      const tz   = $("tripTimezoneSelect").value;
+      const baseName = $("tripBaseNameInput").value.trim();
+      const baseLocation = $("tripBaseLocationInput").value.trim();
+      const baseNote = $("tripBaseNoteInput").value.trim();
+      // C2: the rename persists in the same transaction as everything else,
+      // so it survives a reload or it did not happen at all.
+      const ok = commitState(() => {
+        trip.name = name;
+        if (dest) trip.destination = dest; else delete trip.destination;
+        if (tz && isValidTimeZone(tz)) trip.timezone = tz; else delete trip.timezone;
+        if (baseName || baseLocation || baseNote) {
+          trip.base = { name: baseName, location: baseLocation, note: baseNote };
+        } else {
+          delete trip.base;
+        }
+      });
+      if (!ok) return;
+      closeTripDetailsSheet();
+      renderCurrentView();
+      updateHeaderInfo();
+      showToast(t("toast_trip_updated"));
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       OVERVIEW-001 (v1040 / C1): read-only whole-trip view
+       ══════════════════════════════════════════════════════════════════ */
+    function openOverviewSheet() {
+      renderOverview();
+      openSheetEl("overviewSheet");
+    }
+    function closeOverviewSheet() { closeSheetEl("overviewSheet"); }
+
+    function renderOverview() {
+      const body = $("overviewBody");
+      const meta = $("overviewMeta");
+      if (!body || !meta) return;
+      body.innerHTML = "";
+
+      const trip = getActiveTrip();
+      if (!trip) {
+        meta.textContent = t("overview_no_trip");
+        const empty = document.createElement("div");
+        empty.className = "overview-empty";
+        empty.innerHTML = `<div class="overview-empty-title">${escapeHtml(t("home_choose_trip"))}</div>`;
+        body.appendChild(empty);
+        return;
+      }
+      const tripDays = trip.days || [];
+      const total = tripDays.reduce((sum, d) => sum + ((d.items && d.items.length) || 0), 0);
+      const bits = [trip.name];
+      const dest = tripDestination(trip);
+      if (dest) bits.push(dest);
+      bits.push(tf("overview_summary", { d: tripDays.length, n: total }));
+
+      const base = tripBase(trip);
+      if (base.name || base.location) bits.push((base.name || t("trip_base_section")) + (base.location ? " · " + base.location : ""));
+      meta.textContent = bits.join(" · ");
+
+      if (!tripDays.length) {
+        const empty = document.createElement("div");
+        empty.className = "overview-empty";
+        empty.innerHTML =
+          `<div class="overview-empty-title">${escapeHtml(t("overview_empty"))}</div>` +
+          `<div class="overview-empty-sub">${escapeHtml(t("overview_empty_sub"))}</div>`;
+        body.appendChild(empty);
+        return;
+      }
+
+      tripDays.forEach((day, index) => {
+        const block = document.createElement("div");
+        block.className = "overview-day";
+
+        const head = document.createElement("div");
+        head.className = "overview-day-head";
+        head.textContent = formatDateForTitle(day.date, tf("day_n", { n: index + 1 }))
+          + " · " + tf("timeline_activities_count", { n: (day.items && day.items.length) || 0 });
+        block.appendChild(head);
+
+        const items = (day.items || []).slice()
+          .sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")));
+
+        if (!items.length) {
+          const none = document.createElement("div");
+          none.className = "overview-row-empty";
+          none.textContent = t("overview_day_empty");
+          block.appendChild(none);
+        } else {
+          items.forEach((item) => {
+            const row = document.createElement("div");
+            row.className = "overview-row" + (item.completed ? " completed" : "");
+            const end = itemEndTime(item);
+            row.innerHTML =
+              `<div class="overview-time">${escapeHtml(item.time || "--:--")}` +
+              (end ? `<span class="overview-time-end">${escapeHtml(end)}</span>` : "") +
+              `</div>` +
+              `<div class="overview-item">` +
+                `<div class="overview-item-title">${escapeHtml(getCategoryIcon(item))} ${escapeHtml(item.title || "")}</div>` +
+                (itemLocation(item)
+                  ? `<div class="overview-item-loc">📍 ${escapeHtml(itemLocation(item))}</div>` : "") +
+                accessBadgeHtml(item) +
+              `</div>`;
+            block.appendChild(row);
+          });
+        }
+        body.appendChild(block);
+      });
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       ACCESS-PROFILE-001 (v1040 / D5): the saved profile, shown back
+       ──────────────────────────────────────────────────────────────────
+       settings.access has been write-only since v1020 — the user filled it
+       in and never saw it again. This echoes it during planning. It makes no
+       judgement about any activity, and the note under it says exactly that,
+       because TripMaster has no verified accessibility data for any venue.
+       ══════════════════════════════════════════════════════════════════ */
+    function renderAccessProfile() {
+      const strip = $("accessProfileStrip");
+      const chips = $("accessProfileChips");
+      if (!strip || !chips) return;
+      chips.innerHTML = "";
+
+      const access = (settings && settings.access) || {};
+      const prefs  = (settings && settings.prefs)  || {};
+      const labels = [];
+      if (access.stepFree)        labels.push(t("access_stepfree"));
+      if (access.avoidStairs)     labels.push(t("access_avoidstairs"));
+      if (access.elevatorNeeded)  labels.push(t("access_elevator"));
+      if (access.shortWalks)      labels.push(t("access_shortwalks"));
+      if (access.companion)       labels.push(t("access_companion"));
+      if (access.quietPreference) labels.push(t("access_quiet"));
+      if (access.wheelchair === "manual")   labels.push(t("access_profile_wc_manual"));
+      if (access.wheelchair === "electric") labels.push(t("access_profile_wc_electric"));
+      if (prefs.maxWalkKm != null && !isNaN(prefs.maxWalkKm)) {
+        labels.push(tf("access_profile_maxwalk", { n: prefs.maxWalkKm }));
+      }
+
+      if (!labels.length) { strip.style.display = "none"; return; }
+      labels.forEach((label) => {
+        const chip = document.createElement("span");
+        chip.className = "access-profile-chip";
+        chip.textContent = label;
+        chips.appendChild(chip);
+      });
+      strip.style.display = "";
+    }
+
+    /* ── A11Y-001 (v1040 / D6): close the right sheet the right way ──
+       Routing by id rather than blindly stripping the class keeps each
+       sheet's pending-callback cleanup intact, so dismissing a confirmation
+       with Escape or the backdrop can never leave an armed destructive
+       callback behind. */
+    function closeAnySheet(id) {
+      switch (id) {
+        case "sheet":             closeSheet(); return;
+        case "aiSheet":           closeAISheet(); return;
+        case "tripSheet":         closeTripSheet(); return;
+        case "newTripSheet":      closeNewTripSheet(); return;
+        case "firstDaySheet":     closeFirstDaySheet(); return;
+        case "menuSheet":         closeMenuSheet(); return;
+        case "aboutSheet":        closeAboutSheet(); return;
+        case "tripDetailsSheet":  closeTripDetailsSheet(); return;
+        case "overviewSheet":     closeOverviewSheet(); return;
+        case "confirmDeleteActivitySheet": closeConfirmSheet(id); _pendingDeleteActivity = null; return;
+        case "confirmDeleteDaySheet":      closeConfirmSheet(id); _pendingDeleteDay = null; return;
+        case "confirmDeleteTripSheet":     closeConfirmSheet(id); _pendingDeleteTrip = null; return;
+        case "confirmResetSheet":          closeConfirmSheet(id); _pendingReset = null; return;
+        case "confirmRestoreSheet":        closeConfirmSheet(id); _pendingRestore = null; return;
+        default: closeConfirmSheet(id);
+      }
+    }
+
     /* ══════════════════════════════════════
        EVENT LISTENERS
     ══════════════════════════════════════ */
@@ -2305,15 +3821,15 @@
     $("menuSheetClose").addEventListener("click", closeMenuSheet);
 
     // Theme
+    /* STORE-001 (v1040 / A7): the theme is a real user preference, so a
+       failed write must not leave the screen dark and the storage light.
+       The attribute is applied only after the write is confirmed. */
     $("themeBtn").addEventListener("click", () => {
       const cur = document.documentElement.getAttribute("data-theme");
-      if (cur === "dark") {
-        document.documentElement.removeAttribute("data-theme");
-        localStorage.setItem(KEY_THEME, "light");
-      } else {
-        document.documentElement.setAttribute("data-theme", "dark");
-        localStorage.setItem(KEY_THEME, "dark");
-      }
+      const next = cur === "dark" ? "light" : "dark";
+      if (!writeAll([[KEY_THEME, next]])) { reportStorageFailure(); return; }
+      if (next === "dark") document.documentElement.setAttribute("data-theme", "dark");
+      else document.documentElement.removeAttribute("data-theme");
     });
 
     // Switch trip
@@ -2330,12 +3846,14 @@
     $("newTripConfirmBtn").addEventListener("click", () => {
       const name = $("newTripNameInput").value.trim();
       if (!name) { showToast(t("toast_missing_trip_name")); return; }
-      createTrip(name);
+      // STORE-001 (v1040 / A7): createTrip() returns null when the write
+      // failed and has already rolled itself back and told the user.
+      if (!createTrip(name)) return;
       const activeTrip = getActiveTrip();
       if (activeTrip) days = activeTrip.days;
       currentDayIndex = 0;
-      renderDays();
-      renderActivities(0);
+      renderCurrentView();
+      updateHeaderInfo();
       closeNewTripSheet();
       $("newTripNameInput").value = "";
       showToast(t("toast_trip_created"));
@@ -2347,9 +3865,11 @@
     $("firstDayConfirmBtn").addEventListener("click", () => {
       const selectedDate = $("firstDayDateInput").value;
       if (!selectedDate) { showToast(t("toast_missing_date")); return; }
-      days.push({ date: selectedDate, items: [] });
-      saveDays();
-      currentDayIndex = days.length - 1;
+      // STORE-001 (v1040 / A7): guarded, same as addNewDay().
+      if (!commitState(() => {
+        days.push({ date: selectedDate, items: [] });
+        currentDayIndex = days.length - 1;
+      })) return;
       renderDays();
       renderActivities(currentDayIndex);
       closeFirstDaySheet();
@@ -2371,7 +3891,12 @@
       // The confirm sheet stacks above it, and after a reset the next likely
       // action is Restore — which is right here in the same menu.
       confirmReset(() => {
-        days = []; trips = []; activeTripId = null;
+        /* SNAPSHOT-001 (v1040 / A6): recoverable local copy first, and no
+           reset at all if it cannot be written. */
+        if (!writeSafetySnapshot("reset")) { showToast(t("toast_snapshot_failed")); return; }
+        const undoState    = snapshotState();
+        const undoSettings = JSON.stringify(settings);
+        const undoTheme    = localStorage.getItem(KEY_THEME) || "light";
         /* ── I18N-RESET-001 (v1030 RC2) ──
            UI language is an APP-level preference, not trip data, so Reset
            must not change it. Captured BEFORE settings are rebuilt, and
@@ -2384,17 +3909,27 @@
         // restores the full shape (prefs/access) instead of a partial object.
         // RC2: seeded with the preserved language; every other branch still
         // comes from DEFAULT_SETTINGS, so nothing else survives the reset.
-        settings = normalizeSettings({ language: preservedLang });
-        localStorage.removeItem(KEY_DAYS);
-        localStorage.removeItem(KEY_THEME); localStorage.removeItem(KEY_TRIPS);
-        localStorage.removeItem(KEY_ACTIVE_TRIP);
-        /* I18N-RESET-001 (v1030 RC2): KEY_SETTINGS is now WRITTEN, not
-           removed. Removing it made the next boot fall back to
-           DEFAULT_SETTINGS — that is precisely why the language reverted to
-           Hebrew after a refresh. What gets written is the freshly reset
-           settings object, so trips, prefs and access are still cleared. */
-        saveSettings();
-        renderDays(); renderActivities(0);
+        const nextSettings = normalizeSettings({ language: preservedLang });
+        /* I18N-RESET-001 (v1030 RC2): KEY_SETTINGS is WRITTEN, not removed.
+           Removing it made the next boot fall back to DEFAULT_SETTINGS —
+           that is precisely why the language reverted to Hebrew after a
+           refresh. v1040: the other keys are written empty rather than
+           removed too, so the whole reset is one rollback-able batch
+           instead of four independent deletes that could half-succeed. */
+        const wiped = writeAll([
+          [KEY_TRIPS, JSON.stringify([])],
+          [KEY_ACTIVE_TRIP, ""],
+          [KEY_DAYS, JSON.stringify([])],
+          [KEY_SETTINGS, JSON.stringify(settingsForStorage(nextSettings))],
+          [KEY_THEME, "light"]
+        ]);
+        if (!wiped) { reportStorageFailure(); return; }
+
+        days = []; trips = []; activeTripId = null; currentView = "home"; currentDayIndex = 0;
+        settings = nextSettings;
+        setUndo(undoState, { settings: undoSettings, theme: undoTheme });
+
+        renderCurrentView();
         $("global-apikey").value = "";
         renderPrefsAndAccess();   // v1020: clear the new controls too
         // I18N-001 (v1030): keep currentLang and settings.language in sync.
@@ -2402,9 +3937,13 @@
         currentLang = settings.language;
         applyLanguage();
         renderTools();
-        $("headerCity").innerText = "My Trip";
+        /* RESET-NAME-001 (v1040 / E3): the header used to be forced to the
+           untranslated literal "My Trip", which appeared in no other screen
+           and in no language. updateHeaderInfo() already renders the product
+           name when no trip is active, so the literal is simply gone. */
+        updateHeaderInfo();
         document.documentElement.removeAttribute("data-theme");
-        showToast(t("toast_reset_done"));
+        showUndoToast(t("toast_reset_done"));
       });
     });
 
@@ -2412,11 +3951,38 @@
     $("exportBtn").addEventListener("click", async () => {
       // MENU-003 (v1020 RC3): stays open; the result is a toast, not a screen.
       let text = "";
+      // EXPORT-001 (v1040 / B8, D4): structured fields, still a plain text
+      // itinerary — not a document generator.
+      const exportTrip = getActiveTrip();
+      if (exportTrip) {
+        text += `${exportTrip.name}\n`;
+        const dest = tripDestination(exportTrip);
+        if (dest) text += `${t("trip_destination_label")}: ${dest}\n`;
+        const tz = tripTimezone(exportTrip);
+        if (tz) text += `${t("trip_timezone_label")}: ${tz}\n`;
+        const base = tripBase(exportTrip);
+        if (base.name) text += `${t("trip_base_name_label")}: ${base.name}\n`;
+        if (base.location) text += `${t("trip_base_location_label")}: ${base.location}\n`;
+        if (base.note) text += `${t("trip_base_note_label")}: ${base.note}\n`;
+        text += "\n";
+      }
       days.forEach((day, index) => {
         text += `${tf("export_day_line", { n: index + 1 })}${formatDateForTitle(day.date, "")}\n`;
         day.items.forEach(item => {
-          text += `${item.time} - ${item.title} ${item.completed ? t("export_done") : ""}\n`;
-          if (item.note) text += `  📍 ${item.note}\n`;
+          const end = itemEndTime(item);
+          text += `${item.time}${end ? "-" + end : ""} - ${item.title} ${item.completed ? t("export_done") : ""}\n`;
+          const loc = itemLocation(item);
+          if (loc) text += `  📍 ${loc}\n`;
+          const note = itemNote(item);
+          if (note) text += `  📝 ${note}\n`;
+          const status = itemAccessStatus(item);
+          const anote  = itemAccessNote(item);
+          if (status || anote) {
+            const label = status === "stepfree" ? t("access_badge_stepfree")
+                        : status === "problem"  ? t("access_badge_problem")
+                        : t("access_status_unknown");
+            text += `  ♿ ${t("export_access_line")}: ${label}${anote ? " — " + anote : ""}\n`;
+          }
         });
         text += "\n";
       });
@@ -2500,14 +4066,10 @@
     // Delete activity from within Edit Activity sheet (reuses existing confirm dialog + delete logic)
     $("addDeleteBtn").addEventListener("click", () => {
       if (editingDayIndex === null || editingItemIndex === null) return;
+      const dayIndex = editingDayIndex, itemIndex = editingItemIndex;
       confirmDeleteActivity(() => {
-        const day = days[editingDayIndex];
-        day.items.splice(editingItemIndex, 1);
-        saveDays();
         closeSheet();
-        renderDays();
-        renderActivities(currentDayIndex);
-        showToast(t("toast_activity_deleted"));
+        deleteActivity(dayIndex, itemIndex);
       });
     });
 
@@ -2525,25 +4087,24 @@
         $("addWithReminderBtn").disabled = false;
         return;
       }
-      const dateVal = $("addDate").value || todayISO();
-      const timeVal = $("addTime").value || "12:00";
-      const noteVal = $("addNote").value.trim();
-      const reminderMin = parseInt($("addReminder").value, 10);
-      if (editingDayIndex !== null && editingItemIndex !== null) {
-        editItem(editingDayIndex, editingItemIndex);
-      } else {
-        addItem();
-      }
-      downloadCalendarFile(titleCheck, dateVal, timeVal, noteVal, reminderMin < 0 ? null : reminderMin);
+      // v1040: export the SAVED activity, not the raw form, so location,
+      // end time and Access reach the calendar and a rolled-back save never
+      // produces an .ics for something that was not stored. Still fully
+      // synchronous inside the click, which navigator.share() requires.
+      const saved = (editingDayIndex !== null && editingItemIndex !== null)
+        ? editItem(editingDayIndex, editingItemIndex)
+        : addItem();
 
       isSavingActivity = false;
       $("addSaveBtn").disabled = false;
       $("addWithReminderBtn").disabled = false;
+      if (!saved) return;
+      exportActivityToIcs(saved.day, saved.item);
     });
 
     // GCAL-001 (v1020): mirrors the ICS handler's save-then-hand-off order, so
     // the activity is stored either way and cancelling in Google Calendar can
-    // never lose it. Deliberately separate from downloadCalendarFile().
+    // never lose it. Both now share activityTimeSpec() for the times.
     $("addGoogleCalBtn").addEventListener("click", () => {
       if (isSavingActivity) return;
       isSavingActivity = true;
@@ -2560,20 +4121,16 @@
         $("addGoogleCalBtn").disabled = false;
         return;
       }
-      const dateVal = $("addDate").value || todayISO();
-      const timeVal = $("addTime").value || "12:00";
-      const noteVal = $("addNote").value.trim();
-      if (editingDayIndex !== null && editingItemIndex !== null) {
-        editItem(editingDayIndex, editingItemIndex);
-      } else {
-        addItem();
-      }
-      openGoogleCalendar(titleCheck, dateVal, timeVal, noteVal);
+      const saved = (editingDayIndex !== null && editingItemIndex !== null)
+        ? editItem(editingDayIndex, editingItemIndex)
+        : addItem();
 
       isSavingActivity = false;
       $("addSaveBtn").disabled = false;
       $("addWithReminderBtn").disabled = false;
       $("addGoogleCalBtn").disabled = false;
+      if (!saved) return;
+      exportActivityToGoogle(saved.day, saved.item);
     });
 
     // AI strip + AI button
@@ -2602,22 +4159,72 @@
         day.items.push({ time: a.time || "12:00", title: a.title || "", note: a.note || "", completed: false });
       });
       day.items.sort((a, b) => a.time.localeCompare(b.time));
-      saveDays(); renderDays(); renderActivities(currentDayIndex);
+      // STORE-001 (v1040 / A7): unreachable while AI-DISABLE-001 hides the
+      // entry points, but guarded anyway so re-enabling AI cannot bring an
+      // unguarded write back with it.
+      if (!persistState()) { reportStorageFailure(); return; }
+      renderDays(); renderActivities(currentDayIndex);
       showToast(`${lastAIPlan.length} פעילויות יובאו ✔`);
       closeAISheet();
     });
 
-    // Backdrop: close all sheets
+    /* Backdrop: close whatever is actually open, newest first. v1040 derives
+       the list from the DOM instead of naming every sheet, so a new sheet can
+       never be forgotten here again. */
     $("sheetBackdrop").addEventListener("click", () => {
-      closeSheet(); closeAISheet(); closeTripSheet();
-      closeNewTripSheet(); closeFirstDaySheet();
-      closeConfirmSheet("confirmDeleteActivitySheet");
-      closeConfirmSheet("confirmDeleteTripSheet");
-      closeConfirmSheet("confirmResetSheet");
-      closeConfirmSheet("confirmRestoreSheet");
-      closeAboutSheet();
-      closeMenuSheet();   // MENU-001 (v1020 fix)
+      Array.prototype.slice.call(document.querySelectorAll(".sheet.open"))
+        .reverse()
+        .forEach((el) => closeAnySheet(el.id));
     });
+
+    /* A11Y-001 (v1040 / D6): Escape closes the topmost sheet. */
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      const open = document.querySelectorAll(".sheet.open");
+      if (!open.length) return;
+      e.preventDefault();
+      closeAnySheet(open[open.length - 1].id);
+    });
+
+    // DAY-DEL-001 (v1040 / A1): the day confirmation's own buttons.
+    $("confirmDeleteDayOk").addEventListener("click", () => {
+      closeConfirmSheet("confirmDeleteDaySheet");
+      if (_pendingDeleteDay) { _pendingDeleteDay(); _pendingDeleteDay = null; }
+    });
+    $("confirmDeleteDayCancel").addEventListener("click", () => { closeConfirmSheet("confirmDeleteDaySheet"); _pendingDeleteDay = null; });
+    $("confirmDeleteDayClose").addEventListener("click",  () => { closeConfirmSheet("confirmDeleteDaySheet"); _pendingDeleteDay = null; });
+    $("deleteDayBtn").addEventListener("click", () => requestDeleteDay(currentDayIndex));
+
+    // TRIPMETA-001 (v1040 / B2,B3,C2)
+    $("tripDetailsBtn").addEventListener("click", () => {
+      closeMenuSheet();
+      const active = getActiveTrip();
+      if (active) { openTripDetailsSheet(active.id); return; }
+      if (trips.length === 0) { openNewTripSheet(); return; }
+      if (trips.length === 1) {
+        if (switchTrip(trips[0].id, { stayHome: currentView === "home", silent:true })) openTripDetailsSheet(trips[0].id);
+        return;
+      }
+      showToast(t("home_choose_trip"));
+      openTripSheet();
+    });
+    $("tripDetailsClose").addEventListener("click", closeTripDetailsSheet);
+    $("tripDetailsCancelBtn").addEventListener("click", closeTripDetailsSheet);
+    $("tripDetailsSaveBtn").addEventListener("click", saveTripDetails);
+
+    // OVERVIEW-001 (v1040 / C1)
+    $("overviewBtn").addEventListener("click", () => {
+      closeMenuSheet();
+      if (getActiveTrip()) { openOverviewSheet(); return; }
+      if (trips.length === 0) { openNewTripSheet(); return; }
+      if (trips.length === 1) {
+        if (switchTrip(trips[0].id, { stayHome: currentView === "home", silent:true })) openOverviewSheet();
+        return;
+      }
+      showToast(t("home_choose_trip"));
+      openTripSheet();
+    });
+    $("overviewClose").addEventListener("click", closeOverviewSheet);
 
     // QA button
     $("qaBtn").addEventListener("click", () => {
@@ -2670,35 +4277,66 @@
     wirePrefsAndAccess();
     renderPrefsAndAccess();
     renderTools();
+    // v1040: category picker + Access profile echo.
+    renderCategoryOptions();
+    renderAccessProfile();
 
-    const activeTrip = getActiveTrip();
-    if (activeTrip) days = activeTrip.days;
+    // HOME-MIG-001: migrate the deprecated Home itinerary before first render.
+    // Fresh users have an empty KEY_DAYS and take the no-op path.
+    const bootMigration = migrateLegacyHomeDays();
+    if (bootMigration.error) console.warn("TripMaster: legacy Home migration deferred");
+
+    let activeTrip = getActiveTrip();
+    if (activeTripId && !activeTrip) {
+      // Stale pointer from a deleted/corrupt trip: clear only the pointer.
+      if (writeAll([[KEY_ACTIVE_TRIP, ""]])) activeTripId = null;
+      activeTrip = null;
+    }
+    if (activeTrip) days = activeTrip.days || [];
+    else days = [];
+    if (!activeTrip) currentView = "home";
 
     currentDayIndex = 0;
-    renderDays();
-    renderActivities(currentDayIndex);
-    showToast(t("toast_ready"));
+    renderCurrentView();
+    updateHeaderInfo();
+    if (bootMigration.migrated) showToast(t("toast_home_migrated"));
+    else showToast(t("toast_ready"));
 
-    /* ── Sleep / Wake lifecycle ── */
-    function persistStateBeforeSleep() {
-      try { saveDays(); saveTrips(); localStorage.setItem(KEY_ACTIVE_TRIP, activeTripId || ""); } catch(e) {}
-    }
+    /* ── Sleep / Wake lifecycle ──
+       ACTIVE-TRIP-001 (v1040 / A4) + STALE-WRITE-001 (v1040 QA):
+       this handler used to call saveDays()/saveTrips() on pagehide,
+       visibilitychange and beforeunload. That was a rescue path for the era
+       when mutations were not reliably persisted at the moment they
+       happened. Since every mutation now goes through commitState(), which
+       writes and verifies before it renders, the rescue is redundant — and
+       it was actively harmful: it wrote THIS page's in-memory trips[] over
+       whatever is in storage now. A second tab, a second PWA window, or a
+       restore performed elsewhere would be silently overwritten by a stale
+       instance going to background. Proven in QA: seeding tm_trips and then
+       navigating produced an empty tm_trips, because the unloading page
+       flushed its own empty array on top.
+
+       Going to sleep is therefore now a no-op. Waking still RE-READS from
+       storage, which is the direction that cannot lose data and which makes
+       two instances converge instead of fight. */
     function reloadStateAfterWake() {
       try {
-        trips = safeParseJSON(KEY_TRIPS, []);
+        trips = normalizeTrips(safeParseJSON(KEY_TRIPS, []));
         activeTripId = localStorage.getItem(KEY_ACTIVE_TRIP) || null;
-        const activeTrip = getActiveTrip();
-        if (activeTrip) { days = activeTrip.days || []; }
-        else { days = safeParseJSON(KEY_DAYS, []); }
+        const wakeMigration = migrateLegacyHomeDays();
+        if (wakeMigration.error) console.warn("TripMaster: legacy Home migration deferred on wake");
+        const woken = getActiveTrip();
+        if (woken) { days = woken.days || []; }
+        else { days = []; currentView = "home"; }
         if (currentDayIndex >= days.length) currentDayIndex = 0;
-        renderDays(); renderActivities(currentDayIndex);
-      } catch(e) {}
+        renderCurrentView(); updateHeaderInfo();
+      } catch(e) { console.warn("TripMaster: wake reload failed", e); }
     }
+    /* Only the wake direction is wired. There is deliberately no pagehide /
+       beforeunload writer: see STALE-WRITE-001 above. */
     document.addEventListener("visibilitychange", () => {
-      document.hidden ? persistStateBeforeSleep() : reloadStateAfterWake();
+      if (!document.hidden) reloadStateAfterWake();
     });
-    window.addEventListener("pagehide", persistStateBeforeSleep);
-    window.addEventListener("beforeunload", persistStateBeforeSleep);
     window.addEventListener("pageshow", () => reloadStateAfterWake());
 
     /* ── REMINDERS-001 follow-up: lightweight time-based UI refresh ──

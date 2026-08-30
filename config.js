@@ -1,20 +1,26 @@
 /* TripMaster — config.js
-   v1030 RC7: mechanical extraction only. These dependency-free constants
-   were moved verbatim out of the main inline script in index.html.
-   No value, name, order or behavior was changed. Loaded as a classic
-   script before i18n.js and before the main inline script. */
+   v1030 RC7: mechanical extraction. These dependency-free constants were
+   moved verbatim out of the main inline script in index.html. Loaded as a
+   classic script before i18n.js and before the main inline script.
+   v1040: APP_VERSION bumped to v1040; CATEGORY_ORDER and TZ_FALLBACK added.
+   PARTNER_CONFIG, PARTNERS_LIVE, the storage keys and CATEGORY_ICONS are
+   unchanged. */
 
     const KEY_DAYS        = "tm_days_clean";
     const KEY_SETTINGS    = "tm_settings_clean";
     const KEY_THEME       = "tm_theme_clean";
     const KEY_TRIPS       = "tm_trips";
     const KEY_ACTIVE_TRIP = "tm_active_trip";
+    /* SNAPSHOT-001 (v1040 / A6): single overwritten local recovery copy
+       written immediately before Reset or Restore. Device-only, never
+       uploaded, never part of a backup file, and not version history. */
+    const KEY_SAFETY_SNAPSHOT = "tm_safety_snapshot";
 
     // ── Beta readiness (v1009) ──
-    const APP_VERSION = "v1030";
-    // Fill in a real support address here to enable "שלח משוב" via mailto.
-    // Left blank on purpose: opens the mail app with subject/body prefilled,
-    // letting the tester pick their own mail account / fill the "To" field.
+    const APP_VERSION = "v1040";
+    // Support address for "שלח משוב". Set, so the mailto opens with the To
+    // field, subject and body prefilled; the tester still picks which of
+    // their own mail accounts sends it. Blank here would leave To empty.
     const FEEDBACK_EMAIL = "tripmaster.app@gmail.com";
 
     /* ── PARTNER-001 (v1020): inert commercial foundation ──
@@ -63,3 +69,35 @@
       attraction: "🏛", food: "🍴", hotel: "🛏", flight: "✈️",
       shopping: "🛍", transport: "🚇", other: "📌"
     };
+
+    /* ── CATEGORY-001 (v1040) ──
+       Render order for the activity "type" picker. item.category was ALREADY
+       read first by getCategoryIcon() before this version; it simply had no
+       UI, so every icon came from the Hebrew/English title-keyword guess.
+       This list gives the field a real control. "" (auto) keeps the legacy
+       keyword guess, so existing activities are completely unaffected.
+       Keys must stay in sync with CATEGORY_ICONS above and with the
+       cat_* translation keys in i18n.js. ── */
+    const CATEGORY_ORDER = Object.freeze([
+      "attraction", "food", "hotel", "flight", "shopping", "transport", "other"
+    ]);
+
+    /* ── TZ-001 (v1040) ──
+       Fallback destination time zones, used only when the browser does not
+       expose Intl.supportedValuesOf("timeZone"). Every entry is validated
+       against the browser's own Intl before it is offered, so an unsupported
+       identifier is dropped rather than shown. No network, no library. ── */
+    const TZ_FALLBACK = Object.freeze([
+      "Asia/Jerusalem", "Europe/London", "Europe/Dublin", "Europe/Paris",
+      "Europe/Berlin", "Europe/Amsterdam", "Europe/Madrid", "Europe/Lisbon",
+      "Europe/Rome", "Europe/Athens", "Europe/Prague", "Europe/Budapest",
+      "Europe/Warsaw", "Europe/Istanbul", "Europe/Moscow", "Europe/Zurich",
+      "Europe/Vienna", "Europe/Stockholm", "Europe/Oslo", "Europe/Copenhagen",
+      "America/New_York", "America/Chicago", "America/Denver",
+      "America/Los_Angeles", "America/Toronto", "America/Vancouver",
+      "America/Mexico_City", "America/Sao_Paulo", "America/Buenos_Aires",
+      "Africa/Cairo", "Africa/Johannesburg", "Africa/Casablanca",
+      "Asia/Dubai", "Asia/Bangkok", "Asia/Singapore", "Asia/Hong_Kong",
+      "Asia/Tokyo", "Asia/Seoul", "Asia/Shanghai", "Asia/Kolkata",
+      "Australia/Sydney", "Australia/Melbourne", "Pacific/Auckland", "UTC"
+    ]);

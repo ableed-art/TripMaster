@@ -1,8 +1,10 @@
-// RC note: navigation is cache-FIRST (see fetch handler below), so a new
+// Release note: navigation is cache-FIRST (see fetch handler below), so a new
 // index.html is only ever picked up when sw.js itself changes AND the cache
-// name changes. Bumped for RC5 testing so local QA definitely loads this
-// build. The final v1030 release may return this to "tripmaster-v1030".
-const CACHE_NAME = "tripmaster-v1030-rc7-fix1";
+// name changes. Both change on every release candidate, which is why the
+// name carries the RC suffix. Updating from tripmaster-v1040-rc1 works
+// through the normal install -> skipWaiting -> activate -> claim path, and
+// the activate handler deletes every cache whose name is not this one.
+const CACHE_NAME = "tripmaster-v1040-rc2";
 
 // Core assets required for the app shell to work offline.
 // If any of these fail to cache, installation fails (as intended).

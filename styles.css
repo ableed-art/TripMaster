@@ -152,8 +152,8 @@
 
     /* Left: hamburger / menu */
     .header-menu-btn {
-      width: 40px;
-      height: 40px;
+      width: 44px;
+      height: 44px;
       border-radius: 12px;
       border: none;
       background: rgba(255,255,255,0.12);
@@ -213,8 +213,8 @@
     }
 
     .header-icon-btn {
-      width: 40px;
-      height: 40px;
+      width: 44px;
+      height: 44px;
       border-radius: 12px;
       border: none;
       display: flex;
@@ -230,7 +230,7 @@
     .header-icon-btn:active { background: var(--border-soft); color: var(--text); transform: scale(0.92); }
 
     .header-switch-btn {
-      height: 36px;
+      min-height: 44px;
       border-radius: 10px;
       border: none;
       background: var(--accent);
@@ -1092,6 +1092,33 @@
 
     .sheet.open { bottom: 0; }
 
+    /* ── SHEET-HIT-001 (found in v1040 runtime QA) ──
+       A closed sheet sits at bottom:-100%, i.e. exactly one viewport height
+       below. That hides it only while the sheet is SHORTER than the
+       viewport. .confirm-sheet is height:auto, so on a narrow or zoomed
+       layout its text wraps, it grows past the viewport height, and the top
+       of a CLOSED confirmation reaches back up over the bottom bar. It is
+       invisible (it looks like empty page) but it still takes the tap, so
+       "Add activity" silently stops responding. Reproduced at a 195x422
+       viewport, where confirmResetSheet is 488px tall and covers the button.
+
+       visibility:hidden fixes the whole class of problem at once: a closed
+       sheet cannot be hit, cannot be reached with Tab, and is not exposed to
+       assistive technology. The delayed visibility transition preserves the
+       slide-out animation; the reduced-motion block below drops it. This is
+       a latent v1030 issue that only v1040's narrow-viewport testing
+       surfaced -- it is not a regression introduced by this push. */
+    .sheet {
+      pointer-events: none;
+      visibility: hidden;
+      transition: bottom .32s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear .32s;
+    }
+    .sheet.open {
+      pointer-events: auto;
+      visibility: visible;
+      transition: bottom .32s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0s;
+    }
+
     .sheet-handle {
       display: flex;
       justify-content: center;
@@ -1198,9 +1225,11 @@
       overflow: visible;
       color: var(--text);
     }
+    /* v1040: six quick actions now, so three per row instead of four. Keeps
+       every label readable at 200% text instead of clipping into two lines. */
     .menu-quick {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 8px;
       margin-bottom: 4px;
     }
@@ -1563,4 +1592,353 @@
       .hero-card-thumb { width: 78px; height: 78px; }
       .item-time-col { min-width: 46px; }
     }
-  
+
+
+    /* ═══════════════════════════════════════
+       v1040 — PRODUCT FOUNDATION PUSH
+       Additive only. No existing rule above was rewritten, and no design
+       token changed, so the Navy/Teal identity is untouched.
+    ═══════════════════════════════════════ */
+
+    /* ── Field helper text (location / end time / access notes) ── */
+    .field-note {
+      font-size: .78rem;
+      color: var(--sub);
+      line-height: 1.5;
+      margin: -6px 0 10px;
+    }
+
+    /* ── DAY-DEL-001: visible day delete, in the days strip header ── */
+    .days-strip-header { position: relative; }
+    .strip-danger-btn {
+      margin-inline-start: auto;
+      width: 44px; height: 44px;          /* real touch target, not 24px */
+      display: inline-grid; place-items: center;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--card);
+      color: var(--danger);
+      font-size: .95rem;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .strip-danger-btn:active { background: var(--danger-soft); }
+
+    /* ── TRIP-DEL-001: explicit per-trip controls, replacing long-press ── */
+    .trip-card-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .trip-card-btn {
+      width: 44px; height: 44px;
+      display: grid; place-items: center;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--card);
+      font-size: 1rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .trip-card-btn:active { background: var(--bg2); }
+    .trip-card-btn-danger { color: var(--danger); border-color: var(--danger-border); }
+    .trip-card-btn-danger:active { background: var(--danger-soft); }
+
+    /* ── UNDO-001: the toast can carry one action ── */
+    #toast {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      justify-content: center;
+      white-space: normal;                /* was nowrap: an action + text wraps */
+    }
+    .toast-text { flex: 1; min-width: 0; }
+    /* UNDO-001 fix (found in v1040 runtime QA): #toast has carried
+       pointer-events:none since v1030, when it was purely informational.
+       The Undo button inherited it and was rendered, focusable and
+       completely untappable. Re-enabling pointer events is scoped two ways
+       on purpose: only the BUTTON becomes interactive, so the pill still
+       never swallows taps meant for the app behind it; and only while
+       .visible is set, so the button cannot be hit once the toast has faded
+       to opacity 0 but is still in the DOM. */
+    #toast.visible .toast-action { pointer-events: auto; }
+    .toast-action {
+      flex-shrink: 0;
+      border: none;
+      background: transparent;
+      color: var(--primary-light);
+      font-family: var(--font);
+      font-weight: 700;
+      font-size: .88rem;
+      padding: 8px 10px;
+      min-height: 36px;
+      border-radius: var(--radius-xs);
+      cursor: pointer;
+    }
+    .toast-action:active { background: rgba(255,255,255,.12); }
+
+    /* ── ACCESS-ACT-001: per-activity status badge ── */
+    .access-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 6px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: .72rem;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+    .access-badge.access-stepfree {
+      background: var(--success-soft);
+      color: var(--success);
+      border: 1px solid var(--success-border);
+    }
+    .access-badge.access-problem {
+      background: var(--danger-soft);
+      color: var(--danger);
+      border: 1px solid var(--danger-border);
+    }
+    .hero-card-left .access-badge {
+      background: rgba(255,255,255,.16);
+      color: var(--on-navy);
+      border-color: rgba(255,255,255,.28);
+    }
+
+    /* ── ACCESS-PROFILE-001: the saved profile, echoed back ── */
+    .access-profile {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow-xs);
+    }
+    .access-profile-head {
+      font-size: .82rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    .access-profile-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .access-profile-chip {
+      background: var(--primary-soft);
+      color: var(--primary);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: .75rem;
+      font-weight: 600;
+    }
+    .access-profile-note {
+      font-size: .74rem;
+      color: var(--sub);
+      line-height: 1.5;
+      margin-top: 8px;
+    }
+
+    /* ── End time, secondary note line ── */
+    .hero-endtime {
+      font-size: .82rem;
+      color: var(--on-navy-sub);
+      margin-top: -4px;
+      margin-bottom: 2px;
+    }
+    .hero-note-line {
+      font-size: .82rem;
+      color: var(--on-navy-sub);
+      line-height: 1.5;
+      margin-top: 4px;
+    }
+    .item-time-end {
+      font-size: .74rem;
+      color: var(--sub);
+      margin-top: 1px;
+    }
+    .item-note-plain {
+      font-size: .8rem;
+      color: var(--sub);
+      line-height: 1.5;
+      margin-top: 4px;
+    }
+
+    /* ── OVERVIEW-001: read-only whole-trip view ── */
+    .overview-meta {
+      font-size: .84rem;
+      color: var(--sub);
+      font-weight: 600;
+      margin-bottom: 14px;
+    }
+    .overview-day { margin-bottom: 18px; }
+    .overview-day-head {
+      font-size: .86rem;
+      font-weight: 700;
+      color: var(--text);
+      background: var(--bg2);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      margin-bottom: 8px;
+    }
+    .overview-row {
+      display: flex;
+      gap: 12px;
+      padding: 8px 4px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .overview-row:last-child { border-bottom: none; }
+    .overview-row.completed { opacity: .55; }
+    .overview-time {
+      flex: 0 0 54px;
+      font-size: .84rem;
+      font-weight: 700;
+      color: var(--primary);
+      font-variant-numeric: tabular-nums;
+    }
+    .overview-time-end {
+      display: block;
+      font-size: .72rem;
+      font-weight: 500;
+      color: var(--sub);
+    }
+    .overview-item { flex: 1; min-width: 0; }
+    .overview-item-title { font-size: .9rem; font-weight: 600; color: var(--text); line-height: 1.45; }
+    .overview-item-loc { font-size: .78rem; color: var(--sub); margin-top: 3px; }
+    .overview-row-empty {
+      font-size: .82rem;
+      color: var(--sub);
+      font-style: italic;
+      padding: 6px 4px 10px;
+    }
+    .overview-empty { text-align: center; padding: 40px 16px; }
+    .overview-empty-title { font-size: .95rem; font-weight: 600; color: var(--text); }
+    .overview-empty-sub { font-size: .82rem; color: var(--sub); margin-top: 6px; }
+
+    /* ═══════════════════════════════════════
+       A11Y-001 (v1040 / D6)
+    ═══════════════════════════════════════ */
+
+    /* Keyboard focus is visible everywhere. :focus-visible only, so a mouse
+       or touch press does not leave a ring behind. */
+    a:focus-visible,
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible,
+    [tabindex]:focus-visible,
+    .sheet:focus-visible,
+    .chip:focus-visible,
+    .opt:focus-visible,
+    .lang-option:focus-visible,
+    .tool-card:focus-visible {
+      outline: 3px solid var(--primary-light);
+      outline-offset: 2px;
+      border-radius: var(--radius-xs);
+    }
+    /* The hero card sits on navy, where the teal ring has too little contrast. */
+    .hero-card button:focus-visible,
+    .header button:focus-visible {
+      outline: 3px solid #FFFFFF;
+      outline-offset: 2px;
+    }
+
+    /* A sheet receives focus programmatically on open; it must not then draw
+       a ring as though the user had tabbed to it. */
+    .sheet:focus { outline: none; }
+
+    /* Selected states are exposed through aria-pressed / aria-current in JS.
+       These rules just keep the visual and the semantic in step. */
+    .chip[aria-current="true"] { font-weight: 700; }
+
+    /* prefers-reduced-motion: the sheet slide, the toast rise and the hero
+       transitions are decoration. Honour the OS setting rather than
+       animating a user who asked us not to. */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+      }
+      /* SHEET-HIT-001: keep visibility switching instantly here too, so a
+         closed sheet is never left hit-testable while motion is reduced. */
+      .sheet { transition: none; }
+      .sheet.open { transition: none; }
+      .sheet-backdrop { transition: none; }
+      #toast { transition: none; }
+    }
+
+    /* Touch-target integrity for the two smallest existing controls. */
+    .sheet-close { width: 44px; height: 44px; }
+
+    /* 200% text: the sheets are the flows most likely to overflow, so let
+       them use the full height rather than clipping their action rows. */
+    @media (max-height: 520px) {
+      .sheet { height: 96%; }
+      .menu-sheet { height: 96%; }
+    }
+
+    /* D7 (found in v1040 runtime QA): at 200% browser zoom the effective
+       viewport falls to ~195px and the header ran 9px past it, because
+       .header-right is flex-shrink:0 and the trips button carries a text
+       label. Below 340px the label is dropped; the icon and the button's
+       aria-label carry the meaning, so nothing is lost to assistive tech.
+       340px is deliberately under the common 360px phone width, so real
+       devices keep the visible label. */
+    @media (max-width: 340px) {
+      .header-switch-btn span { display: none; }
+      .header-switch-btn { padding-left: 10px; padding-right: 10px; }
+    }
+
+    /* ═══════════════════════════════════════
+       v1040-RC2 — HOME / TRIP BASE / MOBILITY
+       ═══════════════════════════════════════ */
+    .home-dashboard { padding-bottom: 24px; }
+    .home-dashboard-head {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 12px; margin: 2px 2px 16px;
+    }
+    .home-dashboard-head h2 { font-size: 1.35rem; line-height: 1.25; color: var(--text); }
+    .home-dashboard-head p { margin-top: 4px; color: var(--sub); font-size: .86rem; line-height: 1.5; }
+    .home-section-label {
+      margin: 16px 2px 8px; color: var(--sub); font-size: .78rem;
+      font-weight: 700; letter-spacing: .01em;
+    }
+    .home-trip-card, .home-empty-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: 16px; box-shadow: var(--shadow); min-width: 0;
+    }
+    .home-trip-card.is-active { border-color: var(--primary); box-shadow: var(--shadow-md); }
+    .home-trip-title { font-size: 1.05rem; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+    .home-trip-meta, .home-trip-base {
+      margin-top: 6px; font-size: .8rem; color: var(--sub); line-height: 1.5; overflow-wrap: anywhere;
+    }
+    .home-trip-base { color: var(--text2); }
+    .home-trip-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .home-trip-actions .btn { flex: 1 1 150px; width: auto; height: auto; min-height: 48px; padding: 9px 12px; line-height: 1.3; }
+    .home-empty-title { font-size: 1rem; font-weight: 700; color: var(--text); }
+    .home-empty-sub { margin: 6px 0 14px; font-size: .82rem; line-height: 1.55; color: var(--sub); }
+    .home-empty-card .btn { height: auto; min-height: 50px; padding: 10px 16px; }
+    .home-other-list { display: flex; flex-direction: column; gap: 8px; }
+    .home-other-row {
+      width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--card); color: var(--text); font-family: var(--font); text-align: start; cursor: pointer;
+    }
+    .home-other-row span { min-width: 0; font-size: .88rem; font-weight: 700; overflow-wrap: anywhere; }
+    .home-other-row small { flex: 0 1 auto; min-width: 0; color: var(--sub); font-size: .72rem; overflow-wrap: anywhere; }
+
+    .trip-base-fields {
+      margin: 6px 0 12px; padding-top: 14px; border-top: 1px solid var(--border-soft);
+    }
+    .trip-base-heading { margin-bottom: 12px; color: var(--text); font-size: .88rem; font-weight: 700; }
+
+    /* Large-text/narrow-width guardrails. These make controls wrap instead of
+       forcing the sheet wider than the visual viewport. */
+    .sheet, .sheet * { min-width: 0; }
+    .sheet h3, .sheet-title, .confirm-title, .confirm-msg, .sec-title, .field-note { overflow-wrap: anywhere; }
+    @media (max-width: 340px) {
+      .home-trip-actions { flex-direction: column; }
+      .home-trip-actions .btn { flex-basis: auto; width: 100%; }
+      .home-other-row { align-items: flex-start; flex-direction: column; }
+      .trip-card-actions { flex-direction: column; }
+      .trip-card-btn { width: 44px; height: 44px; }
+      .opt-row:not(.opt-wrap) { flex-wrap: wrap; }
+      .opt-row:not(.opt-wrap) .opt { flex: 1 1 100%; }
+    }
