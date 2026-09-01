@@ -680,6 +680,8 @@
       border: none;
       border-radius: var(--radius);
       padding: 12px 24px;
+      /* TOUCH-TARGET-001: pre-existing 43px height, same one-pixel cause. */
+      min-height: 48px;
       font-size: .9rem;
       font-weight: 700;
       font-family: var(--font);
@@ -1418,6 +1420,14 @@
 
     input, textarea, select {
       width: 100%;
+      /* TOUCH-TARGET-001 (v1050-RC2): 12px padding + 16px text renders a
+         43px control - one pixel under the 44px mobile minimum. It was
+         invisible until now only because the RC1 Add sheet was long enough
+         to push these selects below the fold; the simplified form brings
+         them into reach, so the shortfall is real and is fixed here rather
+         than waived. Applies to text inputs and textareas too, which were
+         already comfortably above the floor. */
+      min-height: 48px;
       border: 1.5px solid var(--border);
       background: var(--bg);
       color: var(--text);
@@ -1942,3 +1952,308 @@
       .opt-row:not(.opt-wrap) { flex-wrap: wrap; }
       .opt-row:not(.opt-wrap) .opt { flex: 1 1 100%; }
     }
+
+/* ══════════════════════════════════════════════════════════════════════
+   v1050 - deterministic day intelligence / planning summaries
+   ══════════════════════════════════════════════════════════════════════ */
+.day-health {
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+}
+.day-health-chips, .planning-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.day-health-chip, .planning-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--card2);
+  color: var(--text2);
+  font-size: .74rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.day-health-chip.warn {
+  background: rgba(184, 87, 46, .12);
+  color: var(--text);
+}
+.day-health-chip.neutral { opacity: .92; }
+.day-health-details {
+  margin-top: 8px;
+  display: grid;
+  gap: 4px;
+  color: var(--sub);
+  font-size: .76rem;
+  line-height: 1.45;
+}
+.planning-summary {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card2);
+}
+.planning-summary-title {
+  margin-bottom: 8px;
+  font-size: .82rem;
+  font-weight: 800;
+  color: var(--text);
+}
+.planning-issues {
+  margin-top: 9px;
+  display: grid;
+  gap: 4px;
+  color: var(--sub);
+  font-size: .76rem;
+  line-height: 1.45;
+}
+.home-planning-chips { margin-top: 9px; }
+.home-review {
+  margin-top: 8px;
+  color: var(--sub);
+  font-size: .78rem;
+  line-height: 1.4;
+}
+.overview-day-health {
+  margin: -3px 0 6px;
+  color: var(--sub);
+  font-size: .73rem;
+  line-height: 1.4;
+}
+.travel-fields {
+  margin: 14px 0 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card2);
+}
+.travel-meta, .access-note-line {
+  margin-top: 5px;
+  color: var(--sub);
+  font-size: .75rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.access-badge.access-needscheck {
+  background: rgba(112, 92, 36, .12);
+  color: var(--text2);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   v1050-RC2 UI
+   Every rule below belongs to markup introduced in this release. Sizing
+   follows the existing conventions: 48px minimum interactive height,
+   logical properties (inline-start/end, text-align:start) so Hebrew and
+   Arabic mirror without a single [dir="rtl"] override, and overflow-wrap
+   on any container that can receive a user-entered string.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── MORE-001: optional detail, collapsed by default ── */
+.more-block {
+  margin: 16px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card2);
+  overflow: hidden;
+}
+.more-toggle {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  font-family: var(--font);
+  font-size: .92rem;
+  font-weight: 700;
+  color: var(--text);
+  text-align: start;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.more-toggle > * { pointer-events: none; }
+.more-toggle:active { opacity: .6; }
+.more-toggle-label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+/* Count of advanced fields that actually hold a value. It exists so a user
+   can tell, without opening the section, that this activity carries data
+   the simplified primary form no longer shows. */
+.more-badge {
+  flex: 0 0 auto;
+  min-width: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: .72rem;
+  font-weight: 800;
+  text-align: center;
+}
+.more-badge[hidden] { display: none; }
+.more-chevron {
+  flex: 0 0 auto;
+  color: var(--sub);
+  font-size: .9rem;
+  line-height: 1;
+  transition: transform .2s;
+}
+.more-toggle[aria-expanded="true"] .more-chevron { transform: rotate(180deg); }
+.more-body { padding: 2px 14px 14px; }
+.more-body[hidden] { display: none; }
+
+/* ── CAL-AFTER-SAVE: calendar actions on an activity that already exists ── */
+.cal-actions-heading {
+  margin: 18px 0 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text);
+  font-size: .88rem;
+  font-weight: 700;
+}
+
+/* ── TRAVEL-SEG: the transfer drawn between two activities ──
+   A full-width row in the timeline rather than a line inside an activity
+   body. Dashed, low-contrast and quiet by default: it is context, not an
+   alert. Only .travel-warn raises contrast, and only when the arithmetic
+   the user supplied actually shows a shortfall. */
+.travel-segment {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: transparent;
+  font-family: var(--font);
+  font-size: .75rem;
+  line-height: 1.45;
+  color: var(--sub);
+  text-align: start;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.travel-segment:active { background: var(--bg2); }
+.travel-segment-arrow { flex: 0 0 auto; opacity: .55; font-size: .85rem; line-height: 1; }
+.travel-segment-icon  { flex: 0 0 auto; font-size: .95rem; line-height: 1; }
+.travel-segment-text  { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.travel-segment.travel-warn {
+  border-style: solid;
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--text2);
+}
+.travel-segment.travel-tight { border-color: var(--border); color: var(--text2); }
+.travel-segment.travel-open  { opacity: .9; }
+
+/* ── OVERVIEW-002: the pre-trip control centre ── */
+.overview-card {
+  margin: 0 0 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+.overview-card-title {
+  margin-bottom: 10px;
+  color: var(--text);
+  font-size: .88rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.overview-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-soft);
+  font-size: .8rem;
+  line-height: 1.5;
+}
+.overview-fact:first-of-type { border-top: 0; }
+.overview-fact-key { flex: 0 0 auto; color: var(--sub); }
+.overview-fact-val {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text);
+  font-weight: 600;
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+/* An unset optional field is dimmed, never coloured as an error. */
+.overview-fact.is-unset .overview-fact-val { color: var(--sub); font-weight: 400; }
+.overview-card-note {
+  margin-top: 10px;
+  color: var(--sub);
+  font-size: .74rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.overview-card-ok {
+  margin-top: 8px;
+  color: var(--text2);
+  font-size: .78rem;
+  line-height: 1.5;
+}
+.planning-issue { overflow-wrap: anywhere; }
+
+/* ── HOMEHUB: trip rows now carry their own edit/delete controls ── */
+.home-other-row { padding: 0; gap: 0; cursor: default; }
+.home-other-pick {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: var(--font);
+  color: var(--text);
+  text-align: start;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.home-other-pick:active { background: var(--bg2); }
+.home-other-pick span  { min-width: 0; font-size: .88rem; font-weight: 700; overflow-wrap: anywhere; }
+.home-other-pick small { flex: 0 1 auto; min-width: 0; color: var(--sub); font-size: .72rem; overflow-wrap: anywhere; }
+.home-other-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  padding-inline-end: 8px;
+}
+.home-trip-delete { margin-inline-start: auto; }
+
+@media (max-width: 340px) {
+  .day-health, .planning-summary, .travel-fields { padding: 9px; }
+  .day-health-chip, .planning-chip { font-size: .7rem; }
+  .more-body { padding-inline: 10px; }
+  .overview-fact { flex-direction: column; align-items: stretch; gap: 2px; }
+  .overview-fact-val { text-align: start; }
+  .home-other-row { flex-direction: row; align-items: center; }
+  .home-other-pick { flex-direction: column; align-items: flex-start; gap: 2px; }
+}
+
+/* Reduced motion: the only new transitions are the chevron and the
+   segment press state, both of which are decorative. */
+@media (prefers-reduced-motion: reduce) {
+  .more-chevron { transition: none; }
+}
+
