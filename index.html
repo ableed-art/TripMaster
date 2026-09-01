@@ -10,7 +10,6 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
 
   <script src="./dir-boot.js"></script>
@@ -74,6 +73,31 @@
       <div id="homeDashboardBody"></div>
     </section>
 
+    <!-- TODAY-001 (v1090): operational in-trip view. It is a distinct main
+         view, not a replacement for Home, Planner or Overview. -->
+    <section class="today-view" id="todayView" aria-labelledby="todayViewTitle" style="display:none">
+      <div class="today-view-head">
+        <div>
+          <div class="today-kicker" id="todayModeBadge" data-i18n="today_title">Today</div>
+          <h2 id="todayViewTitle" tabindex="-1" data-i18n="today_title">Today</h2>
+          <div class="today-date-line" id="todayDateLine"></div>
+          <div class="today-clock-line" id="todayClockLine"></div>
+        </div>
+        <div class="today-head-actions">
+          <button class="btn btn-muted compact-btn" id="todayPlannerBtn" type="button" data-i18n="today_open_planner">Planner</button>
+          <button class="btn btn-muted compact-btn" id="todayOverviewBtn" type="button" data-i18n="menu_overview">Overview</button>
+        </div>
+      </div>
+      <div class="today-preview-controls">
+        <button class="btn btn-muted compact-btn" id="todayPreviewToggleBtn" type="button" aria-expanded="false" data-i18n="today_preview_btn">Preview another day</button>
+        <label class="today-preview-picker" id="todayPreviewPicker" hidden>
+          <span data-i18n="today_preview_date">Preview date</span>
+          <select id="todayPreviewSelect"></select>
+        </label>
+      </div>
+      <div id="todayBody" aria-live="polite"></div>
+    </section>
+
     <div id="plannerView">
     <!-- Days strip -->
     <div class="days-strip-wrap">
@@ -84,9 +108,14 @@
              day. Before v1040 the only way to delete a day was a long-press /
              right-click on its chip, which then raised the ACTIVITY delete
              confirmation. Hidden by renderDays() whenever there is no day. -->
-        <button class="strip-danger-btn" id="deleteDayBtn" type="button"
-                data-i18n-aria-label="aria_day_delete" aria-label="מחק את היום הזה"
-                data-i18n-title="day_delete_title" title="מחיקת היום" style="display:none">🗑</button>
+        <div class="day-strip-actions">
+          <button class="strip-action-btn" id="dayDetailsBtn" type="button"
+                  data-i18n-aria-label="aria_day_details" aria-label="עריכת פרטי היום"
+                  data-i18n-title="day_details_title" title="פרטי היום" style="display:none">✏️</button>
+          <button class="strip-danger-btn" id="deleteDayBtn" type="button"
+                  data-i18n-aria-label="aria_day_delete" aria-label="מחק את היום הזה"
+                  data-i18n-title="day_delete_title" title="מחיקת היום" style="display:none">🗑</button>
+        </div>
       </div>
       <div class="chips" id="dayChips"></div>
     </div>
@@ -104,6 +133,7 @@
     <!-- DAY-INTEL-001 (v1050): deterministic local schedule health. Hidden
          when there is no selected day. No routing or venue claims. -->
     <div class="day-health" id="dayHealthStrip" role="status" aria-live="polite" style="display:none"></div>
+    <div class="day-logistics" id="dayLogisticsStrip" style="display:none"></div>
 
     <!-- Hero card: current / next activity -->
     <div class="hero-card" id="heroCard">
@@ -371,6 +401,7 @@
           </button>
           </div>
           <div class="sec-note" data-i18n="data_note">הגיבוי נשמר כקובץ במכשיר שלכם. שחזור מחליף את נתוני הטיול הקיימים, אך לא את שפת הממשק.</div>
+          <div class="sec-note" data-i18n="export_confirmation_note">Text export includes confirmation/reference details you entered for stays, journeys and activity bookings.</div>
         </div>
       </div>
 
@@ -453,6 +484,12 @@
       <label for="addCategory" data-i18n="field_category">סוג פעילות</label>
       <select id="addCategory"></select>
 
+      <button class="access-quick" id="editAccessQuick" type="button" style="display:none" aria-controls="addMoreBody">
+        <span aria-hidden="true">♿</span>
+        <span id="editAccessQuickText" data-i18n="access_quick_open">Access Research</span>
+        <span aria-hidden="true">›</span>
+      </button>
+
       <!-- ══ MORE-001 (v1050-RC2): optional detail, opt-in ══ -->
       <div class="more-block" id="addMoreBlock">
         <button class="more-toggle" id="addMoreToggle" type="button"
@@ -476,7 +513,7 @@
           <select id="addAccessStatus">
             <option value="" data-i18n="access_status_unknown">לא נבדק</option>
             <option value="needscheck" data-i18n="access_status_needscheck">צריך לבדוק</option>
-            <option value="stepfree" data-i18n="access_status_stepfree">בדקתי — ללא מדרגות</option>
+            <option value="verified" data-i18n="access_status_verified">Verified / suitable</option>
             <option value="problem" data-i18n="access_status_problem">בדקתי — יש בעיה</option>
           </select>
           <label for="addAccessNote" data-i18n="field_access_note">הערת נגישות</label>
@@ -502,6 +539,34 @@
             <label for="addTravelNote" data-i18n="field_travel_note">הערת מעבר</label>
             <textarea id="addTravelNote" rows="2" data-i18n-placeholder="field_travel_note_ph" placeholder="למשל: 20 דקות במטרו, החלפה אחת"></textarea>
             <div class="field-note" data-i18n="field_travel_info_note">TripMaster משתמש רק בזמן שהזנתם. הוא לא מחשב מסלול, מרחק או זמן נסיעה בעצמו.</div>
+          </div>
+
+          <!-- BOOKING-ACT-001 (v1070): optional reservation metadata lives under More. -->
+          <div class="booking-fields">
+            <div class="trip-base-heading" data-i18n="activity_booking_section">🎟️ Booking / reservation</div>
+            <label for="addBookingStatus" data-i18n="booking_status_label">Booking status</label>
+            <select id="addBookingStatus">
+              <option value="" data-i18n="booking_status_not_set">Not set</option>
+              <option value="planned" data-i18n="booking_status_planned">Planned</option>
+              <option value="booked" data-i18n="booking_status_booked">Booked</option>
+              <option value="confirmed" data-i18n="booking_status_confirmed">Confirmed</option>
+              <option value="cancelled" data-i18n="booking_status_cancelled">Cancelled</option>
+            </select>
+            <label for="addBookingPaymentStatus" data-i18n="payment_status_label">Payment status</label>
+            <select id="addBookingPaymentStatus">
+              <option value="" data-i18n="payment_status_not_tracked">Not tracked</option>
+              <option value="unpaid" data-i18n="payment_status_unpaid">Unpaid</option>
+              <option value="partial" data-i18n="payment_status_partial">Partially paid</option>
+              <option value="paid" data-i18n="payment_status_paid">Paid</option>
+              <option value="later" data-i18n="payment_status_later">Pay later / at property</option>
+            </select>
+            <label for="addBookingReference" data-i18n="booking_reference_label">Confirmation / reference</label>
+            <input id="addBookingReference" autocomplete="off" />
+            <label for="addBookingProvider" data-i18n="booking_provider_label">Provider / booked via</label>
+            <input id="addBookingProvider" autocomplete="off" />
+            <label for="addBookingNote" data-i18n="booking_note_label">Booking note</label>
+            <textarea id="addBookingNote" rows="2"></textarea>
+            <div class="field-note" data-i18n="booking_truth_note">Saved as your own information. A reference does not prove a booking is currently valid.</div>
           </div>
 
           <label for="addReminder" data-i18n="field_reminder">🔔 תזכורת</label>
@@ -597,11 +662,66 @@
       <h3 id="firstDaySheetTitle" data-i18n="firstday_title">📅 יום ראשון בטיול</h3>
       <button class="sheet-close" id="firstDaySheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
-    <label data-i18n="firstday_label">בחר את תאריך היום הראשון</label>
+    <label for="firstDayDateInput" data-i18n="firstday_label">בחר את תאריך היום הראשון</label>
     <input type="date" id="firstDayDateInput" />
     <div class="row" style="margin-top:4px">
       <button class="btn btn-muted" id="firstDayCancelBtn" type="button" data-i18n="btn_cancel">ביטול</button>
       <button class="btn btn-primary" id="firstDayConfirmBtn" type="button" data-i18n="btn_create_day">צור יום</button>
+    </div>
+  </div>
+
+  <!-- ══ DAY DETAILS / TRAVEL DAY ══ -->
+  <div class="sheet" id="dayDetailsSheet" role="dialog" aria-modal="true" aria-labelledby="dayDetailsHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="dayDetailsHead" data-i18n="day_details_heading">🧭 Day details</h3>
+      <button class="sheet-close" id="dayDetailsClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
+    </div>
+    <label for="dayTypeSelect" data-i18n="day_type_label">Day type</label>
+    <select id="dayTypeSelect">
+      <option value="normal" data-i18n="day_type_normal">Normal day</option>
+      <option value="arrival" data-i18n="day_type_arrival">Arrival day</option>
+      <option value="departure" data-i18n="day_type_departure">Departure day</option>
+      <option value="transfer" data-i18n="day_type_transfer">Travel / transfer day</option>
+    </select>
+    <div class="field-note" data-i18n="day_type_note">Travel days are summarized differently from normal sightseeing days.</div>
+
+    <div id="travelDayFields" class="travel-day-fields" hidden>
+      <div class="trip-base-heading" data-i18n="travel_day_details_heading">Travel details</div>
+      <label for="travelDayOrigin" data-i18n="travel_day_origin">Origin</label>
+      <input id="travelDayOrigin" autocomplete="off" data-i18n-placeholder="travel_day_origin_ph" placeholder="Optional" />
+      <label for="travelDayDestination" data-i18n="travel_day_destination">Destination</label>
+      <input id="travelDayDestination" autocomplete="off" data-i18n-placeholder="travel_day_destination_ph" placeholder="Optional" />
+      <label for="travelDayMode" data-i18n="travel_day_mode">Transport mode</label>
+      <select id="travelDayMode">
+        <option value="" data-i18n="travel_mode_unknown">Not entered</option>
+        <option value="flight" data-i18n="travel_day_mode_flight">Flight</option>
+        <option value="train" data-i18n="travel_mode_train">Train</option>
+        <option value="bus" data-i18n="travel_day_mode_bus">Bus / coach</option>
+        <option value="ferry" data-i18n="travel_day_mode_ferry">Ferry</option>
+        <option value="public" data-i18n="travel_mode_public">Public transport</option>
+        <option value="taxi" data-i18n="travel_mode_taxi">Taxi / ride</option>
+        <option value="other" data-i18n="travel_mode_other">Other</option>
+      </select>
+      <div class="row travel-day-time-row">
+        <div><label for="travelDayDepartureTime" data-i18n="travel_day_departure_time">Known departure time</label><input type="time" id="travelDayDepartureTime" /></div>
+        <div><label for="travelDayArrivalTime" data-i18n="travel_day_arrival_time">Known arrival time</label><input type="time" id="travelDayArrivalTime" /></div>
+      </div>
+      <label for="travelDayReference" data-i18n="travel_day_reference">Reference / note</label>
+      <textarea id="travelDayReference" rows="2" data-i18n-placeholder="travel_day_reference_ph" placeholder="Flight/train number, terminal, booking note…"></textarea>
+      <div class="field-note" data-i18n="travel_day_truth_note">TripMaster stores only what you enter. It does not check live schedules or availability.</div>
+    </div>
+
+    <div class="day-base-flow" id="dayBaseFlowBlock">
+      <div class="trip-base-heading" data-i18n="day_base_flow_heading">Trip Base</div>
+      <label class="day-check"><input type="checkbox" id="dayStartsAtBase" /> <span data-i18n="day_starts_at_base">Day begins from Trip Base</span></label>
+      <label class="day-check"><input type="checkbox" id="dayReturnsToBase" /> <span data-i18n="day_returns_to_base">Day returns to Trip Base</span></label>
+      <div class="field-note" data-i18n="day_base_flow_note">Planning markers only. No route or travel time is calculated.</div>
+    </div>
+
+    <div class="row" style="margin-top:4px">
+      <button class="btn btn-muted" id="dayDetailsCancelBtn" type="button" data-i18n="btn_cancel">Cancel</button>
+      <button class="btn btn-primary" id="dayDetailsSaveBtn" type="button" data-i18n="btn_save">Save</button>
     </div>
   </div>
 
@@ -729,10 +849,307 @@
       <textarea id="tripBaseNoteInput" rows="2" data-i18n-placeholder="trip_base_note_ph" placeholder="למשל: קבלה 24/7 או כניסה צדדית"></textarea>
       <div class="field-note" data-i18n="trip_base_info_note">נשמר כמידע שלכם בלבד. TripMaster לא מאמת את המלון ולא מחשב ממנו מסלולים.</div>
     </div>
+    <div class="trip-logistics-launch">
+      <button class="btn btn-muted logistics-launch-btn" id="tripLogisticsBtn" type="button" data-i18n="logistics_manage_btn">🏨 Stays & journeys</button>
+      <div class="field-note" id="tripLogisticsSummary" data-i18n="logistics_manage_note">Optional logistics for multi-stay and intercity trips.</div>
+    </div>
+    <div class="trip-operations-launch">
+      <button class="btn btn-muted logistics-launch-btn" id="tripBookingsBtn" type="button" data-i18n="booking_center_btn">🎟️ Booking Center</button>
+      <button class="btn btn-muted logistics-launch-btn" id="tripMoneyBtn" type="button" data-i18n="money_manage_btn">💰 Money</button>
+      <button class="btn btn-muted logistics-launch-btn" id="tripDocumentsBtn" type="button" data-i18n="documents_manage_btn">📄 Documents</button>
+    </div>
     <div class="planning-summary" id="tripDetailsPlanningSummary" style="display:none"></div>
     <div class="row" style="margin-top:4px">
       <button class="btn btn-muted" id="tripDetailsCancelBtn" type="button" data-i18n="btn_cancel">ביטול</button>
       <button class="btn btn-primary" id="tripDetailsSaveBtn" type="button" data-i18n="btn_save">שמור</button>
+    </div>
+  </div>
+
+  <!-- ══ LOGISTICS HUB (v1070) ══ -->
+  <div class="sheet" id="logisticsSheet" role="dialog" aria-modal="true" aria-labelledby="logisticsHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="logisticsHead" data-i18n="logistics_title">🏨 Stays & journeys</h3>
+      <button class="sheet-close" id="logisticsClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
+    </div>
+    <div class="field-note logistics-truth" data-i18n="logistics_truth_note">TripMaster stores only information you enter. It does not check availability, schedules or booking validity.</div>
+    <section class="logistics-section">
+      <div class="logistics-section-head">
+        <div>
+          <div class="trip-base-heading" data-i18n="stays_title">🏨 Stays</div>
+          <div class="field-note" id="legacyBaseLogisticsNote"></div>
+        </div>
+        <button class="btn btn-muted compact-btn" id="addStayBtn" type="button" data-i18n="stay_add_btn">＋ Add stay</button>
+      </div>
+      <div id="staysList" class="logistics-list"></div>
+    </section>
+    <section class="logistics-section">
+      <div class="logistics-section-head">
+        <div class="trip-base-heading" data-i18n="journeys_title">🚆 Journeys</div>
+        <button class="btn btn-muted compact-btn" id="addJourneyBtn" type="button" data-i18n="journey_add_btn">＋ Add journey</button>
+      </div>
+      <div id="journeysList" class="logistics-list"></div>
+    </section>
+  </div>
+
+  <div class="sheet" id="staySheet" role="dialog" aria-modal="true" aria-labelledby="staySheetHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="staySheetHead" data-i18n="stay_add_title">🏨 Add stay</h3>
+      <button class="sheet-close" id="staySheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
+    </div>
+    <label for="stayName" data-i18n="stay_name_label">Stay / hotel name</label>
+    <input id="stayName" autocomplete="off" />
+    <label for="stayLocation" data-i18n="stay_location_label">Location</label>
+    <input id="stayLocation" autocomplete="off" />
+    <div class="row">
+      <div><label for="stayStartDate" data-i18n="stay_start_label">Check-in date</label><input id="stayStartDate" type="date" /></div>
+      <div><label for="stayEndDate" data-i18n="stay_end_label">Check-out date</label><input id="stayEndDate" type="date" /></div>
+    </div>
+    <details class="logistics-more">
+      <summary data-i18n="logistics_more">More details</summary>
+      <div class="row">
+        <div><label for="stayCheckInTime" data-i18n="stay_checkin_time">Check-in time</label><input id="stayCheckInTime" type="time" /></div>
+        <div><label for="stayCheckOutTime" data-i18n="stay_checkout_time">Check-out time</label><input id="stayCheckOutTime" type="time" /></div>
+      </div>
+      <label for="stayStatus" data-i18n="booking_status_label">Booking status</label>
+      <select id="stayStatus">
+        <option value="" data-i18n="booking_status_not_set">Not set</option>
+        <option value="planned" data-i18n="booking_status_planned">Planned</option>
+        <option value="booked" data-i18n="booking_status_booked">Booked</option>
+        <option value="confirmed" data-i18n="booking_status_confirmed">Confirmed</option>
+        <option value="cancelled" data-i18n="booking_status_cancelled">Cancelled</option>
+      </select>
+      <label for="stayPaymentStatus" data-i18n="payment_status_label">Payment status</label>
+      <select id="stayPaymentStatus">
+        <option value="" data-i18n="payment_status_not_tracked">Not tracked</option>
+        <option value="unpaid" data-i18n="payment_status_unpaid">Unpaid</option>
+        <option value="partial" data-i18n="payment_status_partial">Partially paid</option>
+        <option value="paid" data-i18n="payment_status_paid">Paid</option>
+        <option value="later" data-i18n="payment_status_later">Pay later / at property</option>
+      </select>
+      <label for="stayConfirmation" data-i18n="booking_reference_label">Confirmation / reference</label>
+      <input id="stayConfirmation" autocomplete="off" />
+      <label for="stayProvider" data-i18n="booking_provider_label">Provider / booked via</label>
+      <input id="stayProvider" autocomplete="off" />
+      <label for="stayBookingUrl" data-i18n="stay_booking_url_label">Booking URL / reference text</label>
+      <input id="stayBookingUrl" autocomplete="off" inputmode="url" />
+      <label for="stayNote" data-i18n="stay_note_label">Stay note</label>
+      <textarea id="stayNote" rows="3"></textarea>
+      <div class="field-note" data-i18n="stay_access_note">Accessibility research can be written here if useful. TripMaster does not classify the property.</div>
+    </details>
+    <div class="row sheet-actions">
+      <button class="btn btn-danger" id="stayDeleteBtn" type="button" data-i18n="btn_delete" hidden>Delete</button>
+      <button class="btn btn-muted" id="stayCancelBtn" type="button" data-i18n="btn_cancel">Cancel</button>
+      <button class="btn btn-primary" id="staySaveBtn" type="button" data-i18n="btn_save">Save</button>
+    </div>
+  </div>
+
+  <div class="sheet" id="journeySheet" role="dialog" aria-modal="true" aria-labelledby="journeySheetHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="journeySheetHead" data-i18n="journey_add_title">🚆 Add journey</h3>
+      <button class="sheet-close" id="journeySheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
+    </div>
+    <label for="journeyDate" data-i18n="field_date">Date</label>
+    <input id="journeyDate" type="date" />
+    <label for="journeyMode" data-i18n="journey_mode_label">Mode</label>
+    <select id="journeyMode">
+      <option value="" data-i18n="travel_mode_unknown">Not entered</option>
+      <option value="flight" data-i18n="travel_day_mode_flight">Flight</option>
+      <option value="train" data-i18n="travel_mode_train">Train</option>
+      <option value="bus" data-i18n="travel_day_mode_bus">Bus / coach</option>
+      <option value="ferry" data-i18n="travel_day_mode_ferry">Ferry</option>
+      <option value="public" data-i18n="travel_mode_public">Public transport</option>
+      <option value="taxi" data-i18n="travel_mode_taxi">Taxi / ride</option>
+      <option value="transfer" data-i18n="journey_mode_transfer">Transfer</option>
+      <option value="walk" data-i18n="travel_mode_walk">Walk</option>
+      <option value="other" data-i18n="travel_mode_other">Other</option>
+    </select>
+    <div class="row">
+      <div><label for="journeyOrigin" data-i18n="travel_day_origin">Origin</label><input id="journeyOrigin" autocomplete="off" /></div>
+      <div><label for="journeyDestination" data-i18n="travel_day_destination">Destination</label><input id="journeyDestination" autocomplete="off" /></div>
+    </div>
+    <details class="logistics-more">
+      <summary data-i18n="logistics_more">More details</summary>
+      <div class="row">
+        <div><label for="journeyDepartureTime" data-i18n="travel_day_departure_time">Departure time</label><input id="journeyDepartureTime" type="time" /></div>
+        <div><label for="journeyArrivalTime" data-i18n="travel_day_arrival_time">Arrival time</label><input id="journeyArrivalTime" type="time" /></div>
+      </div>
+      <label for="journeyProvider" data-i18n="journey_provider_label">Operator / provider</label>
+      <input id="journeyProvider" autocomplete="off" />
+      <label for="journeyServiceNumber" data-i18n="journey_service_label">Flight / train / service number</label>
+      <input id="journeyServiceNumber" autocomplete="off" />
+      <label for="journeyStatus" data-i18n="booking_status_label">Booking status</label>
+      <select id="journeyStatus">
+        <option value="" data-i18n="booking_status_not_set">Not set</option>
+        <option value="planned" data-i18n="booking_status_planned">Planned</option>
+        <option value="booked" data-i18n="booking_status_booked">Booked</option>
+        <option value="confirmed" data-i18n="booking_status_confirmed">Confirmed</option>
+        <option value="cancelled" data-i18n="booking_status_cancelled">Cancelled</option>
+      </select>
+      <label for="journeyPaymentStatus" data-i18n="payment_status_label">Payment status</label>
+      <select id="journeyPaymentStatus">
+        <option value="" data-i18n="payment_status_not_tracked">Not tracked</option>
+        <option value="unpaid" data-i18n="payment_status_unpaid">Unpaid</option>
+        <option value="partial" data-i18n="payment_status_partial">Partially paid</option>
+        <option value="paid" data-i18n="payment_status_paid">Paid</option>
+        <option value="later" data-i18n="payment_status_later">Pay later / at property</option>
+      </select>
+      <label for="journeyConfirmation" data-i18n="booking_reference_label">Confirmation / reference</label>
+      <input id="journeyConfirmation" autocomplete="off" />
+      <label for="journeyNote" data-i18n="journey_note_label">Journey note</label>
+      <textarea id="journeyNote" rows="3"></textarea>
+      <div class="field-note" data-i18n="journey_truth_note">Manual record only. TripMaster does not check live status or schedules.</div>
+    </details>
+    <div class="row sheet-actions">
+      <button class="btn btn-danger" id="journeyDeleteBtn" type="button" data-i18n="btn_delete" hidden>Delete</button>
+      <button class="btn btn-muted" id="journeyCancelBtn" type="button" data-i18n="btn_cancel">Cancel</button>
+      <button class="btn btn-primary" id="journeySaveBtn" type="button" data-i18n="btn_save">Save</button>
+    </div>
+  </div>
+
+
+  <!-- ══ BOOKING CENTER (v1080) ══ -->
+  <div class="sheet" id="bookingCenterSheet" role="dialog" aria-modal="true" aria-labelledby="bookingCenterHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="bookingCenterHead" data-i18n="booking_center_title">🎟️ Booking Center</h3>
+      <button class="sheet-close" id="bookingCenterClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
+    </div>
+    <div class="field-note" data-i18n="booking_center_truth">A read-only view of booking information you entered. TripMaster does not validate reservations or payment.</div>
+    <div id="bookingCenterBody"></div>
+  </div>
+
+  <!-- ══ MONEY HUB (v1080) ══ -->
+  <div class="sheet" id="moneySheet" role="dialog" aria-modal="true" aria-labelledby="moneyHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="moneyHead" data-i18n="money_title">💰 Money</h3>
+      <button class="sheet-close" id="moneyClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
+    </div>
+    <div class="field-note" data-i18n="money_truth_note">Amounts and currencies are your own records. TripMaster does not fetch exchange rates or process payments.</div>
+    <section class="logistics-section money-budget-card">
+      <div class="trip-base-heading" data-i18n="budget_title">Budget</div>
+      <div class="row">
+        <div><label for="budgetAmount" data-i18n="budget_amount_label">Budget amount</label><input id="budgetAmount" type="number" min="0" step="0.01" inputmode="decimal" /></div>
+        <div><label for="budgetCurrency" data-i18n="currency_label">Currency</label><input id="budgetCurrency" maxlength="3" autocomplete="off" inputmode="text" placeholder="EUR" /></div>
+      </div>
+      <div class="field-note" data-i18n="budget_optional_note">Leave the amount empty to use no trip budget.</div>
+      <button class="btn btn-muted compact-btn" id="budgetSaveBtn" type="button" data-i18n="budget_save_btn">Save budget</button>
+      <div id="budgetSummary" class="money-summary"></div>
+    </section>
+    <section class="logistics-section">
+      <div class="logistics-section-head">
+        <div class="trip-base-heading" data-i18n="expenses_title">Expenses</div>
+        <button class="btn btn-muted compact-btn" id="addExpenseBtn" type="button" data-i18n="expense_add_btn">＋ Add expense</button>
+      </div>
+      <div id="expensesList" class="logistics-list"></div>
+    </section>
+  </div>
+
+  <div class="sheet" id="expenseSheet" role="dialog" aria-modal="true" aria-labelledby="expenseSheetHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="expenseSheetHead" data-i18n="expense_add_title">💳 Add expense</h3>
+      <button class="sheet-close" id="expenseSheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
+    </div>
+    <label for="expenseTitle" data-i18n="expense_title_label">Title</label>
+    <input id="expenseTitle" autocomplete="off" />
+    <div class="row">
+      <div><label for="expenseAmount" data-i18n="expense_amount_label">Amount</label><input id="expenseAmount" type="number" min="0" step="0.01" inputmode="decimal" /></div>
+      <div><label for="expenseCurrency" data-i18n="currency_label">Currency</label><input id="expenseCurrency" maxlength="3" autocomplete="off" placeholder="EUR" /></div>
+    </div>
+    <label for="expenseCategory" data-i18n="expense_category_label">Category</label>
+    <select id="expenseCategory">
+      <option value="accommodation" data-i18n="expense_cat_accommodation">Accommodation</option>
+      <option value="transport" data-i18n="expense_cat_transport">Transport</option>
+      <option value="food" data-i18n="expense_cat_food">Food</option>
+      <option value="attraction" data-i18n="expense_cat_attraction">Attraction</option>
+      <option value="shopping" data-i18n="expense_cat_shopping">Shopping</option>
+      <option value="insurance" data-i18n="expense_cat_insurance">Insurance</option>
+      <option value="connectivity" data-i18n="expense_cat_connectivity">Connectivity</option>
+      <option value="other" data-i18n="expense_cat_other">Other</option>
+    </select>
+    <details class="logistics-more">
+      <summary data-i18n="logistics_more">More details</summary>
+      <label for="expenseDate" data-i18n="field_date">Date</label><input id="expenseDate" type="date" />
+      <label for="expensePaymentStatus" data-i18n="payment_status_label">Payment status</label>
+      <select id="expensePaymentStatus">
+        <option value="" data-i18n="payment_status_not_tracked">Not tracked</option>
+        <option value="unpaid" data-i18n="payment_status_unpaid">Unpaid</option>
+        <option value="partial" data-i18n="payment_status_partial">Partially paid</option>
+        <option value="paid" data-i18n="payment_status_paid">Paid</option>
+        <option value="later" data-i18n="payment_status_later">Pay later / at property</option>
+      </select>
+      <label for="expensePaidBy" data-i18n="expense_paid_by_label">Paid by / payer note</label><input id="expensePaidBy" autocomplete="off" />
+      <label for="expenseLink" data-i18n="expense_link_label">Related booking / item</label><select id="expenseLink"></select>
+      <div class="field-note" data-i18n="expense_link_note">Linking is optional. Deleting the related item will not delete this expense.</div>
+      <label for="expenseNote" data-i18n="expense_note_label">Note</label><textarea id="expenseNote" rows="2"></textarea>
+    </details>
+    <div class="row sheet-actions">
+      <button class="btn btn-danger" id="expenseDeleteBtn" type="button" data-i18n="btn_delete" hidden>Delete</button>
+      <button class="btn btn-muted" id="expenseCancelBtn" type="button" data-i18n="btn_cancel">Cancel</button>
+      <button class="btn btn-primary" id="expenseSaveBtn" type="button" data-i18n="btn_save">Save</button>
+    </div>
+  </div>
+
+  <!-- ══ DOCUMENTS / CONFIRMATIONS (v1080) ══ -->
+  <div class="sheet" id="documentsSheet" role="dialog" aria-modal="true" aria-labelledby="documentsHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="documentsHead" data-i18n="documents_title">📄 Documents & confirmations</h3>
+      <button class="sheet-close" id="documentsClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
+    </div>
+    <div class="field-note" data-i18n="documents_truth_note">References are stored locally. Files are not uploaded or attached in this version.</div>
+    <section class="logistics-section">
+      <div class="logistics-section-head">
+        <div class="trip-base-heading" data-i18n="documents_from_bookings">From bookings</div>
+      </div>
+      <div id="derivedDocumentsList" class="logistics-list"></div>
+    </section>
+    <section class="logistics-section">
+      <div class="logistics-section-head">
+        <div class="trip-base-heading" data-i18n="documents_standalone">Other trip documents</div>
+        <button class="btn btn-muted compact-btn" id="addDocumentBtn" type="button" data-i18n="document_add_btn">＋ Add document</button>
+      </div>
+      <div id="documentsList" class="logistics-list"></div>
+    </section>
+  </div>
+
+  <div class="sheet" id="documentSheet" role="dialog" aria-modal="true" aria-labelledby="documentSheetHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="documentSheetHead" data-i18n="document_add_title">📄 Add document reference</h3>
+      <button class="sheet-close" id="documentSheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
+    </div>
+    <label for="documentLabel" data-i18n="document_label_label">Label</label><input id="documentLabel" autocomplete="off" />
+    <label for="documentType" data-i18n="document_type_label">Type</label>
+    <select id="documentType">
+      <option value="booking" data-i18n="document_type_booking">Booking confirmation</option>
+      <option value="ticket" data-i18n="document_type_ticket">Ticket</option>
+      <option value="voucher" data-i18n="document_type_voucher">Voucher</option>
+      <option value="insurance" data-i18n="document_type_insurance">Insurance</option>
+      <option value="transport" data-i18n="document_type_transport">Transport</option>
+      <option value="other" data-i18n="document_type_other">Other</option>
+    </select>
+    <label for="documentStatus" data-i18n="document_status_label">Tracking status</label>
+    <select id="documentStatus">
+      <option value="" data-i18n="document_status_not_tracked">Not tracked</option>
+      <option value="available" data-i18n="document_status_available">Available / recorded</option>
+      <option value="needed" data-i18n="document_status_needed">Still needed</option>
+    </select>
+    <details class="logistics-more">
+      <summary data-i18n="logistics_more">More details</summary>
+      <label for="documentReference" data-i18n="booking_reference_label">Reference</label><input id="documentReference" autocomplete="off" />
+      <label for="documentUrl" data-i18n="document_url_label">URL / location reference</label><input id="documentUrl" autocomplete="off" inputmode="url" />
+      <label for="documentLink" data-i18n="document_link_label">Related booking / item</label><select id="documentLink"></select>
+      <label for="documentNote" data-i18n="document_note_label">Note</label><textarea id="documentNote" rows="2"></textarea>
+    </details>
+    <div class="row sheet-actions">
+      <button class="btn btn-danger" id="documentDeleteBtn" type="button" data-i18n="btn_delete" hidden>Delete</button>
+      <button class="btn btn-muted" id="documentCancelBtn" type="button" data-i18n="btn_cancel">Cancel</button>
+      <button class="btn btn-primary" id="documentSaveBtn" type="button" data-i18n="btn_save">Save</button>
     </div>
   </div>
 
@@ -760,7 +1177,7 @@
     <div class="about-body">
       <!-- Overwritten at boot by app.js from APP_VERSION; the literal is only
            a pre-script fallback. -->
-      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1050-RC2-FIX1</span>
+      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1090-RC2</span>
 
       <h4 data-i18n="about_privacy_h">🔒 פרטיות</h4>
       <div>
@@ -796,6 +1213,10 @@
 
   <script src="./boot-guard.js"></script>
   <script src="./app-intelligence.js"></script>
+  <script src="./app-logistics.js"></script>
+  <script src="./app-finance.js"></script>
+  <script src="./app-travel.js"></script>
+  <script src="./app-today.js"></script>
 
   <script src="./app.js"></script>
   <script src="./boot-watchdog.js"></script>

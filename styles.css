@@ -55,7 +55,7 @@
       --radius: 16px;
       --radius-lg: 20px;
       --radius-xl: 24px;
-      --font: 'Rubik', sans-serif;
+      --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       --hero-gradient: linear-gradient(135deg, #123A5C 0%, #0B2239 100%);
     }
 
@@ -1893,7 +1893,21 @@
        devices keep the visible label. */
     @media (max-width: 340px) {
       .header-switch-btn span { display: none; }
-      .header-switch-btn { padding-left: 10px; padding-right: 10px; }
+      .header-switch-btn {
+        min-width: 44px;
+        padding-left: 8px;
+        padding-right: 8px;
+        justify-content: center;
+      }
+    }
+
+    /* At 200% browser zoom a 320px device can expose an effective CSS
+       viewport near 160px. Keep both header actions at a true 44px target
+       and let spacing/centre content yield instead of pushing the shell wide. */
+    @media (max-width: 220px) {
+      .header-inner { padding-left: 8px; padding-right: 8px; }
+      .header-center { padding-left: 4px; padding-right: 4px; }
+      .header-right { gap: 2px; }
     }
 
     /* ═══════════════════════════════════════
@@ -2257,3 +2271,205 @@
   .more-chevron { transition: none; }
 }
 
+
+/* ══════════════════════════════════════════════════════════════════════
+   v1060-RC1 - Travel Days / readiness / Access Research
+   ══════════════════════════════════════════════════════════════════════ */
+.day-strip-actions {
+  margin-inline-start: auto;
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.strip-action-btn {
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--text2);
+  font-size: .95rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.strip-action-btn:active { background: var(--bg2); }
+.day-strip-actions .strip-danger-btn { margin-inline-start: 0; }
+.chip-day-type {
+  font-size: .68rem;
+  line-height: 1;
+  margin-top: 1px;
+}
+.travel-day-fields,
+.day-base-flow {
+  margin: 14px 0 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card2);
+}
+.travel-day-fields[hidden], .day-base-flow[hidden] { display: none; }
+.travel-day-time-row { gap: 10px; }
+.travel-day-time-row > div { flex: 1 1 0; min-width: 0; }
+.day-check {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+  color: var(--text2);
+  font-size: .84rem;
+  cursor: pointer;
+}
+.day-check input { width: 20px; height: 20px; flex: 0 0 auto; margin: 0; }
+.day-health-chip.travel-day { font-weight: 700; }
+.access-badge.access-verified {
+  background: var(--success-soft);
+  color: var(--success);
+  border: 1px solid var(--success-border);
+}
+.readiness-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  margin: 0 0 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: .73rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+.readiness-ready { background: var(--success-soft); color: var(--success); }
+.readiness-check { background: var(--card2); color: var(--text2); }
+.readiness-issue { background: var(--danger-soft); color: var(--danger); }
+.home-readiness { font-weight: 650; }
+.overview-travel-day {
+  padding: 8px 0;
+  border-top: 1px solid var(--border-soft);
+}
+.overview-travel-day:first-of-type { border-top: 0; }
+.overview-travel-day-title { color: var(--text); font-size: .8rem; font-weight: 700; }
+.overview-day-travel {
+  margin: -3px 0 6px;
+  color: var(--text2);
+  font-size: .74rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.planning-chip.access-good { background: var(--success-soft); color: var(--success); }
+.planning-chip.access-issue { background: var(--danger-soft); color: var(--danger); }
+.planning-chip.access-check { font-weight: 650; }
+
+@media (max-width: 340px) {
+  .day-strip-actions { gap: 4px; }
+  .strip-action-btn, .day-strip-actions .strip-danger-btn { width: 42px; height: 42px; }
+  .travel-day-time-row { flex-direction: column; }
+}
+.access-quick {
+  width: 100%; min-height: 46px; display: flex; align-items: center; gap: 8px;
+  margin: 10px 0 2px; padding: 9px 12px; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--card2); color: var(--text2);
+  font-family: var(--font); font-size: .8rem; font-weight: 650; text-align: start; cursor: pointer;
+}
+.access-quick span:nth-child(2) { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+
+/* v1070 logistics */
+.trip-logistics-launch{margin:12px 0}
+.logistics-launch-btn{width:100%}
+.logistics-truth{margin-bottom:12px}
+.logistics-section{margin:14px 0;padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card2)}
+.logistics-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.compact-btn{min-height:44px;flex:0 0 auto}
+.logistics-list{display:grid;gap:8px;margin-top:10px}
+.logistics-row{width:100%;min-height:52px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:12px;padding:10px 12px;text-align:start;font-family:var(--font);cursor:pointer}
+.logistics-row-title{font-weight:700;font-size:.84rem}
+.logistics-row-meta,.logistics-empty{color:var(--sub);font-size:.74rem;line-height:1.45;margin-top:3px;overflow-wrap:anywhere}
+.logistics-more{margin-top:12px;padding:0 12px 10px;border:1px solid var(--border);border-radius:12px;background:var(--card2)}
+.logistics-more>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:700;color:var(--text2)}
+.booking-fields{margin:14px 0 10px;padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--card2)}
+.booking-note-line{margin-top:4px;color:var(--sub);font-size:.72rem;line-height:1.4;overflow-wrap:anywhere}
+.day-logistics{margin:0 0 12px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--card2)}
+.day-logistics-row{font-size:.75rem;line-height:1.45;color:var(--text2);padding:2px 0;overflow-wrap:anywhere}
+.day-logistics-row.warn{color:var(--danger);font-weight:650}
+.overview-logistics-row{padding:8px 0;border-top:1px solid var(--border-soft)}
+.overview-logistics-row:first-of-type{border-top:0}
+.overview-day-logistics{margin:-2px 0 7px;padding:7px 9px;background:var(--card2);border-radius:10px;color:var(--text2);font-size:.73rem;line-height:1.45}
+.home-logistics-next{overflow-wrap:anywhere}
+@media(max-width:340px){.logistics-section-head{flex-direction:column}.compact-btn{width:100%}}
+
+/* v1080 money / booking center / document references */
+.trip-operations-launch{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 12px}
+.trip-operations-launch .btn{min-width:0;white-space:normal;line-height:1.25}
+.logistics-item{width:100%;min-height:54px;display:flex;align-items:center;gap:10px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:12px;padding:10px 12px;text-align:start;font-family:var(--font);cursor:pointer}
+.logistics-item-main{flex:1 1 auto;min-width:0}
+.logistics-item-title{font-weight:700;font-size:.84rem;overflow-wrap:anywhere}
+.logistics-item-meta{color:var(--sub);font-size:.74rem;line-height:1.45;margin-top:3px;overflow-wrap:anywhere}
+.logistics-item-arrow{flex:0 0 auto;color:var(--sub);font-size:1.25rem}
+.booking-center-row{min-height:58px}
+.money-budget-card .row{margin-top:4px}
+.money-summary{margin-top:10px;display:grid;gap:5px}
+.money-summary-main{font-size:.8rem;font-weight:650;color:var(--text);line-height:1.45;overflow-wrap:anywhere}
+.overview-operations-card .compact-btn{margin-top:9px}
+.home-money-summary{overflow-wrap:anywhere}
+@media(max-width:430px){.trip-operations-launch{grid-template-columns:1fr}.trip-operations-launch .btn{width:100%}}
+
+/* ══ TODAY-001 (v1090): operational in-trip view ══ */
+.today-view { padding-bottom: 26px; }
+.today-view-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin:4px 0 12px; }
+.today-view-head h2 { margin:2px 0 4px; font-size:1.55rem; line-height:1.15; }
+.today-kicker { display:inline-flex; align-items:center; min-height:24px; padding:3px 9px; border-radius:999px; background:var(--surface-2,#eef4f5); font-size:.72rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
+.today-kicker.is-preview { background:var(--warning-soft,#fff4d8); }
+.today-date-line { font-weight:700; }
+.today-clock-line { margin-top:3px; font-size:.82rem; opacity:.72; }
+.today-head-actions { display:flex; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+.today-preview-controls { display:flex; align-items:end; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+.today-preview-picker { display:flex; flex-direction:column; gap:4px; font-size:.78rem; font-weight:700; }
+.today-preview-picker select { min-height:44px; max-width:240px; }
+.today-hero-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:12px; }
+.today-hero-card, .today-section { background:var(--card-bg,#fff); border:1px solid var(--border,#dfe6e8); border-radius:16px; box-shadow:var(--shadow-sm,0 3px 10px rgba(0,0,0,.05)); }
+.today-hero-card { padding:15px; min-height:128px; }
+.today-hero-label { font-size:.72rem; font-weight:850; letter-spacing:.055em; text-transform:uppercase; opacity:.66; margin-bottom:7px; }
+.today-hero-title { font-size:1.12rem; font-weight:850; line-height:1.2; }
+.today-hero-time { margin-top:5px; font-weight:800; }
+.today-hero-sub, .today-item-sub, .today-section-note { margin-top:5px; font-size:.84rem; opacity:.76; line-height:1.35; }
+.today-section { padding:14px; margin:10px 0; }
+.today-section-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.today-section-title { font-weight:850; font-size:.98rem; }
+.today-timeline { display:flex; flex-direction:column; }
+.today-item { display:grid; grid-template-columns:64px minmax(0,1fr); gap:10px; padding:11px 0; border-top:1px solid var(--border,#e4e9ea); }
+.today-item:first-child { border-top:0; padding-top:2px; }
+.today-item.is-past { opacity:.52; }
+.today-item.is-current { opacity:1; }
+.today-item-time { font-variant-numeric:tabular-nums; font-weight:800; font-size:.88rem; }
+.today-item-time.unknown { font-weight:650; opacity:.65; }
+.today-item-title { font-weight:800; line-height:1.25; }
+.today-item-kind { font-size:.73rem; font-weight:750; opacity:.67; margin-bottom:2px; }
+.today-quick-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:8px; }
+.today-action { min-height:44px; padding:7px 10px; border-radius:10px; border:1px solid var(--border,#dfe6e8); background:var(--surface-2,#f6f8f8); color:inherit; font:inherit; font-size:.8rem; font-weight:750; cursor:pointer; }
+.today-attention-row { display:flex; gap:8px; align-items:flex-start; padding:8px 0; border-top:1px solid var(--border,#e4e9ea); }
+.today-attention-row:first-of-type { border-top:0; }
+.today-attention-level { flex:0 0 auto; min-width:48px; font-size:.69rem; font-weight:850; text-transform:uppercase; }
+.today-attention-row.issue .today-attention-level { color:var(--danger,#a93737); }
+.today-attention-row.check .today-attention-level { color:var(--warning,#946600); }
+.today-stay-card { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.today-stay-main { min-width:0; }
+.today-reminder-row { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-top:1px solid var(--border,#e4e9ea); font-size:.85rem; }
+.today-reminder-row:first-child { border-top:0; }
+.today-reminder-row.is-due { font-weight:850; }
+.today-empty-done { text-align:center; padding:8px 3px; }
+.today-empty-done strong { display:block; font-size:1.05rem; margin-bottom:4px; }
+.today-travel-status { display:inline-flex; margin-top:5px; font-size:.76rem; font-weight:750; }
+.today-preview-banner { margin-bottom:10px; padding:9px 11px; border-radius:12px; background:var(--surface-2,#f5f7f7); font-size:.82rem; font-weight:700; }
+.home-trip-actions .today-home-action { order:-1; }
+
+@media (max-width: 520px) {
+  .today-view-head { flex-direction:column; }
+  .today-head-actions { width:100%; justify-content:flex-start; }
+  .today-hero-grid { grid-template-columns:1fr; }
+}
+@media (max-width: 340px) {
+  .today-section, .today-hero-card { border-radius:13px; padding:12px; }
+  .today-item { grid-template-columns:54px minmax(0,1fr); gap:7px; }
+  .today-action { min-height:44px; }
+}

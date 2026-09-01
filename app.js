@@ -1,8 +1,24 @@
 document.addEventListener("DOMContentLoaded", () => {
     const $ = (id) => document.getElementById(id);
     const DayIntel = window.TripMasterIntelligence;
+    const Logistics = window.TripMasterLogistics;
+    const Finance = window.TripMasterFinance;
+    const Travel = window.TripMasterTravel;
+    const Today = window.TripMasterToday;
     if (!DayIntel || typeof DayIntel.analyzeDay !== "function") {
       throw new Error("TripMaster intelligence module unavailable");
+    }
+    if (!Logistics || typeof Logistics.effectiveStayForDate !== "function") {
+      throw new Error("TripMaster logistics model module unavailable");
+    }
+    if (!Finance || typeof Finance.budgetSummary !== "function") {
+      throw new Error("TripMaster finance model module unavailable");
+    }
+    if (!Travel || typeof Travel.dayType !== "function") {
+      throw new Error("TripMaster travel model module unavailable");
+    }
+    if (!Today || typeof Today.buildToday !== "function") {
+      throw new Error("TripMaster Today model module unavailable");
     }
 
     /* Current UI language. Reassigned once settings are loaded (see below)
@@ -172,7 +188,14 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    function normalizeDays(raw) { return Array.isArray(raw) ? raw : []; }
+    function normalizeDays(raw) {
+      if (!Array.isArray(raw)) return [];
+      return raw.filter((day) => day && typeof day === "object").map((day) => {
+        if (!Array.isArray(day.items)) day.items = [];
+        else day.items = day.items.filter((item) => item && typeof item === "object");
+        return day;
+      });
+    }
 
     // RC2 model: KEY_DAYS is legacy Home itinerary storage only. New planning
     // happens exclusively inside trips[]. It is read here solely so a safe
@@ -181,6 +204,10 @@ document.addEventListener("DOMContentLoaded", () => {
     let trips = normalizeTrips(safeParseJSON(KEY_TRIPS, []));
     let activeTripId = localStorage.getItem(KEY_ACTIVE_TRIP) || null;
     let currentView = activeTripId ? "planner" : "home";
+    let todayPreviewDate = "";
+    let todayPreviewMode = false;
+    let _lastTodayModel = null;
+    const _todayNotified = new Set();
 
     /* ══════════════════════════════════════════════════════════════════
        STORE-001 (v1040 / A7): one guarded persistence path
@@ -236,7 +263,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!Array.isArray(raw)) return [];
       raw.forEach((trip) => {
         if (!trip || typeof trip !== "object") return;
-        if (!Array.isArray(trip.days)) trip.days = [];
+        trip.days = normalizeDays(trip.days);
         if (typeof trip.name !== "string") trip.name = String(trip.name == null ? "" : trip.name);
       });
       return raw.filter((trip) => trip && typeof trip === "object" && trip.id);
@@ -247,11 +274,47 @@ document.addEventListener("DOMContentLoaded", () => {
     function itemAccessNote(item) { return (item && typeof item.accessNote === "string") ? item.accessNote.trim() : ""; }
     function itemEndTime(item) {
       const v = item && item.endTime;
-      return (typeof v === "string" && /^[0-9]{2}:[0-9]{2}$/.test(v)) ? v : "";
+      return (typeof v === "string" && DayIntel.parseTime(v) !== null) ? v : "";
+    }
+    function itemReminderMin(item) {
+      const raw = item && item.reminderMin;
+      let n = null;
+      if (typeof raw === "number" && Number.isFinite(raw)) n = raw;
+      else if (typeof raw === "string" && raw.trim() !== "" && Number.isFinite(Number(raw))) n = Number(raw);
+      if (n === null || n < 0) return null;
+      return Math.round(n);
     }
     function itemAccessStatus(item) {
       const v = item && item.accessStatus;
-      return (v === "stepfree" || v === "problem" || v === "needscheck") ? v : "";
+      return (v === "verified" || v === "stepfree" || v === "problem" || v === "needscheck") ? v : "";
+    }
+    function isAccessVerified(item) {
+      const v = itemAccessStatus(item);
+      return v === "verified" || v === "stepfree"; // stepfree is the v1040/v1050 verified legacy value.
+    }
+    function dayType(day) { return Travel.dayType(day); }
+    function dayTravelInfo(day) { return Travel.travelDayInfo(day); }
+    function dayBaseFlow(day) { return Travel.baseFlow(day); }
+    function isTravelDay(day) { return dayType(day) !== "normal"; }
+    function dayTypeLabel(type) {
+      const map = { normal:"day_type_normal", arrival:"day_type_arrival", departure:"day_type_departure", transfer:"day_type_transfer" };
+      return t(map[type] || map.normal);
+    }
+    function dayTypeIcon(type) {
+      return type === "arrival" ? "🛬" : type === "departure" ? "🛫" : type === "transfer" ? "🧳" : "📅";
+    }
+    function travelDayModeLabel(mode) {
+      const map = { flight:"travel_day_mode_flight", train:"travel_mode_train", bus:"travel_day_mode_bus", ferry:"travel_day_mode_ferry", public:"travel_mode_public", taxi:"travel_mode_taxi", other:"travel_mode_other" };
+      return map[mode] ? t(map[mode]) : "";
+    }
+    function travelDaySummaryParts(day) {
+      const info = dayTravelInfo(day);
+      const parts = [];
+      if (info.mode) parts.push(travelDayModeLabel(info.mode));
+      if (info.origin || info.destination) parts.push((info.origin || t("overview_fact_unset")) + " → " + (info.destination || t("overview_fact_unset")));
+      if (info.departureTime || info.arrivalTime) parts.push((info.departureTime || "…") + " → " + (info.arrivalTime || "…"));
+      if (info.reference) parts.push(info.reference);
+      return parts;
     }
     function itemTravelFromPrevious(item) { return DayIntel.travelFromPrevious(item); }
     function itemCategory(item) {
@@ -273,6 +336,66 @@ document.addEventListener("DOMContentLoaded", () => {
       return (typeof v === "string" && v && isValidTimeZone(v)) ? v : "";
     }
     function activeTripTimezone() { return tripTimezone(getActiveTrip()); }
+    function activeTripClock(now) { return Today.clock(now, activeTripTimezone()); }
+
+    /* v1070 logistics accessors. They never rewrite stored objects merely by
+       reading them, so old trips and unknown future fields remain untouched. */
+    function tripStays(trip) { return Logistics.tripStays(trip); }
+    function tripJourneys(trip) { return Logistics.tripJourneys(trip); }
+    function stayInfo(stay) { return Logistics.stayInfo(stay); }
+    function journeyInfo(journey) { return Logistics.journeyInfo(journey); }
+    function itemBookingInfo(item) { return Logistics.bookingInfo(item && item.booking); }
+    function itemPaymentStatus(item) { return Finance.paymentStatus(item && item.booking && item.booking.paymentStatus); }
+    function tripExpenses(trip) { return Finance.tripExpenses(trip); }
+    function tripDocuments(trip) { return Finance.tripDocuments(trip); }
+    function paymentStatusLabel(status) {
+      const map={ unpaid:"payment_status_unpaid", partial:"payment_status_partial", paid:"payment_status_paid", later:"payment_status_later" };
+      return map[status] ? t(map[status]) : t("payment_status_not_tracked");
+    }
+    function expenseCategoryLabel(category) {
+      const map={ accommodation:"expense_cat_accommodation", transport:"expense_cat_transport", food:"expense_cat_food", attraction:"expense_cat_attraction", shopping:"expense_cat_shopping", insurance:"expense_cat_insurance", connectivity:"expense_cat_connectivity", other:"expense_cat_other" };
+      return t(map[category] || map.other);
+    }
+    function documentTypeLabel(type) {
+      const map={ booking:"document_type_booking", ticket:"document_type_ticket", voucher:"document_type_voucher", insurance:"document_type_insurance", transport:"document_type_transport", other:"document_type_other" };
+      return t(map[type] || map.other);
+    }
+    function formatMoneyAmount(amount, currency) {
+      if (!Number.isFinite(amount) || !currency) return "";
+      let number="";
+      try { number = new Intl.NumberFormat(currentLang || undefined, { maximumFractionDigits:2 }).format(amount); }
+      catch (err) { number = String(Math.round((amount + Number.EPSILON) * 100) / 100); }
+      return number + " " + currency;
+    }
+    function financeId(prefix) { return prefix + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,8); }
+    function logisticsTrackingActive(trip) { return tripStays(trip).length > 0 || tripJourneys(trip).length > 0; }
+    function bookingStatusLabel(status) {
+      const map = {
+        planned:"booking_status_planned", booked:"booking_status_booked",
+        confirmed:"booking_status_confirmed", cancelled:"booking_status_cancelled"
+      };
+      return map[status] ? t(map[status]) : t("booking_status_not_set");
+    }
+    function journeyModeLabel(mode) {
+      const map = {
+        flight:"travel_day_mode_flight", train:"travel_mode_train", bus:"travel_day_mode_bus",
+        ferry:"travel_day_mode_ferry", public:"travel_mode_public", taxi:"travel_mode_taxi",
+        transfer:"journey_mode_transfer", walk:"travel_mode_walk", other:"travel_mode_other"
+      };
+      return map[mode] ? t(map[mode]) : t("travel_mode_unknown");
+    }
+    function logisticsId(prefix) {
+      return prefix + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+    }
+    function effectiveBaseLabelForDate(trip, date) {
+      const eff = Logistics.effectiveStayForDate(trip, date);
+      if (eff.kind === "stay") {
+        const info = stayInfo(eff.stay);
+        return info.name || info.location || "";
+      }
+      if (eff.kind === "legacy") return eff.stay.name || eff.stay.location || "";
+      return "";
+    }
 
     /* v1050 planning summaries consume existing prefs without inventing
        route, distance or venue facts. */
@@ -298,7 +421,7 @@ document.addEventListener("DOMContentLoaded", () => {
       };
       return map[mode] ? t(map[mode]) : t("travel_mode_unknown");
     }
-    function mobilitySummaryLabels() {
+    function mobilitySummaryLabels(trip) {
       const prefs = (settings && settings.prefs) || {};
       const access = (settings && settings.access) || {};
       const labels = [];
@@ -308,6 +431,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (prefs.maxWalkKm != null && !isNaN(prefs.maxWalkKm)) labels.push(tf("mobility_walk_limit", { n: prefs.maxWalkKm }));
       if (access.shortWalks) labels.push(t("mobility_short_walks"));
+      if (trip && Array.isArray(trip.days)) {
+        const starts = trip.days.filter(day => dayBaseFlow(day).startsAtBase).length;
+        const returns = trip.days.filter(day => dayBaseFlow(day).returnsToBase).length;
+        if (starts) labels.push(tf("mobility_days_start_base", { n: starts }));
+        if (returns) labels.push(tf("mobility_days_return_base", { n: returns }));
+      }
       return labels;
     }
     function hasAccessPlanningNeeds() {
@@ -318,61 +447,138 @@ document.addEventListener("DOMContentLoaded", () => {
     function tripPlanningStats(trip) {
       const tripDays = trip && Array.isArray(trip.days) ? trip.days : [];
       const allItems = tripDays.flatMap(d => Array.isArray(d.items) ? d.items : []);
-      let conflicts = 0, invalidTimes = 0, travelUnknown = 0;
+      let conflicts = 0, invalidTimes = 0, travelUnknown = 0, insufficientTravel = 0;
       tripDays.forEach(day => {
         const a = DayIntel.analyzeDay(day.items || []);
         conflicts += a.conflicts.length;
         invalidTimes += a.invalidRangeCount + a.malformedCount;
-        travelUnknown += a.travelUnknown;
+        travelUnknown += a.travelUnresolved;
+        insufficientTravel += a.pairs.filter(pair => pair.status === "insufficient").length;
       });
-      const accessToCheck = hasAccessPlanningNeeds()
+      const accessActive = hasAccessPlanningNeeds();
+      const accessNeedsCheck = accessActive
         ? allItems.filter(item => !itemAccessStatus(item) || itemAccessStatus(item) === "needscheck").length : 0;
+      const accessIssues = accessActive ? allItems.filter(item => itemAccessStatus(item) === "problem").length : 0;
+      const accessVerified = accessActive ? allItems.filter(isAccessVerified).length : 0;
+      const travelDays = tripDays.filter(isTravelDay);
+
+      const stays = tripStays(trip), journeys = tripJourneys(trip);
+      const staysActive = stays.length > 0;
+      const stayOverlaps = staysActive ? Logistics.stayOverlaps(trip).length : 0;
+      const stayGapDates = staysActive ? Logistics.uncoveredDates(
+        trip,
+        tripDays.filter(day => dayType(day) !== "departure").map(day => day && day.date)
+      ).length : 0;
+      const stayDateProblems = stays.filter(raw => {
+        const st = stayInfo(raw);
+        if (st.status === "cancelled") return false;
+        const any = !!(st.name || st.location || st.startDate || st.endDate || st.confirmation || st.provider || st.note);
+        return any && (!st.name || !st.startDate || !st.endDate || st.startDate >= st.endDate);
+      }).length;
+      const plannedStays = stays.filter(raw => stayInfo(raw).status === "planned").length;
+      const plannedJourneys = journeys.filter(raw => journeyInfo(raw).status === "planned").length;
+      const plannedActivityBookings = allItems.filter(item => itemBookingInfo(item).status === "planned").length;
+      const bookingRows = Finance.bookingEntries(trip, Logistics);
+      const paymentAttention = bookingRows.filter(row => row.bookingStatus !== "cancelled" && (row.paymentStatus === "unpaid" || row.paymentStatus === "partial")).length;
+      const documentNeeds = Finance.documentNeedsAttention(trip).length;
+      const budgetSummary = Finance.budgetSummary(trip);
+
       return {
-        conflicts, invalidTimes, travelUnknown, accessToCheck,
+        conflicts, invalidTimes, travelUnknown, insufficientTravel,
+        accessActive, accessNeedsCheck, accessIssues, accessVerified,
         missingDestination: !tripDestination(trip),
-        missingBase: !(tripBase(trip).name || tripBase(trip).location),
+        missingBase: !(tripBase(trip).name || tripBase(trip).location) && !staysActive,
         missingTimezone: !tripTimezone(trip),
         activityCount: allItems.length,
         dayCount: tripDays.length,
-        missingLocations: allItems.filter(item => !itemLocation(item)).length
+        travelDayCount: travelDays.length,
+        arrivalDays: travelDays.filter(d => dayType(d) === "arrival").length,
+        departureDays: travelDays.filter(d => dayType(d) === "departure").length,
+        transferDays: travelDays.filter(d => dayType(d) === "transfer").length,
+        logisticsActive: staysActive || journeys.length > 0,
+        stayCount: stays.length,
+        journeyCount: journeys.length,
+        stayOverlaps,
+        stayGapDates,
+        stayDateProblems,
+        plannedStays,
+        plannedJourneys,
+        plannedActivityBookings,
+        paymentAttention,
+        documentNeeds,
+        budgetExceeded: budgetSummary.active && budgetSummary.exceeded,
+        bookingCount: bookingRows.length,
+        expenseCount: tripExpenses(trip).length,
+        documentCount: tripDocuments(trip).length
       };
     }
-    function planningIssueLabels(trip) {
+
+    function readinessEntries(trip) {
       const st = tripPlanningStats(trip);
-      const labels = [];
-      if (st.conflicts) labels.push(tf("day_health_conflicts", { n: st.conflicts }));
-      if (st.invalidTimes) labels.push(tf("day_health_invalid_time", { n: st.invalidTimes }));
-      if (st.accessToCheck) labels.push(tf("overview_access_to_check", { n: st.accessToCheck }));
-      if (st.travelUnknown) labels.push(tf("overview_travel_unknown", { n: st.travelUnknown }));
-      if (st.missingDestination) labels.push(t("overview_missing_destination"));
-      if (st.missingBase) labels.push(t("overview_missing_base"));
-      if (st.missingTimezone) labels.push(t("overview_missing_timezone"));
-      if (st.missingLocations) labels.push(tf("overview_missing_locations", { n: st.missingLocations }));
-      /* GRACEFUL-001 (v1050-RC2): a missing END TIME is deliberately NOT an
-         issue. RC1 listed one per activity without an end time, which turned
-         a legitimately unknown finishing time into a planning defect and made
-         the summary nag on every ordinary trip. End time stays optional; it
-         only ever strengthens the schedule analysis when it is supplied. */
-      return labels;
+      const rows = [];
+      const add = (level, text) => rows.push({ level, text });
+      if (st.conflicts) add("issue", tf("day_health_conflicts", { n: st.conflicts }));
+      if (st.invalidTimes) add("issue", tf("day_health_invalid_time", { n: st.invalidTimes }));
+      if (st.insufficientTravel) add("issue", tf("overview_travel_insufficient", { n: st.insufficientTravel }));
+      if (st.stayOverlaps) add("issue", tf("readiness_stay_overlap", { n: st.stayOverlaps }));
+      if (st.stayDateProblems) add("issue", tf("readiness_stay_date_problem", { n: st.stayDateProblems }));
+      if (st.accessIssues) add("issue", tf("overview_access_issues", { n: st.accessIssues }));
+      if (st.travelUnknown) add("check", tf("overview_travel_unknown", { n: st.travelUnknown }));
+      if (st.stayGapDates) add("check", tf("readiness_stay_gaps", { n: st.stayGapDates }));
+      if (st.plannedStays) add("check", tf("readiness_planned_stays", { n: st.plannedStays }));
+      if (st.plannedJourneys) add("check", tf("readiness_planned_journeys", { n: st.plannedJourneys }));
+      if (st.plannedActivityBookings) add("check", tf("readiness_planned_activity_bookings", { n: st.plannedActivityBookings }));
+      if (st.paymentAttention) add("check", tf("readiness_payment_attention", { n: st.paymentAttention }));
+      if (st.documentNeeds) add("check", tf("readiness_documents_needed", { n: st.documentNeeds }));
+      if (st.budgetExceeded) add("check", t("readiness_budget_exceeded"));
+      if (st.accessNeedsCheck) add("check", tf("overview_access_to_check", { n: st.accessNeedsCheck }));
+      if (st.missingDestination) add("check", t("overview_missing_destination"));
+      if (st.missingTimezone) add("check", t("overview_missing_timezone"));
+      if (st.missingBase) add("check", t("overview_missing_base"));
+      return rows;
     }
+
+    function tripReadiness(trip) {
+      const rows = readinessEntries(trip);
+      const issues = rows.filter(r => r.level === "issue").length;
+      const checks = rows.filter(r => r.level === "check").length;
+      const level = issues ? "issue" : checks ? "check" : "ready";
+      return { level, rows, issues, checks };
+    }
+
+    function readinessLabel(level) {
+      return level === "issue" ? t("readiness_issue") : level === "check" ? t("readiness_check") : t("readiness_ready");
+    }
+
+    function planningIssueLabels(trip) {
+      return readinessEntries(trip).map(row => row.text);
+    }
+
     function renderPlanningSummary(el, trip) {
       if (!el) return;
       el.innerHTML = "";
-      const mobility = mobilitySummaryLabels();
-      const issues = trip ? planningIssueLabels(trip) : [];
-      if (!mobility.length && !issues.length) { el.style.display = "none"; return; }
+      const mobility = mobilitySummaryLabels(trip);
+      const readiness = trip ? tripReadiness(trip) : null;
+      const rows = readiness ? readiness.rows : [];
+      if (!mobility.length && !rows.length) { el.style.display = "none"; return; }
       const title = document.createElement("div");
       title.className = "planning-summary-title";
       title.textContent = t("planning_profile_title");
       el.appendChild(title);
+      if (readiness) {
+        const status = document.createElement("div");
+        status.className = "readiness-status readiness-" + readiness.level;
+        status.textContent = readinessLabel(readiness.level);
+        el.appendChild(status);
+      }
       if (mobility.length) {
         const chips = document.createElement("div"); chips.className = "planning-chips";
         mobility.forEach(label => { const c=document.createElement("span"); c.className="planning-chip"; c.textContent=label; chips.appendChild(c); });
         el.appendChild(chips);
       }
-      if (issues.length) {
+      if (rows.length) {
         const list = document.createElement("div"); list.className = "planning-issues";
-        issues.forEach(label => { const row=document.createElement("div"); row.className="planning-issue"; row.textContent="• " + label; list.appendChild(row); });
+        rows.forEach(entry => { const row=document.createElement("div"); row.className="planning-issue readiness-row readiness-"+entry.level; row.textContent="• " + entry.text; list.appendChild(row); });
         el.appendChild(list);
       }
       el.style.display = "";
@@ -386,16 +592,24 @@ document.addEventListener("DOMContentLoaded", () => {
       const a = DayIntel.analyzeDay(day.items);
       const chips = document.createElement("div"); chips.className = "day-health-chips";
       const addChip = (label, cls) => { const c=document.createElement("span"); c.className="day-health-chip"+(cls?" "+cls:""); c.textContent=label; chips.appendChild(c); };
+      if (isTravelDay(day)) addChip(dayTypeIcon(dayType(day)) + " " + dayTypeLabel(dayType(day)), "travel-day");
       addChip(tf("day_health_activities", { n: day.items.length }));
       if (a.spanMin != null && day.items.length) addChip(tf("day_health_span", { n: formatMinutesCompact(a.spanMin) }));
       if (a.conflicts.length) addChip(tf("day_health_conflicts", { n: a.conflicts.length }), "warn");
       const bad = a.invalidRangeCount + a.malformedCount;
       if (bad) addChip(tf("day_health_invalid_time", { n: bad }), "warn");
-      if (a.travelUnknown) addChip(tf("day_health_travel_unknown", { n: a.travelUnknown }), "neutral");
+      const insufficientTravel = a.pairs.filter(pair => pair.status === "insufficient").length;
+      if (insufficientTravel) addChip(tf("day_health_travel_insufficient", { n: insufficientTravel }), "warn");
+      if (a.travelUnresolved) addChip(tf("day_health_travel_unknown", { n: a.travelUnresolved }), "neutral");
       if (hasAccessPlanningNeeds()) {
         const n = day.items.filter(item => !itemAccessStatus(item) || itemAccessStatus(item) === "needscheck").length;
+        const issues = day.items.filter(item => itemAccessStatus(item) === "problem").length;
         if (n) addChip(tf("day_health_access_checks", { n }), "neutral");
+        if (issues) addChip(tf("day_health_access_issues", { n: issues }), "warn");
       }
+      const flow = dayBaseFlow(day);
+      if (flow.startsAtBase) addChip(t("day_starts_at_base"), "neutral");
+      if (flow.returnsToBase) addChip(t("day_returns_to_base"), "neutral");
       el.appendChild(chips);
       const details = [];
       a.conflicts.slice(0, 3).forEach(c => {
@@ -409,6 +623,50 @@ document.addEventListener("DOMContentLoaded", () => {
         details.forEach(text => { const row=document.createElement("div"); row.textContent=text; d.appendChild(row); });
         el.appendChild(d);
       }
+      el.style.display = "";
+    }
+
+    function renderDayLogistics(day) {
+      const el = $("dayLogisticsStrip");
+      if (!el) return;
+      el.innerHTML = "";
+      const trip = getActiveTrip();
+      if (!trip || !day || !day.date || !logisticsTrackingActive(trip)) { el.style.display = "none"; return; }
+
+      const rows = [];
+      if (Logistics.staysTrackingActive(trip)) {
+        const eff = Logistics.effectiveStayForDate(trip, day.date);
+        if (eff.kind === "stay") {
+          const st = stayInfo(eff.stay);
+          rows.push({ cls:"stay", text:"🏨 " + t("day_logistics_base") + ": " + (st.name || st.location || t("overview_fact_unset")) + (st.name && st.location ? " · " + st.location : "") });
+        } else if (eff.kind === "ambiguous") {
+          rows.push({ cls:"warn", text:"⚠️ " + t("day_logistics_stay_ambiguous") });
+        } else if (eff.kind === "gap" && dayType(day) !== "departure") {
+          rows.push({ cls:"neutral", text:"🏨 " + t("day_logistics_stay_gap") });
+        }
+        const ending = Logistics.staysEndingOn(trip, day.date);
+        const starting = Logistics.staysStartingOn(trip, day.date);
+        if (ending.length === 1) {
+          const st = stayInfo(ending[0]), pay=Finance.paymentStatus(ending[0]&&ending[0].paymentStatus); rows.push({ cls:"transition", text:"↗ " + t("day_logistics_checkout") + ": " + (st.name || st.location || t("overview_fact_unset")) + (pay ? " · " + paymentStatusLabel(pay) : "") });
+        }
+        if (starting.length === 1 && !(eff.kind === "stay" && starting[0] === eff.stay && !isTravelDay(day))) {
+          const st = stayInfo(starting[0]), pay=Finance.paymentStatus(starting[0]&&starting[0].paymentStatus); rows.push({ cls:"transition", text:"↘ " + t("day_logistics_checkin") + ": " + (st.name || st.location || t("overview_fact_unset")) + (pay ? " · " + paymentStatusLabel(pay) : "") });
+        }
+      }
+
+      Logistics.journeysForDate(trip, day.date).forEach((raw) => {
+        const j = journeyInfo(raw);
+        const bits = [];
+        if (j.mode) bits.push(journeyModeLabel(j.mode));
+        if (j.origin || j.destination) bits.push((j.origin || "…") + " → " + (j.destination || "…"));
+        if (j.departureTime || j.arrivalTime) bits.push((j.departureTime || "…") + " → " + (j.arrivalTime || "…"));
+        if (j.status) bits.push(bookingStatusLabel(j.status));
+        const pay=Finance.paymentStatus(raw&&raw.paymentStatus); if(pay)bits.push(paymentStatusLabel(pay));
+        rows.push({ cls:"journey", text:"🚆 " + bits.join(" · ") });
+      });
+
+      if (!rows.length) { el.style.display = "none"; return; }
+      rows.forEach((r) => { const row=document.createElement("div"); row.className="day-logistics-row "+r.cls; row.textContent=r.text; el.appendChild(row); });
       el.style.display = "";
     }
 
@@ -479,7 +737,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const snap = JSON.parse(json);
       trips = normalizeTrips(Array.isArray(snap.trips) ? snap.trips : []);
       activeTripId = snap.activeTripId || null;
-      currentView = snap.currentView === "home" ? "home" : (activeTripId ? "planner" : "home");
+      currentView = snap.currentView === "home" ? "home" : (snap.currentView === "today" && activeTripId ? "today" : (activeTripId ? "planner" : "home"));
       const active = getActiveTrip();
       if (active) {
         if (!Array.isArray(active.days)) active.days = [];
@@ -605,6 +863,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       renderCurrentView();
       updateHeaderInfo();
+      if ($("logisticsSheet") && $("logisticsSheet").classList.contains("open")) renderLogisticsHub();
+      if ($("bookingCenterSheet") && $("bookingCenterSheet").classList.contains("open")) renderBookingCenter();
+      if ($("moneySheet") && $("moneySheet").classList.contains("open")) renderMoneyHub();
+      if ($("documentsSheet") && $("documentsSheet").classList.contains("open")) renderDocumentsHub();
+      const undoTrip = logisticsTrip();
+      if (undoTrip && $("tripDetailsSheet") && $("tripDetailsSheet").classList.contains("open")) updateTripLogisticsSummary(undoTrip);
       showToast(t("toast_undone"));
     }
 
@@ -687,19 +951,33 @@ document.addEventListener("DOMContentLoaded", () => {
       return asIfUTC - utcMs;
     }
 
-    /* Wall clock in `tz` -> real instant (ms since epoch).
-       Two passes: guess with the offset at the naive instant, then confirm
-       with the offset at the candidate. Across a DST transition the two
-       disagree exactly once, and the second pass is authoritative. A time
-       inside a spring-forward gap does not exist; this returns a defined,
-       deterministic instant for it rather than throwing. */
+    /* Wall clock in `tz` -> one unambiguous real instant (ms since epoch).
+       Around DST transitions a local wall time can be missing (spring gap) or
+       can occur twice (autumn fold). TripMaster must not silently invent which
+       instant the user meant. We sample the offsets around the target date,
+       build every plausible candidate, and accept it only when exactly one
+       candidate formats back to the requested wall clock. */
     function wallClockToInstant(y, mo, d, h, mi, tz) {
       const naiveUTC = Date.UTC(y, mo - 1, d, h, mi, 0);
-      const off1 = tzOffsetMs(tz, naiveUTC);
-      let instant = naiveUTC - off1;
-      const off2 = tzOffsetMs(tz, instant);
-      if (off2 !== off1) instant = naiveUTC - off2;
-      return instant;
+      const offsets = new Set();
+      [-36, -12, 0, 12, 36].forEach((hours) => {
+        offsets.add(tzOffsetMs(tz, naiveUTC + hours * 3600000));
+      });
+      const matches = [];
+      offsets.forEach((offset) => {
+        const candidate = naiveUTC - offset;
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: tz, hour12: false,
+          year: "numeric", month: "2-digit", day: "2-digit",
+          hour: "2-digit", minute: "2-digit"
+        }).formatToParts(new Date(candidate));
+        const map = {}; parts.forEach((part) => { map[part.type] = part.value; });
+        let hour = Number(map.hour); if (hour === 24) hour = 0;
+        if (Number(map.year) === y && Number(map.month) === mo && Number(map.day) === d &&
+            hour === h && Number(map.minute) === mi) matches.push(candidate);
+      });
+      const unique = Array.from(new Set(matches));
+      return unique.length === 1 ? unique[0] : null;
     }
 
     function pad2(n) { return String(n).padStart(2, "0"); }
@@ -728,37 +1006,48 @@ document.addEventListener("DOMContentLoaded", () => {
        else. `endTimeStr` is optional: with no end time the activity keeps
        the pre-v1040 duration of exactly one hour (B4). */
     function activityTimeSpec(dateStr, timeStr, endTimeStr, tz) {
-      const dp = String(dateStr || "").split("-");
-      const tp = String(timeStr || "12:00").split(":");
+      const date = parseDateOnly(String(dateStr || ""));
+      if (!date) return null;
+      const startMin = DayIntel.parseTime(String(timeStr || ""));
+      if (startMin === null) return null;
       const start = {
-        y: parseInt(dp[0], 10), mo: parseInt(dp[1], 10), d: parseInt(dp[2], 10),
-        h: parseInt(tp[0], 10), mi: parseInt(tp[1], 10)
+        y: date.getUTCFullYear(), mo: date.getUTCMonth() + 1, d: date.getUTCDate(),
+        h: Math.floor(startMin / 60), mi: startMin % 60
       };
-      if (isNaN(start.y) || isNaN(start.mo) || isNaN(start.d)) return null;
-      if (isNaN(start.h)) start.h = 12;
-      if (isNaN(start.mi)) start.mi = 0;
 
       let end;
-      const ep = String(endTimeStr || "").split(":");
-      const eh = parseInt(ep[0], 10), em = parseInt(ep[1], 10);
-      if (!isNaN(eh) && !isNaN(em)) {
+      const endRaw = String(endTimeStr || "");
+      if (endRaw) {
+        const endMin = DayIntel.parseTime(endRaw);
+        if (endMin === null) return null;
+        const eh = Math.floor(endMin / 60), em = endMin % 60;
         end = { y: start.y, mo: start.mo, d: start.d, h: eh, mi: em };
         // An end at or before the start means the activity runs past
         // midnight, which is a real thing on a trip (a 23:00 concert).
-        if ((eh * 60 + em) <= (start.h * 60 + start.mi)) end = addWallMinutes(end, 24 * 60);
+        if (endMin <= startMin) end = addWallMinutes(end, 24 * 60);
       } else {
         end = addWallMinutes(start, 60);
       }
 
       const zone = (tz && isValidTimeZone(tz)) ? tz : "";
       if (zone) {
+        const startMs = wallClockToInstant(start.y, start.mo, start.d, start.h, start.mi, zone);
+        if (startMs === null) return null;
+        let endMs;
+        if (endRaw) {
+          endMs = wallClockToInstant(end.y, end.mo, end.d, end.h, end.mi, zone);
+          if (endMs === null) return null;
+        } else {
+          // No explicit end time means exactly one elapsed hour. This remains
+          // correct even when the wall clock skips or repeats during DST.
+          endMs = startMs + 60 * 60000;
+        }
         return {
           mode: "utc", tz: zone,
-          startMs: wallClockToInstant(start.y, start.mo, start.d, start.h, start.mi, zone),
-          endMs:   wallClockToInstant(end.y,   end.mo,   end.d,   end.h,   end.mi,   zone),
+          startMs, endMs,
           start: start, end: end,
-          dtStart: utcStamp(wallClockToInstant(start.y, start.mo, start.d, start.h, start.mi, zone)),
-          dtEnd:   utcStamp(wallClockToInstant(end.y,   end.mo,   end.d,   end.h,   end.mi,   zone))
+          dtStart: utcStamp(startMs),
+          dtEnd:   utcStamp(endMs)
         };
       }
       return {
@@ -816,6 +1105,15 @@ document.addEventListener("DOMContentLoaded", () => {
         try { target.focus(); } catch (err) {}
       }, 60);
       _sheetFocusTimers.set(id, focusTimer);
+    }
+
+    function topOpenSheet() {
+      for (let i = _focusReturn.length - 1; i >= 0; i--) {
+        const el = $(_focusReturn[i].id);
+        if (el && el.classList.contains("open")) return el;
+      }
+      const open = document.querySelectorAll(".sheet.open");
+      return open.length ? open[open.length - 1] : null;
     }
 
     function closeSheetEl(id) {
@@ -974,9 +1272,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function tripDateRange(trip) {
-      const valid = (trip && Array.isArray(trip.days) ? trip.days : [])
-        .map(d => d && d.date).filter(d => !!parseDateOnly(d)).sort();
-      return valid.length ? { first: valid[0], last: valid[valid.length - 1] } : null;
+      return Today.tripDateRange(trip);
     }
 
     function daysUntilDate(dateString) {
@@ -1014,24 +1310,63 @@ document.addEventListener("DOMContentLoaded", () => {
       else if (count === 0) parts.push(t("home_starts_today"));
       meta.textContent = parts.join(" · ") || t("home_no_dates");
       card.appendChild(meta);
-      if (base.name || base.location) {
+      const homeRefDate = range && range.first > todayISO() ? range.first : todayISO();
+      const nextStayRaw = Logistics.nextStay(trip, homeRefDate);
+      if (nextStayRaw) {
+        const st = stayInfo(nextStayRaw);
+        const b = document.createElement("div"); b.className="home-trip-base";
+        b.textContent = "🏨 " + t("home_next_stay") + ": " + (st.name || st.location || t("stay_unnamed")) + (st.startDate ? " · " + st.startDate : "");
+        card.appendChild(b);
+      } else if (base.name || base.location) {
         const b = document.createElement("div");
         b.className = "home-trip-base";
         b.textContent = "🏨 " + (base.name || base.location) + (base.name && base.location ? " · " + base.location : "");
         card.appendChild(b);
       }
-      const mobility = mobilitySummaryLabels();
+      const nextJourneyRaw = Logistics.nextJourney(trip, homeRefDate);
+      if (nextJourneyRaw) {
+        const j=journeyInfo(nextJourneyRaw); const b=document.createElement("div"); b.className="home-review home-logistics-next";
+        b.textContent="🚆 " + t("home_next_journey") + ": " + (j.date ? j.date + " · " : "") + (j.origin || "…") + " → " + (j.destination || "…");
+        card.appendChild(b);
+      }
+      const mobility = mobilitySummaryLabels(trip);
       if (mobility.length) {
         const chips = document.createElement("div"); chips.className = "planning-chips home-planning-chips";
         mobility.forEach(label => { const c=document.createElement("span"); c.className="planning-chip"; c.textContent=label; chips.appendChild(c); });
         card.appendChild(chips);
       }
-      const reviewCount = planningIssueLabels(trip).length;
-      if (reviewCount) {
-        const review = document.createElement("div"); review.className="home-review"; review.textContent="🔎 " + tf("home_review_items", { n: reviewCount }); card.appendChild(review);
+      const readiness = tripReadiness(trip);
+      const review = document.createElement("div");
+      review.className = "home-review home-readiness readiness-" + readiness.level;
+      review.textContent = readinessLabel(readiness.level) + (readiness.rows.length ? " · " + readiness.rows[0].text : "");
+      card.appendChild(review);
+      const travelCount = (trip.days || []).filter(isTravelDay).length;
+      if (travelCount) {
+        const travel = document.createElement("div");
+        travel.className = "home-review";
+        travel.textContent = "🧭 " + tf("home_travel_days", { n: travelCount });
+        card.appendChild(travel);
+      }
+      const bookingAttention = Finance.bookingAttentionEntries(trip, Logistics).length;
+      if (bookingAttention) {
+        const bookingLine=document.createElement("div"); bookingLine.className="home-review";
+        bookingLine.textContent="🎟️ " + tf("home_booking_attention", { n: bookingAttention });
+        card.appendChild(bookingLine);
+      }
+      const budgetHome=Finance.budgetSummary(trip);
+      if (budgetHome.active) {
+        const moneyLine=document.createElement("div"); moneyLine.className="home-review home-money-summary";
+        moneyLine.textContent="💰 " + t("home_budget") + ": " + formatMoneyAmount(budgetHome.comparableSpent, budgetHome.budget.currency) + " / " + formatMoneyAmount(budgetHome.budget.amount, budgetHome.budget.currency);
+        card.appendChild(moneyLine);
       }
       const actions = document.createElement("div");
       actions.className = "home-trip-actions";
+      const tripClock=Today.clock(null,tripTimezone(trip));
+      const tripIsActiveToday=Today.isTripActive(trip,tripClock);
+      const todayAction=document.createElement("button");
+      todayAction.type="button";todayAction.className="btn "+(tripIsActiveToday?"btn-primary":"btn-muted")+" today-home-action";
+      todayAction.textContent=tripIsActiveToday?t("today_home_open"):t("today_home_preview");
+      todayAction.addEventListener("click",()=>openTodayForTrip(trip.id,{preview:!tripIsActiveToday}));
       const cont = document.createElement("button");
       cont.type = "button"; cont.className = "btn btn-primary"; cont.textContent = t("home_continue");
       cont.addEventListener("click", () => continuePlanning(trip.id));
@@ -1049,7 +1384,7 @@ document.addEventListener("DOMContentLoaded", () => {
       del.title = t("btn_delete_trip");
       del.setAttribute("aria-label", t("btn_delete_trip") + " — " + (trip.name || ""));
       del.addEventListener("click", () => deleteTrip(trip.id));
-      actions.appendChild(cont); actions.appendChild(details); actions.appendChild(overview); actions.appendChild(del);
+      actions.appendChild(todayAction); actions.appendChild(cont); actions.appendChild(details); actions.appendChild(overview); actions.appendChild(del);
       card.appendChild(actions);
       return card;
     }
@@ -1115,17 +1450,214 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
+    /* ══════════════════════════════════════════════════════════════════
+       TODAY-001 (v1090): operational in-trip view
+       The model is built by app-today.js. This layer only translates it into
+       DOM/actions and deliberately never invents live travel facts. */
+    function todayEventKindLabel(kind) {
+      const map={activity:"today_activity",journey:"today_journey",checkin:"today_checkin",checkout:"today_checkout",travel:"today_transfer",travelday:"today_travel_day"};
+      return t(map[kind]||"today_today_item");
+    }
+    function todayEventIcon(kind) {
+      return {activity:"📍",journey:"🚆",checkin:"🏨",checkout:"🧳",travel:"➡️",travelday:"🧭"}[kind]||"•";
+    }
+    function todayAttentionText(code) {
+      const map={overlap:"today_issue_overlap",travel_insufficient:"today_issue_travel_insufficient",stay_conflict:"today_issue_stay_conflict",travel_unresolved:"today_check_travel_unresolved",booking_planned:"today_check_booking_planned",payment_attention:"today_check_payment",access_needs_check:"today_check_access",document_needed:"today_check_document",confirmation_available:"today_info_confirmation"};
+      return t(map[code]||code);
+    }
+    function todayEventTime(event) {
+      if (!event || !event.startTime) return t("today_time_unknown");
+      return event.startTime + (event.endTime ? "–" + event.endTime : "");
+    }
+    function todayEventMeta(event, trip, accessActive) {
+      const bits=[];
+      if (event.kind==="journey" && event.source && Number.isInteger(event.source.index)) {
+        const raw=trip && Array.isArray(trip.journeys) ? trip.journeys[event.source.index] : null, j=journeyInfo(raw);
+        if (j.mode) bits.push(journeyModeLabel(j.mode));
+        if (j.provider) bits.push(j.provider);
+        if (j.serviceNumber) bits.push(j.serviceNumber);
+      }
+      if (event.kind==="travelday" && event.source && Number.isInteger(event.source.dayIndex)) {
+        const d=trip.days && trip.days[event.source.dayIndex], info=d?dayTravelInfo(d):null;
+        if (info && info.mode) bits.push(travelDayModeLabel(info.mode));
+      }
+      if (event.kind==="travel" && event.travel) {
+        if (event.travel.mode) bits.push(travelModeLabel(event.travel.mode));
+        bits.push(event.travel.durationMin!=null ? tf("today_travel_minutes",{m:event.travel.durationMin}) : t("today_travel_unknown"));
+        if (event.travel.note) bits.push(event.travel.note);
+      }
+      if (event.bookingStatus) bits.push(bookingStatusLabel(event.bookingStatus));
+      if (event.paymentStatus) bits.push(paymentStatusLabel(event.paymentStatus));
+      if (accessActive && event.kind==="activity" && event.accessStatus) {
+        const a=event.accessStatus==="problem"?t("access_badge_problem"):(event.accessStatus==="needscheck"?t("access_badge_needscheck"):t("access_badge_verified"));
+        bits.push("♿ "+a);
+      }
+      if (event.temporal==="started_uncertain") bits.push(t("today_started_uncertain"));
+      return bits;
+    }
+    function todayOpenDetails(event, trip) {
+      if (!event || !event.source || !trip) return;
+      if (event.source.kind==="activity") {
+        currentDayIndex=event.source.dayIndex; days=trip.days||[];
+        openEditSheet(event.source.dayIndex,event.source.itemIndex,{expandMore:true}); return;
+      }
+      if (event.source.kind==="stay") {
+        _logisticsTripId=trip.id; openStaySheet(event.source.index); return;
+      }
+      if (event.source.kind==="journey") {
+        _logisticsTripId=trip.id; openJourneySheet(event.source.index); return;
+      }
+      if (event.source.kind==="travel") {
+        currentDayIndex=event.source.dayIndex; days=trip.days||[];
+        openEditSheet(event.source.dayIndex,event.source.itemIndex,{expandMore:true}); return;
+      }
+      if (event.source.kind==="travelday") {
+        currentDayIndex=event.source.dayIndex; days=trip.days||[]; openDayDetailsSheet();
+      }
+    }
+    function todayOpenBooking(event, trip) {
+      if (!event || !event.source || !trip || !["activity","stay","journey"].includes(event.source.kind)) return;
+      setOperationsTrip(trip.id);
+      openBookingSource({kind:event.source.kind,sourceIndex:event.source.index,dayIndex:event.source.dayIndex,itemIndex:event.source.itemIndex});
+    }
+    function todayQuickActions(event, trip, accessActive) {
+      const wrap=document.createElement("div"); wrap.className="today-quick-actions";
+      const add=(label,fn)=>{const b=document.createElement("button");b.type="button";b.className="today-action";b.textContent=label;b.addEventListener("click",fn);wrap.appendChild(b);};
+      if (event && event.source) add(event.kind==="travel"?t("today_edit_travel"):t("today_details"),()=>todayOpenDetails(event,trip));
+      if (event && event.location) add(t("today_maps"),()=>window.open(mapsUrl({location:event.location,title:event.title}),"_blank"));
+      if (event && event.hasBooking && event.source && ["activity","stay","journey"].includes(event.source.kind)) add(t("today_booking_details"),()=>todayOpenBooking(event,trip));
+      if (event && event.documentIndices && event.documentIndices.length) add(t("today_view_document"),()=>{setOperationsTrip(trip.id);openDocumentSheet(event.documentIndices[0]);});
+      return wrap;
+    }
+    function renderTodayHeroEvent(label,event,trip,accessActive) {
+      if (!event) return null;
+      const card=document.createElement("section");card.className="today-hero-card";
+      const meta=todayEventMeta(event,trip,accessActive);
+      card.innerHTML=`<div class="today-hero-label">${escapeHtml(label)}</div><div class="today-hero-title">${escapeHtml(todayEventIcon(event.kind)+" "+(event.title||todayEventKindLabel(event.kind)))}</div><div class="today-hero-time">${escapeHtml(todayEventTime(event))}</div>${meta.length?`<div class="today-hero-sub">${escapeHtml(meta.join(" · "))}</div>`:""}`;
+      card.appendChild(todayQuickActions(event,trip,accessActive));
+      return card;
+    }
+    function renderTodayTimeline(model,trip,accessActive) {
+      if (!model.events.length) return null;
+      const section=document.createElement("section");section.className="today-section";
+      section.innerHTML=`<div class="today-section-head"><div class="today-section-title">${escapeHtml(t("today_timeline"))}</div></div>`;
+      const list=document.createElement("div");list.className="today-timeline";
+      model.events.forEach(event=>{
+        const row=document.createElement("div");row.className="today-item"+(event.temporal==="past"?" is-past":"")+(event.temporal==="current"?" is-current":"");
+        const time=document.createElement("div");time.className="today-item-time"+(event.startTime?"":" unknown");time.textContent=todayEventTime(event);
+        const body=document.createElement("div");
+        const title=document.createElement("div");title.className="today-item-title";title.textContent=todayEventIcon(event.kind)+" "+(event.title||todayEventKindLabel(event.kind));
+        const kind=document.createElement("div");kind.className="today-item-kind";kind.textContent=todayEventKindLabel(event.kind);
+        body.appendChild(kind);body.appendChild(title);
+        const bits=todayEventMeta(event,trip,accessActive);if(bits.length){const sub=document.createElement("div");sub.className="today-item-sub";sub.textContent=bits.join(" · ");body.appendChild(sub);}
+        if(accessActive&&event.accessNote){const sub=document.createElement("div");sub.className="today-item-sub";sub.textContent="♿ "+event.accessNote;body.appendChild(sub);}
+        body.appendChild(todayQuickActions(event,trip,accessActive));row.appendChild(time);row.appendChild(body);list.appendChild(row);
+      });section.appendChild(list);return section;
+    }
+    function renderTodayAttention(model) {
+      if (!model.attention.length) return null;
+      const section=document.createElement("section");section.className="today-section";section.innerHTML=`<div class="today-section-title">${escapeHtml(t("today_attention"))}</div>`;
+      model.attention.forEach(a=>{const row=document.createElement("div");row.className="today-attention-row "+a.level;row.innerHTML=`<span class="today-attention-level">${escapeHtml(a.level==="issue"?t("today_level_issue"):a.level==="check"?t("today_level_check"):t("today_level_info"))}</span><span>${escapeHtml(todayAttentionText(a.code))}</span>`;section.appendChild(row);});return section;
+    }
+    function renderTodayReminders(model) {
+      const rows=model.reminders.filter(r=>model.preview?r.state==="scheduled":r.state!=="passed").slice(0,3);if(!rows.length)return null;
+      const section=document.createElement("section");section.className="today-section";section.innerHTML=`<div class="today-section-title">${escapeHtml(t("today_reminders"))}</div>`;
+      rows.forEach(r=>{const row=document.createElement("div");row.className="today-reminder-row"+(r.state==="due"?" is-due":"");const left=document.createElement("span");left.textContent="🔔 "+r.title;const right=document.createElement("span");right.textContent=r.state==="due"?t("today_reminder_due"):(r.state==="upcoming"&&r.minutesUntil!=null?tf("today_reminder_upcoming",{m:Math.max(0,r.minutesUntil)}):r.time);row.appendChild(left);row.appendChild(right);section.appendChild(row);});
+      const note=document.createElement("div");note.className="today-section-note";note.textContent=t("today_reminder_truth");section.appendChild(note);return section;
+    }
+    function renderTodayMobility() {
+      // TODAY-MOBILITY-001: Today should expose only the traveller's saved
+      // operational mobility preferences, never route/traffic/transit claims.
+      // Passing no trip intentionally excludes whole-trip base-flow counts,
+      // which belong in Overview rather than the in-trip operational view.
+      const labels=mobilitySummaryLabels(null);
+      if(!labels.length)return null;
+      const section=document.createElement("section");section.className="today-section";
+      section.innerHTML=`<div class="today-section-title">${escapeHtml(t("overview_card_mobility"))}</div>`;
+      const chips=document.createElement("div");chips.className="planning-chips";
+      labels.forEach(label=>{const chip=document.createElement("span");chip.className="planning-chip";chip.textContent=label;chips.appendChild(chip);});
+      section.appendChild(chips);
+      const note=document.createElement("div");note.className="today-section-note";note.textContent=t("overview_mobility_note");section.appendChild(note);
+      return section;
+    }
+    function renderTodayStay(model,trip) {
+      const raw=model.stay&&model.stay.tonight;if(!raw)return null;
+      const info=(raw.startDate||raw.endDate||raw.checkInTime||raw.checkOutTime)?stayInfo(raw):raw;
+      const name=info.name||info.location;if(!name)return null;
+      const section=document.createElement("section");section.className="today-section";section.innerHTML=`<div class="today-section-title">${escapeHtml(t("today_tonight"))}</div>`;
+      const card=document.createElement("div");card.className="today-stay-card";const main=document.createElement("div");main.className="today-stay-main";main.innerHTML=`<div class="today-item-title">🏨 ${escapeHtml(name)}</div>${info.location&&info.location!==name?`<div class="today-item-sub">${escapeHtml(info.location)}</div>`:""}`;
+      const stayPay=raw.id?Finance.paymentStatus(raw.paymentStatus):""; if(stayPay){const pay=document.createElement("div");pay.className="today-item-sub";pay.textContent=paymentStatusLabel(stayPay);main.appendChild(pay);} card.appendChild(main);
+      if(raw.id){const e=model.events.find(x=>x.source&&x.source.kind==="stay"&&x.source.id===raw.id)||{kind:"checkin",title:name,location:info.location||"",paymentStatus:stayPay,source:{kind:"stay",id:raw.id,index:(trip&&Array.isArray(trip.stays)?trip.stays.indexOf(raw):-1)},hasBooking:!!(info.status||stayPay||info.confirmation||info.provider||info.bookingUrl),documentIndices:[]};card.appendChild(todayQuickActions(e,trip,false));}
+      section.appendChild(card);return section;
+    }
+    function renderTomorrow(model,trip,accessActive) {
+      if(!model.tomorrow)return null;const events=model.tomorrow.events||[],stay=model.tomorrow.stay;if(!events.length&&!stay)return null;
+      const section=document.createElement("section");section.className="today-section";section.innerHTML=`<div class="today-section-head"><div class="today-section-title">${escapeHtml(t("today_tomorrow"))}</div><div class="today-item-sub">${escapeHtml(formatDateOnly(model.tomorrow.date,{day:"numeric",month:"short"})||model.tomorrow.date)}</div></div>`;
+      events.forEach(event=>{const row=document.createElement("div");row.className="today-reminder-row";const left=document.createElement("span");left.textContent=(event.startTime?event.startTime+" · ":"")+todayEventIcon(event.kind)+" "+(event.title||todayEventKindLabel(event.kind));row.appendChild(left);section.appendChild(row);});
+      if(stay){const info=(stay.startDate||stay.endDate)?stayInfo(stay):stay;const name=info.name||info.location;if(name){const sub=document.createElement("div");sub.className="today-section-note";sub.textContent=tf("today_tomorrow_stay",{name});section.appendChild(sub);}}
+      return section;
+    }
+    function processTodayNotifications(model,trip) {
+      if(!model||!model.isLive||typeof Notification==="undefined"||Notification.permission!=="granted")return;
+      model.reminders.filter(r=>r.state==="due").forEach(r=>{const key=[trip.id,model.date,r.dayIndex,r.itemIndex,r.dueMin].join("|");if(_todayNotified.has(key))return;_todayNotified.add(key);try{new Notification(t("today_reminder_due"),{body:r.title+(r.time?" · "+r.time:"")});}catch(err){console.warn("TripMaster: foreground notification failed",err);}});
+    }
+    function renderTodayView() {
+      const body=$("todayBody"),trip=getActiveTrip();if(!body)return;body.innerHTML="";
+      if(!trip){body.textContent=t("toast_no_active_trip");return;}
+      const clock=Today.clock(null,tripTimezone(trip));const active=Today.isTripActive(trip,clock);
+      if(!active)todayPreviewMode=true;
+      if(todayPreviewMode&&!todayPreviewDate)todayPreviewDate=Today.choosePreviewDate(trip,clock.date);
+      const model=Today.buildToday(trip,{preview:todayPreviewMode,date:todayPreviewDate,accessActive:hasAccessPlanningNeeds()});_lastTodayModel=model;
+      const badge=$("todayModeBadge"),picker=$("todayPreviewPicker"),select=$("todayPreviewSelect"),toggle=$("todayPreviewToggleBtn");
+      badge.textContent=model.isLive?t("today_live_badge"):t("today_preview_badge");badge.classList.toggle("is-preview",!model.isLive);
+      $("todayDateLine").textContent=model.date?(formatDateOnly(model.date,{weekday:"long",day:"numeric",month:"long"})||model.date):"";
+      $("todayClockLine").textContent=model.clock.fallback?tf("today_clock_device_fallback",{time:model.clock.time}):tf("today_clock_trip",{time:model.clock.time,tz:model.clock.timezone});
+      const previewDates=Today.previewDates(trip);select.innerHTML="";previewDates.forEach(d=>{const o=document.createElement("option");o.value=d;o.textContent=(formatDateOnly(d,{weekday:"short",day:"numeric",month:"short"})||d)+" · "+d;select.appendChild(o);});if(model.date&&previewDates.includes(model.date))select.value=model.date;
+      picker.hidden=!model.preview;toggle.hidden=model.preview&&!model.activeTrip;toggle.setAttribute("aria-expanded",model.preview?"true":"false");toggle.textContent=model.preview&&model.activeTrip?t("today_exit_preview"):t("today_preview_btn");
+      if(model.preview){const note=document.createElement("div");note.className="today-preview-banner";note.textContent=t("today_preview_notice");body.appendChild(note);}
+      if(!model.date){const empty=document.createElement("section");empty.className="today-section";empty.textContent=t("today_preview_empty");body.appendChild(empty);return;}
+      if(model.dayType!=="normal"){
+        const travel=document.createElement("section");travel.className="today-section";const parts=[];if(model.travelDay){if(model.travelDay.origin||model.travelDay.destination)parts.push((model.travelDay.origin||"…")+" → "+(model.travelDay.destination||"…"));if(model.travelDay.departureTime||model.travelDay.arrivalTime)parts.push((model.travelDay.departureTime||"…")+" → "+(model.travelDay.arrivalTime||"…"));}
+        travel.innerHTML=`<div class="today-section-title">${escapeHtml(dayTypeIcon(model.dayType)+" "+dayTypeLabel(model.dayType))}</div>${parts.length?`<div class="today-section-note">${escapeHtml(parts.join(" · "))}</div>`:""}`;body.appendChild(travel);
+      }
+      const heroes=document.createElement("div");heroes.className="today-hero-grid";
+      if(model.now)heroes.appendChild(renderTodayHeroEvent(t("today_now"),model.now,trip,hasAccessPlanningNeeds()));
+      if(model.next)heroes.appendChild(renderTodayHeroEvent(model.preview?t("today_preview_first"):t("today_next"),model.next,trip,hasAccessPlanningNeeds()));
+      if(heroes.children.length)body.appendChild(heroes);
+      else if(model.isLive&&model.noMore){const done=document.createElement("section");done.className="today-section today-empty-done";done.innerHTML=`<strong>${escapeHtml(t("today_done"))}</strong><span>${escapeHtml(t("today_no_more"))}</span>`;body.appendChild(done);}
+      else if(model.isLive&&model.events.length){const uncertain=document.createElement("section");uncertain.className="today-section";uncertain.textContent=t("today_no_current");body.appendChild(uncertain);}
+      else if(!model.events.length){const empty=document.createElement("section");empty.className="today-section";empty.textContent=t("today_no_plans");body.appendChild(empty);}
+      [renderTodayTimeline(model,trip,hasAccessPlanningNeeds()),renderTodayAttention(model),renderTodayReminders(model),renderTodayMobility(),renderTodayStay(model,trip),renderTomorrow(model,trip,hasAccessPlanningNeeds())].filter(Boolean).forEach(el=>body.appendChild(el));
+      processTodayNotifications(model,trip);
+    }
+    function openTodayForTrip(tripId,options) {
+      const opts=options||{};if(tripId&&tripId!==activeTripId){if(!switchTrip(tripId,{stayHome:true,silent:true}))return false;}
+      const trip=getActiveTrip();if(!trip){if(trips.length===0)openNewTripSheet();else{currentView="home";renderCurrentView();updateHeaderInfo();showToast(t("home_choose_trip"));}return false;}
+      days=trip.days||[];const c=Today.clock(null,tripTimezone(trip)),active=Today.isTripActive(trip,c);
+      todayPreviewMode=opts.preview===true||!active;todayPreviewDate=opts.date||((todayPreviewMode)?Today.choosePreviewDate(trip,c.date):c.date);currentView="today";renderCurrentView();updateHeaderInfo();requestAnimationFrame(()=>{const title=$("todayViewTitle");if(title)title.focus();});return true;
+    }
+    function openToday() { return openTodayForTrip(activeTripId,{}); }
+    function continueFromTodayToPlanner(){const trip=getActiveTrip();if(!trip)return;currentView="planner";days=trip.days||[];const wanted=_lastTodayModel&&_lastTodayModel.date;const idx=wanted?days.findIndex(d=>d.date===wanted):-1;if(idx>=0)currentDayIndex=idx;renderCurrentView();updateHeaderInfo();}
+
+    /* Sanitized deterministic context for future local/AI integration. It
+       excludes confirmations, document references and detailed finance. */
+    window.TripMasterTodaySanitizedContext=function(){return _lastTodayModel?Today.sanitizedContext(_lastTodayModel):null;};
+    window.TripMasterTodayPartnerContext=function(){return _lastTodayModel?Today.partnerContext(_lastTodayModel):Object.freeze({version:1,active:false,slots:[]});};
+
     function renderCurrentView() {
       const home = $("homeDashboard");
       const planner = $("plannerView");
+      const todayView = $("todayView");
       const bottom = document.querySelector(".bottom-bar");
       const active = getActiveTrip();
-      if (currentView === "planner" && !active) currentView = "home";
-      const atHome = currentView === "home";
+      if ((currentView === "planner" || currentView === "today") && !active) currentView = "home";
+      const atHome = currentView === "home", atToday = currentView === "today";
       if (home) home.style.display = atHome ? "" : "none";
-      if (planner) planner.style.display = atHome ? "none" : "";
-      if (bottom) bottom.style.display = atHome ? "none" : "";
+      if (planner) planner.style.display = (!atHome && !atToday) ? "" : "none";
+      if (todayView) todayView.style.display = atToday ? "" : "none";
+      if (bottom) bottom.style.display = (!atHome && !atToday) ? "" : "none";
       if (atHome) renderHomeDashboard();
+      else if (atToday) { days = active.days || []; renderTodayView(); }
       else {
         days = active.days || [];
         renderDays();
@@ -1146,6 +1678,13 @@ document.addEventListener("DOMContentLoaded", () => {
         // Hebrew/Arabic dashboard text would be forced into LTR presentation.
         dateLine.dir = document.documentElement.dir === "rtl" ? "rtl" : "ltr";
         dateLine.style.direction = dateLine.dir;
+        return;
+      }
+      if (currentView === "today") {
+        $("headerCity").innerText = (activeTrip && activeTrip.name) ? activeTrip.name : "TripMaster";
+        dateLine.dir = document.documentElement.dir === "rtl" ? "rtl" : "ltr";
+        dateLine.style.direction = dateLine.dir;
+        dateLine.innerText = t("today_title");
         return;
       }
       $("headerCity").innerText = (activeTrip && activeTrip.name) ? activeTrip.name : "TripMaster";
@@ -1617,11 +2156,13 @@ document.addEventListener("DOMContentLoaded", () => {
     function accessBadgeHtml(item) {
       const status = itemAccessStatus(item);
       if (!status) return "";
-      const label = status === "stepfree" ? t("access_badge_stepfree")
+      const verified = status === "verified" || status === "stepfree";
+      const label = verified ? t("access_badge_verified")
                   : status === "problem" ? t("access_badge_problem")
                   : t("access_badge_needscheck");
-      const icon  = status === "stepfree" ? "♿" : status === "problem" ? "⚠️" : "🔎";
-      return `<span class="access-badge access-${status}">${icon} ${escapeHtml(label)}</span>`;
+      const icon  = verified ? "✓" : status === "problem" ? "⚠️" : "🔎";
+      const cls = verified ? "verified" : status;
+      return `<span class="access-badge access-${cls}">${icon} ${escapeHtml(label)}</span>`;
     }
 
     /* CATEGORY-001 (v1040 / E5): options are rendered rather than static so
@@ -1662,7 +2203,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function findTodayDayIndex() {
-      const t = todayISO();
+      const t = getActiveTrip() ? activeTripClock().date : todayISO();
       return days.findIndex(d => d.date === t);
     }
 
@@ -1694,7 +2235,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderDays() {
       const wrap = $("dayChips");
       wrap.innerHTML = "";
-      const todayStr = todayISO();
+      const todayStr = getActiveTrip() ? activeTripClock().date : todayISO();
 
       days.forEach((day, index) => {
         const chip = document.createElement("button");
@@ -1708,9 +2249,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const dayLabel = weekday < 0 ? tf("day_n", { n: index + 1 }) : (dayNames[weekday] || "");
         const dayNum   = weekday < 0 ? (index + 1) : dateOnlyDayNum(day.date);
 
+        const type = dayType(day);
         chip.innerHTML = `
           <span class="chip-day-label">${escapeHtml(dayLabel)}</span>
           <span class="chip-day-num">${dayNum}</span>
+          ${type !== "normal" ? `<span class="chip-day-type" title="${escapeHtml(dayTypeLabel(type))}">${escapeHtml(dayTypeIcon(type))}</span>` : ""}
           <span class="chip-dot"></span>
         `;
 
@@ -1745,8 +2288,85 @@ document.addEventListener("DOMContentLoaded", () => {
       // while there is a day to delete.
       const delDayBtn = $("deleteDayBtn");
       if (delDayBtn) delDayBtn.style.display = days.length > 0 ? "" : "none";
+      const detailsBtn = $("dayDetailsBtn");
+      if (detailsBtn) detailsBtn.style.display = days.length > 0 ? "" : "none";
 
       updateHeaderInfo();
+    }
+
+    /* ── TRAVEL-DAY-001 (v1060): additive day classification/details. ── */
+    function updateTravelDayFieldsVisibility() {
+      const fields = $("travelDayFields");
+      if (!fields) return;
+      fields.hidden = $("dayTypeSelect").value === "normal";
+    }
+
+    function openDayDetailsSheet() {
+      const day = days[currentDayIndex];
+      if (!day) return;
+      const type = dayType(day);
+      const info = dayTravelInfo(day);
+      const flow = dayBaseFlow(day);
+      $("dayTypeSelect").value = type;
+      $("travelDayOrigin").value = info.origin;
+      $("travelDayDestination").value = info.destination;
+      $("travelDayMode").value = info.mode;
+      $("travelDayDepartureTime").value = info.departureTime;
+      $("travelDayArrivalTime").value = info.arrivalTime;
+      $("travelDayReference").value = info.reference;
+      $("dayStartsAtBase").checked = flow.startsAtBase;
+      $("dayReturnsToBase").checked = flow.returnsToBase;
+      const base = tripBase(getActiveTrip());
+      const baseBlock = $("dayBaseFlowBlock");
+      if (baseBlock) baseBlock.hidden = !(base.name || base.location);
+      updateTravelDayFieldsVisibility();
+      openSheetEl("dayDetailsSheet");
+    }
+
+    function closeDayDetailsSheet() { closeSheetEl("dayDetailsSheet"); }
+
+    function saveDayDetails() {
+      const day = days[currentDayIndex];
+      if (!day) { closeDayDetailsSheet(); return; }
+      const type = Travel.DAY_TYPES.indexOf($("dayTypeSelect").value) !== -1 ? $("dayTypeSelect").value : "normal";
+      const base = tripBase(getActiveTrip());
+      const hasBase = !!(base.name || base.location);
+      const ok = commitState(() => {
+        if (type === "normal") delete day.dayType;
+        else day.dayType = type;
+
+        // Only edit the nested travel object while the day is a travel day.
+        // Switching back to Normal never silently destroys previously entered details.
+        if (type !== "normal") {
+          const travel = (day.travelDay && typeof day.travelDay === "object") ? Object.assign({}, day.travelDay) : {};
+          const origin = $("travelDayOrigin").value.trim();
+          const destination = $("travelDayDestination").value.trim();
+          const mode = $("travelDayMode").value;
+          const departureTime = $("travelDayDepartureTime").value;
+          const arrivalTime = $("travelDayArrivalTime").value;
+          const reference = $("travelDayReference").value.trim();
+          if (origin) travel.origin = origin; else delete travel.origin;
+          if (destination) travel.destination = destination; else delete travel.destination;
+          if (Travel.DAY_TRAVEL_MODES.indexOf(mode) !== -1) travel.mode = mode; else delete travel.mode;
+          if (/^\d{2}:\d{2}$/.test(departureTime)) travel.departureTime = departureTime; else delete travel.departureTime;
+          if (/^\d{2}:\d{2}$/.test(arrivalTime)) travel.arrivalTime = arrivalTime; else delete travel.arrivalTime;
+          if (reference) travel.reference = reference; else delete travel.reference;
+          if (Object.keys(travel).length) day.travelDay = travel; else delete day.travelDay;
+        }
+
+        if (hasBase) {
+          const flow = (day.baseFlow && typeof day.baseFlow === "object") ? Object.assign({}, day.baseFlow) : {};
+          if ($("dayStartsAtBase").checked) flow.startsAtBase = true; else delete flow.startsAtBase;
+          if ($("dayReturnsToBase").checked) flow.returnsToBase = true; else delete flow.returnsToBase;
+          if (Object.keys(flow).length) day.baseFlow = flow; else delete day.baseFlow;
+        }
+      });
+      if (!ok) return;
+      renderDays();
+      renderActivities(currentDayIndex);
+      if (currentView === "today") renderTodayView();
+      closeDayDetailsSheet();
+      showToast(t("toast_day_details_saved"));
     }
 
     /* ── DAY-DEL-001 (v1040 / A1) + ACT-DEL-001 (A2) ──
@@ -1778,6 +2398,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!ok) return;
       renderDays();
       renderActivities(currentDayIndex);
+      if (currentView === "today") renderTodayView();
       showUndoToast(t("toast_day_deleted"));
     }
 
@@ -1791,6 +2412,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!ok) return;
       renderDays();
       renderActivities(currentDayIndex);
+      if (currentView === "today") renderTodayView();
       showUndoToast(t("toast_activity_deleted"));
     }
 
@@ -1822,22 +2444,22 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ── Find now item ── */
     function findNowItemIndex(day) {
       if (!day || !day.date) return -1;
-      if (day.date !== todayISO()) return -1;
-      const now = new Date();
-      const nowMin = now.getHours() * 60 + now.getMinutes();
+      const clock = getActiveTrip() ? activeTripClock() : Today.clock();
+      if (day.date !== clock.date) return -1;
+      const nowMin = clock.minutes;
       let best = -1, bestDiff = Infinity;
       day.items.forEach((item, i) => {
-        if (!item.time) return;
-        const [h, m] = item.time.split(":").map(Number);
-        const diff = nowMin - (h * 60 + m);
+        const itemMin = DayIntel.parseTime(item && item.time);
+        if (itemMin === null) return;
+        const diff = nowMin - itemMin;
         if (diff >= 0 && diff < bestDiff) { bestDiff = diff; best = i; }
       });
       if (best === -1) {
         let nextDiff = Infinity;
         day.items.forEach((item, i) => {
-          if (!item.time) return;
-          const [h, m] = item.time.split(":").map(Number);
-          const diff = (h * 60 + m) - nowMin;
+          const itemMin = DayIntel.parseTime(item && item.time);
+          if (itemMin === null) return;
+          const diff = itemMin - nowMin;
           if (diff >= 0 && diff < nextDiff) { nextDiff = diff; best = i; }
         });
       }
@@ -1848,11 +2470,10 @@ document.addEventListener("DOMContentLoaded", () => {
     function minutesUntilNext(day, nowItemIndex) {
       if (nowItemIndex === -1 || !day.items[nowItemIndex + 1]) return null;
       const next = day.items[nowItemIndex + 1];
-      if (!next.time) return null;
-      const now = new Date();
-      const nowMin = now.getHours() * 60 + now.getMinutes();
-      const [h, m] = next.time.split(":").map(Number);
-      const diff = (h * 60 + m) - nowMin;
+      const nextMin = DayIntel.parseTime(next && next.time);
+      if (nextMin === null) return null;
+      const nowMin = (getActiveTrip() ? activeTripClock() : Today.clock()).minutes;
+      const diff = nextMin - nowMin;
       return diff > 0 ? diff : null;
     }
 
@@ -1863,13 +2484,12 @@ document.addEventListener("DOMContentLoaded", () => {
          - minutesUntilReminder = minutesUntilActivity - reminderMin
        Pure function: reads day/item only, never mutates data, never saves. ── */
     function getReminderSubLabel(day, item) {
-      if (!day || day.date !== todayISO()) return "";
+      const clock = getActiveTrip() ? activeTripClock() : Today.clock();
+      if (!day || day.date !== clock.date) return "";
       if (item.completed || !item.time) return "";
-      const [ih, im] = item.time.split(":").map(Number);
-      if (isNaN(ih) || isNaN(im)) return "";
-      const itemMin = ih * 60 + im;
-      const now = new Date();
-      const nowMin = now.getHours() * 60 + now.getMinutes();
+      const itemMin = DayIntel.parseTime(item.time);
+      if (itemMin === null) return "";
+      const nowMin = clock.minutes;
       const minutesUntilActivity = itemMin - nowMin;
 
       // After the activity's own time -> unchanged from v1.
@@ -1877,9 +2497,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // No reminder set -> no reminder countdown (activity countdown line,
       // rendered elsewhere, is left untouched).
-      if (item.reminderMin == null || item.reminderMin < 0) return "";
+      const reminderMin = itemReminderMin(item);
+      if (reminderMin === null) return "";
 
-      const minutesUntilReminder = minutesUntilActivity - item.reminderMin;
+      const minutesUntilReminder = minutesUntilActivity - reminderMin;
 
       if (minutesUntilReminder > 0) {
         return tf("reminder_in", { m: minutesUntilReminder });
@@ -1919,12 +2540,10 @@ document.addEventListener("DOMContentLoaded", () => {
       // so a lone future activity was incorrectly labeled "עכשיו". We check
       // the hero item's own time against the clock instead.
       let isNow = false;
-      if (day.date === todayISO() && heroItem && heroItem.time) {
-        const [heroH, heroM] = heroItem.time.split(":").map(Number);
-        if (!isNaN(heroH) && !isNaN(heroM)) {
-          const nowMinCheck = new Date().getHours() * 60 + new Date().getMinutes();
-          isNow = nowMinCheck >= (heroH * 60 + heroM);
-        }
+      const heroClock = getActiveTrip() ? activeTripClock() : Today.clock();
+      if (day.date === heroClock.date && heroItem && heroItem.time) {
+        const heroMin = DayIntel.parseTime(heroItem.time);
+        if (heroMin !== null) isNow = heroClock.minutes >= heroMin;
       }
       const isNext = !isNow;
 
@@ -2057,8 +2676,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Update day title/meta
       $("dayTitle").innerText = day ? formatDateForTitle(day.date, tf("day_n", { n: index + 1 })) : t("timeline_planned_day");
-      $("dayMeta").innerText = day && day.items ? tf("timeline_activities_count", { n: day.items.length }) : "";
+      if (day && day.items) {
+        const metaBits = [tf("timeline_activities_count", { n: day.items.length })];
+        if (isTravelDay(day)) metaBits.unshift(dayTypeIcon(dayType(day)) + " " + dayTypeLabel(dayType(day)));
+        $("dayMeta").innerText = metaBits.join(" · ");
+      } else $("dayMeta").innerText = "";
       renderDayHealth(day);
+      renderDayLogistics(day);
 
       // Render hero card
       renderHeroCard(day, index);
@@ -2129,6 +2753,7 @@ document.addEventListener("DOMContentLoaded", () => {
             ${itemNote(item) ? `<div class="item-note-plain">${escapeHtml(itemNote(item))}</div>` : ""}
             ${accessBadgeHtml(item)}
             ${itemAccessNote(item) ? `<div class="access-note-line">♿ ${escapeHtml(itemAccessNote(item))}</div>` : ""}
+            ${(itemBookingInfo(item).status || itemPaymentStatus(item)) ? `<div class="booking-note-line">🎟️ ${itemBookingInfo(item).status ? escapeHtml(bookingStatusLabel(itemBookingInfo(item).status)) : ""}${itemBookingInfo(item).status && itemPaymentStatus(item) ? " · " : ""}${itemPaymentStatus(item) ? escapeHtml(paymentStatusLabel(itemPaymentStatus(item))) : ""}${itemBookingInfo(item).reference ? " · " + escapeHtml(itemBookingInfo(item).reference) : ""}</div>` : ""}
           </div>
           <div class="item-actions">
             <div class="done" title="${escapeHtml(t("item_done_title"))}">${item.completed ? "↩" : "✓"}</div>
@@ -2173,7 +2798,8 @@ document.addEventListener("DOMContentLoaded", () => {
        ADVANCED_FIELD_IDS is also what drives the badge, which is the reason
        a user can tell an activity carries hidden detail without opening it. */
     const ADVANCED_FIELD_IDS = ["addEndTime", "addAccessStatus", "addAccessNote",
-      "addTravelMode", "addTravelDuration", "addTravelNote"];
+      "addTravelMode", "addTravelDuration", "addTravelNote", "addBookingStatus", "addBookingPaymentStatus",
+      "addBookingReference", "addBookingProvider", "addBookingNote"];
 
     function advancedFieldCount() {
       let n = ADVANCED_FIELD_IDS.reduce((count, id) => {
@@ -2211,6 +2837,20 @@ document.addEventListener("DOMContentLoaded", () => {
       updateMoreBadge();
     }
 
+    function updateAccessQuickButton(item) {
+      const btn = $("editAccessQuick"), text = $("editAccessQuickText");
+      if (!btn || !text) return;
+      const status = item ? itemAccessStatus(item) : "";
+      const visible = !!item && (hasAccessPlanningNeeds() || !!status || !!itemAccessNote(item));
+      btn.style.display = visible ? "flex" : "none";
+      if (!visible) return;
+      const label = isAccessVerified(item) ? t("access_badge_verified")
+        : status === "problem" ? t("access_badge_problem")
+        : status === "needscheck" ? t("access_badge_needscheck")
+        : t("access_status_unknown");
+      text.textContent = t("access_quick_open") + " · " + label;
+    }
+
     function activityFormTimesValid() {
       const startRaw = $("addTime").value;
       const endRaw = $("addEndTime").value;
@@ -2236,7 +2876,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (loc) item.location = loc; else delete item.location;
       if (/^[0-9]{2}:[0-9]{2}$/.test(end || "")) item.endTime = end; else delete item.endTime;
       if (CATEGORY_ORDER.indexOf(cat) !== -1) item.category = cat; else delete item.category;
-      if (st === "stepfree" || st === "problem" || st === "needscheck") item.accessStatus = st; else delete item.accessStatus;
+      if (st === "verified") item.accessStatus = item.accessStatus === "stepfree" ? "stepfree" : "verified";
+      else if (st === "problem" || st === "needscheck") item.accessStatus = st;
+      else if (st === "stepfree") item.accessStatus = st; // legacy value accepted from restored/hand-edited data
+      else delete item.accessStatus;
       if (anote) item.accessNote = anote; else delete item.accessNote;
       const travel = (item.travelFromPrevious && typeof item.travelFromPrevious === "object")
         ? Object.assign({}, item.travelFromPrevious) : {};
@@ -2244,6 +2887,19 @@ document.addEventListener("DOMContentLoaded", () => {
       if (Number.isFinite(travelDur) && travelDur >= 0 && travelDur <= 1440) travel.durationMin = Math.round(travelDur); else delete travel.durationMin;
       if (travelNote) travel.note = travelNote; else delete travel.note;
       if (Object.keys(travel).length) item.travelFromPrevious = travel; else delete item.travelFromPrevious;
+
+      const booking = (item.booking && typeof item.booking === "object") ? Object.assign({}, item.booking) : {};
+      const bookingStatus = $("addBookingStatus").value;
+      const bookingPaymentStatus = $("addBookingPaymentStatus").value;
+      const bookingReference = $("addBookingReference").value.trim();
+      const bookingProvider = $("addBookingProvider").value.trim();
+      const bookingNote = $("addBookingNote").value.trim();
+      if (Logistics.BOOKING_STATUSES.indexOf(bookingStatus) !== -1) booking.status = bookingStatus; else delete booking.status;
+      if (Finance.PAYMENT_STATUSES.indexOf(bookingPaymentStatus) !== -1) booking.paymentStatus = bookingPaymentStatus; else delete booking.paymentStatus;
+      if (bookingReference) booking.reference = bookingReference; else delete booking.reference;
+      if (bookingProvider) booking.provider = bookingProvider; else delete booking.provider;
+      if (bookingNote) booking.note = bookingNote; else delete booking.note;
+      if (Object.keys(booking).length) item.booking = booking; else delete item.booking;
     }
 
     function addItem() {
@@ -2277,6 +2933,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!ok) return null;
       renderDays();
       renderActivities(currentDayIndex);
+      if (currentView === "today") renderTodayView();
       showToast(t("toast_activity_added"));
       closeSheet();
       return { day: target, item: item };
@@ -2322,6 +2979,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!ok) return null;
       renderDays();
       renderActivities(currentDayIndex);
+      if (currentView === "today") renderTodayView();
       showToast(t("toast_activity_updated"));
       closeSheet();
       return { day: target, item: item };
@@ -2338,10 +2996,10 @@ document.addEventListener("DOMContentLoaded", () => {
       $("addWithReminderBtn").innerText = t("btn_save_cal_add");
       $("addTitle").value = "";
       $("addNote").value = "";
-      const now = new Date();
+      const clock = getActiveTrip() ? activeTripClock() : Today.clock();
       const selectedDay = days[currentDayIndex];
-      $("addDate").value = selectedDay?.date || todayISO();
-      $("addTime").value = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+      $("addDate").value = selectedDay?.date || clock.date || todayISO();
+      $("addTime").value = clock.time;
       // FIX1-REMINDER-001: advanced options must be genuinely opt-in for a
       // new activity. A hidden default reminder made a supposedly simple
       // activity carry advanced data before the user chose anything.
@@ -2355,7 +3013,13 @@ document.addEventListener("DOMContentLoaded", () => {
       $("addTravelMode").value = "";
       $("addTravelDuration").value = "";
       $("addTravelNote").value = "";
+      $("addBookingStatus").value = "";
+      $("addBookingPaymentStatus").value = "";
+      $("addBookingReference").value = "";
+      $("addBookingProvider").value = "";
+      $("addBookingNote").value = "";
       $("addDeleteBtn").style.display = "none";
+      updateAccessQuickButton(null);
       // ADDUX-001: a new activity starts as the simple form.
       setMoreExpanded(false);
       // CAL-AFTER-SAVE-001: calendar hand-off is offered from Edit, once the
@@ -2380,19 +3044,26 @@ document.addEventListener("DOMContentLoaded", () => {
       $("addTime").value = item.time || "12:00";
       $("addTitle").value = item.title || "";
       $("addNote").value = item.note || "";
-      $("addReminder").value = String(item.reminderMin != null ? item.reminderMin : (settings.defaultReminderMin || 30));
+      $("addReminder").value = String(itemReminderMin(item) ?? (settings.defaultReminderMin || 30));
       // v1040 additive fields. An activity saved before v1040 has none of
       // them, and every accessor returns "" for a missing field.
       $("addEndTime").value = itemEndTime(item);
       $("addLocation").value = itemLocation(item);
       $("addCategory").value = itemCategory(item);
-      $("addAccessStatus").value = itemAccessStatus(item);
+      $("addAccessStatus").value = isAccessVerified(item) ? "verified" : itemAccessStatus(item);
       $("addAccessNote").value = itemAccessNote(item);
       const travel = itemTravelFromPrevious(item);
       $("addTravelMode").value = travel.mode || "";
       $("addTravelDuration").value = travel.durationMin == null ? "" : String(travel.durationMin);
       $("addTravelNote").value = travel.note || "";
+      const booking = itemBookingInfo(item);
+      $("addBookingStatus").value = booking.status || "";
+      $("addBookingPaymentStatus").value = itemPaymentStatus(item) || "";
+      $("addBookingReference").value = booking.reference || "";
+      $("addBookingProvider").value = booking.provider || "";
+      $("addBookingNote").value = booking.note || "";
       $("addDeleteBtn").style.display = "flex";
+      updateAccessQuickButton(item);
       // Collapsed by default here too, but the badge reports exactly how many
       // optional fields this activity already carries, so nothing the user
       // stored is silently invisible.
@@ -2441,7 +3112,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const status = itemAccessStatus(item);
       const anote  = itemAccessNote(item);
       if (status || anote) {
-        const label = status === "stepfree" ? t("access_badge_stepfree")
+        const label = (status === "verified" || status === "stepfree") ? t("access_badge_verified")
                     : status === "problem"  ? t("access_badge_problem")
                     : status === "needscheck" ? t("access_badge_needscheck")
                     : t("access_status_unknown");
@@ -2464,17 +3135,17 @@ document.addEventListener("DOMContentLoaded", () => {
        sheet, download fallback) is unchanged from v1011 RC2. */
     function exportActivityToIcs(day, item) {
       const spec = activityTimeSpec(day.date, item.time, itemEndTime(item), activeTripTimezone());
-      if (!spec) { showToast(t("toast_missing_date")); return; }
+      if (!spec) { showToast(t("toast_calendar_time_invalid")); return; }
       const title = item.title || "";
       const icsEscape = s => String(s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");
-      const reminderMin = (item.reminderMin != null && item.reminderMin >= 0) ? item.reminderMin : null;
+      const reminderMin = itemReminderMin(item);
       const alarmBlock = reminderMin != null ? [
         "BEGIN:VALARM","ACTION:DISPLAY",
         `DESCRIPTION:${icsEscape(tf("ics_alarm_desc", { title: title }))}`,
         `TRIGGER:-PT${reminderMin}M`,"END:VALARM"
       ] : [];
       const lines = [
-        "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//TripMaster//v1050//EN","CALSCALE:GREGORIAN",
+        "BEGIN:VCALENDAR","VERSION:2.0",`PRODID:-//TripMaster//${APP_VERSION}//EN`,"CALSCALE:GREGORIAN",
         "BEGIN:VEVENT",
         `UID:${icsEscape(ensureActivityUid(item))}`,
         `DTSTAMP:${utcStamp(Date.now())}`,
@@ -2799,7 +3470,7 @@ document.addEventListener("DOMContentLoaded", () => {
          buttons. Google's TEMPLATE format still has no reminder parameter —
          that limitation is disclosed next to the button, unchanged. */
       const spec = activityTimeSpec(day.date, item.time, itemEndTime(item), activeTripTimezone());
-      if (!spec) { showToast(t("toast_missing_date")); return; }
+      if (!spec) { showToast(t("toast_calendar_time_invalid")); return; }
       ensureActivityUid(item);
       const description = calendarDescription(item);
       const location = itemLocation(item);
@@ -2859,9 +3530,10 @@ document.addEventListener("DOMContentLoaded", () => {
       let nextTrips, nextActiveId, nextHomeDays, nextDays, nextSettings;
       if (backup.trips && Array.isArray(backup.trips)) {
         nextTrips = normalizeTrips(JSON.parse(JSON.stringify(backup.trips)));
-        nextActiveId = backup.activeTripId || null;
-        nextHomeDays = Array.isArray(backup.homeDays) ? backup.homeDays : (Array.isArray(backup.days) ? backup.days : []);
-        const restoredActive = nextTrips.filter((x) => x.id === nextActiveId)[0] || null;
+        const requestedActiveId = backup.activeTripId || null;
+        const restoredActive = nextTrips.filter((x) => x.id === requestedActiveId)[0] || null;
+        nextActiveId = restoredActive ? restoredActive.id : null;
+        nextHomeDays = normalizeDays(JSON.parse(JSON.stringify(Array.isArray(backup.homeDays) ? backup.homeDays : (Array.isArray(backup.days) ? backup.days : []))));
         nextDays = restoredActive
           ? JSON.parse(JSON.stringify(restoredActive.days || []))
           : JSON.parse(JSON.stringify(nextHomeDays));
@@ -2870,7 +3542,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // letting the restore delete it or leave settings undefined.
         nextSettings = normalizeSettings(backup.settings);
       } else {
-        nextDays = backup.days || [];
+        nextDays = normalizeDays(JSON.parse(JSON.stringify(Array.isArray(backup.days) ? backup.days : [])));
         // FIELDS-001 (v1020 RC3): name a legacy single-trip backup from the
         // city stored in that backup. Previously this read the live settings,
         // which no longer carries a city, so the original name would be lost.
@@ -3050,6 +3722,7 @@ document.addEventListener("DOMContentLoaded", () => {
       $("tripBaseNameInput").value = base.name;
       $("tripBaseLocationInput").value = base.location;
       $("tripBaseNoteInput").value = base.note;
+      updateTripLogisticsSummary(trip);
       renderPlanningSummary($("tripDetailsPlanningSummary"), trip);
       openSheetEl("tripDetailsSheet");
     }
@@ -3089,6 +3762,412 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     /* ══════════════════════════════════════════════════════════════════
+       LOGISTICS-001 (v1070): stays + intercity journeys
+       Additive trip-owned data. Legacy trip.base remains untouched and is
+       used as the effective base whenever the trip has no stays[].
+       ══════════════════════════════════════════════════════════════════ */
+    let _logisticsTripId = null;
+    let _editingStayIndex = null;
+    let _editingJourneyIndex = null;
+
+    function logisticsTrip() {
+      return trips.find((x) => x.id === _logisticsTripId) || null;
+    }
+
+    function updateTripLogisticsSummary(trip) {
+      const el = $("tripLogisticsSummary");
+      if (!el || !trip) return;
+      const stays = tripStays(trip).length, journeys = tripJourneys(trip).length;
+      if (stays || journeys) el.textContent = tf("logistics_summary", { s: stays, j: journeys });
+      else if (tripBase(trip).name || tripBase(trip).location) el.textContent = t("logistics_legacy_summary");
+      else el.textContent = t("logistics_manage_note");
+    }
+
+    function renderLogisticsHub() {
+      const trip = logisticsTrip();
+      const staysList = $("staysList"), journeysList = $("journeysList"), legacyNote = $("legacyBaseLogisticsNote");
+      if (!trip || !staysList || !journeysList) return;
+      staysList.innerHTML = "";
+      journeysList.innerHTML = "";
+      const base = tripBase(trip), stays = tripStays(trip), journeys = tripJourneys(trip);
+      if (legacyNote) {
+        if ((base.name || base.location) && !stays.length) legacyNote.textContent = tf("logistics_legacy_active", { name: base.name || base.location });
+        else if ((base.name || base.location) && stays.length) legacyNote.textContent = t("logistics_legacy_preserved");
+        else legacyNote.textContent = "";
+      }
+
+      if (!stays.length) {
+        const empty=document.createElement("div"); empty.className="logistics-empty"; empty.textContent=t("stays_empty"); staysList.appendChild(empty);
+      } else {
+        stays.map((raw)=>({raw,index:Array.isArray(trip.stays)?trip.stays.indexOf(raw):-1,info:stayInfo(raw)}))
+          .sort((a,b)=>(a.info.startDate||"9999").localeCompare(b.info.startDate||"9999"))
+          .forEach(({index,info})=>{
+            const row=document.createElement("button"); row.type="button"; row.className="logistics-row";
+            const title=document.createElement("div"); title.className="logistics-row-title"; title.textContent="🏨 " + (info.name || t("stay_unnamed"));
+            const meta=document.createElement("div"); meta.className="logistics-row-meta";
+            const bits=[];
+            if (info.startDate || info.endDate) bits.push((info.startDate || "…") + " → " + (info.endDate || "…"));
+            if (info.location) bits.push(info.location);
+            if (info.status) bits.push(bookingStatusLabel(info.status));
+            const pay=Finance.paymentStatus(info && trip.stays && trip.stays[index] && trip.stays[index].paymentStatus); if(pay) bits.push(paymentStatusLabel(pay));
+            meta.textContent=bits.join(" · ") || t("overview_fact_unset");
+            row.appendChild(title); row.appendChild(meta); row.addEventListener("click",()=>openStaySheet(index)); staysList.appendChild(row);
+          });
+      }
+
+      if (!journeys.length) {
+        const empty=document.createElement("div"); empty.className="logistics-empty"; empty.textContent=t("journeys_empty"); journeysList.appendChild(empty);
+      } else {
+        journeys.map((raw)=>({raw,index:Array.isArray(trip.journeys)?trip.journeys.indexOf(raw):-1,info:journeyInfo(raw)}))
+          .sort((a,b)=>(a.info.date||"9999").localeCompare(b.info.date||"9999") || (a.info.departureTime||"").localeCompare(b.info.departureTime||""))
+          .forEach(({index,info})=>{
+            const row=document.createElement("button"); row.type="button"; row.className="logistics-row";
+            const title=document.createElement("div"); title.className="logistics-row-title";
+            title.textContent="🚆 " + ((info.origin || "…") + " → " + (info.destination || "…"));
+            const meta=document.createElement("div"); meta.className="logistics-row-meta";
+            const bits=[]; if (info.date) bits.push(info.date); if (info.mode) bits.push(journeyModeLabel(info.mode));
+            if (info.departureTime || info.arrivalTime) bits.push((info.departureTime||"…")+" → "+(info.arrivalTime||"…"));
+            if (info.status) bits.push(bookingStatusLabel(info.status));
+            const pay=Finance.paymentStatus(trip.journeys && trip.journeys[index] && trip.journeys[index].paymentStatus); if(pay) bits.push(paymentStatusLabel(pay));
+            meta.textContent=bits.join(" · ") || t("overview_fact_unset");
+            row.appendChild(title); row.appendChild(meta); row.addEventListener("click",()=>openJourneySheet(index)); journeysList.appendChild(row);
+          });
+      }
+    }
+
+    function openLogisticsSheet(tripId) {
+      const trip = tripId ? trips.find((x)=>x.id===tripId) : trips.find((x)=>x.id===_editingTripId) || getActiveTrip();
+      if (!trip) { showToast(t("toast_no_active_trip")); return; }
+      _logisticsTripId = trip.id;
+      renderLogisticsHub();
+      openSheetEl("logisticsSheet");
+    }
+    function closeLogisticsSheet() { _logisticsTripId = null; closeSheetEl("logisticsSheet"); }
+
+    function openStaySheet(index) {
+      const trip=logisticsTrip(); if (!trip) return;
+      _editingStayIndex = Number.isInteger(index) ? index : null;
+      const raw = _editingStayIndex !== null && Array.isArray(trip.stays) ? trip.stays[_editingStayIndex] : null;
+      const info = stayInfo(raw);
+      $("staySheetHead").textContent = _editingStayIndex === null ? t("stay_add_title") : t("stay_edit_title");
+      $("stayName").value=info.name; $("stayLocation").value=info.location;
+      $("stayStartDate").value=info.startDate; $("stayEndDate").value=info.endDate;
+      $("stayCheckInTime").value=info.checkInTime; $("stayCheckOutTime").value=info.checkOutTime;
+      $("stayStatus").value=info.status; $("stayPaymentStatus").value=Finance.paymentStatus(raw && raw.paymentStatus); $("stayConfirmation").value=info.confirmation;
+      $("stayProvider").value=info.provider; $("stayBookingUrl").value=info.bookingUrl; $("stayNote").value=info.note;
+      $("stayDeleteBtn").hidden = _editingStayIndex === null;
+      const more=$("staySheet").querySelector("details.logistics-more");
+      if (more) more.open=!!(info.checkInTime||info.checkOutTime||info.status||Finance.paymentStatus(raw && raw.paymentStatus)||info.confirmation||info.provider||info.bookingUrl||info.note);
+      openSheetEl("staySheet");
+    }
+    function closeStaySheet() { _editingStayIndex=null; closeSheetEl("staySheet"); }
+
+    function readStayForm(existing) {
+      const name=$("stayName").value.trim(), location=$("stayLocation").value.trim();
+      const startDate=$("stayStartDate").value, endDate=$("stayEndDate").value;
+      if (!name) { showToast(t("toast_stay_name_required")); return null; }
+      if (!startDate || !endDate) { showToast(t("toast_stay_dates_required")); return null; }
+      if (startDate >= endDate) { showToast(t("toast_stay_date_range")); return null; }
+      const next=(existing && typeof existing==="object") ? Object.assign({},existing) : { id:logisticsId("stay") };
+      next.name=name; if (location) next.location=location; else delete next.location;
+      next.startDate=startDate; next.endDate=endDate;
+      const checkIn=$("stayCheckInTime").value, checkOut=$("stayCheckOutTime").value, status=$("stayStatus").value, paymentStatus=$("stayPaymentStatus").value;
+      const confirmation=$("stayConfirmation").value.trim(), provider=$("stayProvider").value.trim(), bookingUrl=$("stayBookingUrl").value.trim(), note=$("stayNote").value.trim();
+      if (Logistics.validTime(checkIn)) next.checkInTime=checkIn; else delete next.checkInTime;
+      if (Logistics.validTime(checkOut)) next.checkOutTime=checkOut; else delete next.checkOutTime;
+      if (Logistics.BOOKING_STATUSES.indexOf(status)!==-1) next.status=status; else delete next.status;
+      if (Finance.PAYMENT_STATUSES.indexOf(paymentStatus)!==-1) next.paymentStatus=paymentStatus; else delete next.paymentStatus;
+      if (confirmation) next.confirmation=confirmation; else delete next.confirmation;
+      if (provider) next.provider=provider; else delete next.provider;
+      if (bookingUrl) next.bookingUrl=bookingUrl; else delete next.bookingUrl;
+      if (note) next.note=note; else delete next.note;
+      return next;
+    }
+
+    function refreshAfterLogisticsChange(trip) {
+      renderLogisticsHub();
+      updateTripLogisticsSummary(trip);
+      renderPlanningSummary($("tripDetailsPlanningSummary"), trip);
+      renderCurrentView();
+      if ($("overviewSheet").classList.contains("open") && trip.id===activeTripId) renderOverview();
+      if ($("bookingCenterSheet").classList.contains("open") && operationsTrip() && operationsTrip().id===trip.id) renderBookingCenter();
+      if ($("documentsSheet").classList.contains("open") && operationsTrip() && operationsTrip().id===trip.id) renderDocumentsHub();
+      if ($("moneySheet").classList.contains("open") && operationsTrip() && operationsTrip().id===trip.id) renderMoneyHub();
+    }
+
+    function saveStay() {
+      const trip=logisticsTrip(); if (!trip) return;
+      const existing=_editingStayIndex!==null && Array.isArray(trip.stays) ? trip.stays[_editingStayIndex] : null;
+      const next=readStayForm(existing); if (!next) return;
+      const ok=commitState(()=>{
+        if (!Array.isArray(trip.stays)) trip.stays=[];
+        if (_editingStayIndex===null) trip.stays.push(next); else trip.stays[_editingStayIndex]=next;
+      });
+      if (!ok) return;
+      closeStaySheet(); refreshAfterLogisticsChange(trip); showToast(t("toast_stay_saved"));
+    }
+    function deleteStay() {
+      const trip=logisticsTrip(); if (!trip || _editingStayIndex===null || !Array.isArray(trip.stays) || !trip.stays[_editingStayIndex]) return;
+      const index=_editingStayIndex;
+      if (!commitState(()=>{ trip.stays.splice(index,1); if (!trip.stays.length) delete trip.stays; }, {})) return;
+      closeStaySheet(); refreshAfterLogisticsChange(trip); showUndoToast(t("toast_stay_deleted"));
+    }
+
+    function openJourneySheet(index) {
+      const trip=logisticsTrip(); if (!trip) return;
+      _editingJourneyIndex = Number.isInteger(index) ? index : null;
+      const raw = _editingJourneyIndex !== null && Array.isArray(trip.journeys) ? trip.journeys[_editingJourneyIndex] : null;
+      const info=journeyInfo(raw);
+      $("journeySheetHead").textContent = _editingJourneyIndex===null ? t("journey_add_title") : t("journey_edit_title");
+      $("journeyDate").value=info.date; $("journeyMode").value=info.mode; $("journeyOrigin").value=info.origin; $("journeyDestination").value=info.destination;
+      $("journeyDepartureTime").value=info.departureTime; $("journeyArrivalTime").value=info.arrivalTime;
+      $("journeyProvider").value=info.provider; $("journeyServiceNumber").value=info.serviceNumber;
+      $("journeyStatus").value=info.status; $("journeyPaymentStatus").value=Finance.paymentStatus(raw && raw.paymentStatus); $("journeyConfirmation").value=info.confirmation; $("journeyNote").value=info.note;
+      $("journeyDeleteBtn").hidden = _editingJourneyIndex===null;
+      const more=$("journeySheet").querySelector("details.logistics-more");
+      if (more) more.open=!!(info.departureTime||info.arrivalTime||info.provider||info.serviceNumber||info.status||Finance.paymentStatus(raw && raw.paymentStatus)||info.confirmation||info.note);
+      openSheetEl("journeySheet");
+    }
+    function closeJourneySheet() { _editingJourneyIndex=null; closeSheetEl("journeySheet"); }
+
+    function readJourneyForm(existing) {
+      const date=$("journeyDate").value, origin=$("journeyOrigin").value.trim(), destination=$("journeyDestination").value.trim();
+      if (!date) { showToast(t("toast_journey_date_required")); return null; }
+      if (!origin && !destination) { showToast(t("toast_journey_route_required")); return null; }
+      const next=(existing && typeof existing==="object") ? Object.assign({},existing) : { id:logisticsId("journey") };
+      next.date=date;
+      const mode=$("journeyMode").value; if (Logistics.JOURNEY_MODES.indexOf(mode)!==-1) next.mode=mode; else delete next.mode;
+      if (origin) next.origin=origin; else delete next.origin; if (destination) next.destination=destination; else delete next.destination;
+      const depart=$("journeyDepartureTime").value, arrive=$("journeyArrivalTime").value;
+      if (Logistics.validTime(depart)) next.departureTime=depart; else delete next.departureTime;
+      if (Logistics.validTime(arrive)) next.arrivalTime=arrive; else delete next.arrivalTime;
+      const provider=$("journeyProvider").value.trim(), service=$("journeyServiceNumber").value.trim(), status=$("journeyStatus").value, paymentStatus=$("journeyPaymentStatus").value;
+      const confirmation=$("journeyConfirmation").value.trim(), note=$("journeyNote").value.trim();
+      if (provider) next.provider=provider; else delete next.provider;
+      if (service) next.serviceNumber=service; else delete next.serviceNumber;
+      if (Logistics.BOOKING_STATUSES.indexOf(status)!==-1) next.status=status; else delete next.status;
+      if (Finance.PAYMENT_STATUSES.indexOf(paymentStatus)!==-1) next.paymentStatus=paymentStatus; else delete next.paymentStatus;
+      if (confirmation) next.confirmation=confirmation; else delete next.confirmation;
+      if (note) next.note=note; else delete next.note;
+      return next;
+    }
+    function saveJourney() {
+      const trip=logisticsTrip(); if (!trip) return;
+      const existing=_editingJourneyIndex!==null && Array.isArray(trip.journeys) ? trip.journeys[_editingJourneyIndex] : null;
+      const next=readJourneyForm(existing); if (!next) return;
+      const ok=commitState(()=>{
+        if (!Array.isArray(trip.journeys)) trip.journeys=[];
+        if (_editingJourneyIndex===null) trip.journeys.push(next); else trip.journeys[_editingJourneyIndex]=next;
+      });
+      if (!ok) return;
+      closeJourneySheet(); refreshAfterLogisticsChange(trip); showToast(t("toast_journey_saved"));
+    }
+    function deleteJourney() {
+      const trip=logisticsTrip(); if (!trip || _editingJourneyIndex===null || !Array.isArray(trip.journeys) || !trip.journeys[_editingJourneyIndex]) return;
+      const index=_editingJourneyIndex;
+      if (!commitState(()=>{ trip.journeys.splice(index,1); if (!trip.journeys.length) delete trip.journeys; }, {})) return;
+      closeJourneySheet(); refreshAfterLogisticsChange(trip); showUndoToast(t("toast_journey_deleted"));
+    }
+
+
+    /* ══════════════════════════════════════════════════════════════════
+       MONEY / BOOKING CENTER / DOCUMENT REFERENCES (v1080)
+       Canonical data stays on trip entities. These hubs are views/editors,
+       never a second booking database and never a network integration.
+       ══════════════════════════════════════════════════════════════════ */
+    let _operationsTripId = null;
+    let _editingExpenseIndex = null;
+    let _editingDocumentIndex = null;
+
+    function operationsTrip() {
+      return (_operationsTripId && trips.find((x) => x.id === _operationsTripId)) || getActiveTrip();
+    }
+
+    function setOperationsTrip(tripId) {
+      const trip = tripId ? trips.find((x) => x.id === tripId) : getActiveTrip();
+      if (!trip) { showToast(t("toast_no_active_trip")); return null; }
+      _operationsTripId = trip.id;
+      return trip;
+    }
+
+    function entityLinkLabel(trip, type, id) {
+      if (type === "trip") return trip.name || t("link_trip_level");
+      const resolved = Finance.resolveLinkedEntity(trip, type, id, Logistics);
+      if (resolved.state !== "resolved") return t("link_unresolved");
+      if (type === "stay") { const x=stayInfo(resolved.entity); return "🏨 " + (x.name || x.location || t("stay_unnamed")); }
+      if (type === "journey") { const x=journeyInfo(resolved.entity); return "🚆 " + ((x.origin||"…") + " → " + (x.destination||"…")); }
+      if (type === "activity") return "🎟️ " + ((resolved.entity && resolved.entity.title) || t("expense_link_activity"));
+      return t("link_unresolved");
+    }
+
+    function populateEntityLinkSelect(select, trip, currentType, currentId) {
+      if (!select || !trip) return;
+      select.innerHTML="";
+      const add=(value,label)=>{ const o=document.createElement("option"); o.value=value; o.textContent=label; select.appendChild(o); };
+      add("", t("link_none"));
+      add("trip|" + trip.id, "🧳 " + (trip.name || t("link_trip_level")));
+      tripStays(trip).forEach((raw,index)=>{ const id=Finance.cleanString(raw.id); if(!id)return; const x=stayInfo(raw); add("stay|"+id,"🏨 "+(x.name||x.location||t("stay_unnamed"))); });
+      tripJourneys(trip).forEach((raw,index)=>{ const id=Finance.cleanString(raw.id); if(!id)return; const x=journeyInfo(raw); add("journey|"+id,"🚆 "+((x.origin||"…")+" → "+(x.destination||"…"))); });
+      Finance.activityRows(trip).forEach((row)=>{
+        const uid=Finance.cleanString(row.item.uid);
+        const value=uid ? "activity|"+uid : "activitypos|"+row.dayIndex+"|"+row.itemIndex;
+        add(value,"🎟️ "+(row.item.title||t("expense_link_activity"))+(row.day.date?" · "+row.day.date:""));
+      });
+      if (currentType && currentId) {
+        const wanted=currentType+"|"+currentId;
+        if (!Array.from(select.options).some(o=>o.value===wanted)) add(wanted,"⚠️ "+t("link_unresolved"));
+        select.value=wanted;
+      } else select.value="";
+    }
+
+    function readLinkSelection(value) {
+      if (!value) return { type:"", id:"", activityPos:null };
+      const parts=String(value).split("|");
+      if (parts[0]==="activitypos") return { type:"activity", id:"", activityPos:{ dayIndex:Number(parts[1]), itemIndex:Number(parts[2]) } };
+      if (Finance.LINK_TYPES.indexOf(parts[0])!==-1) return { type:parts[0], id:parts.slice(1).join("|"), activityPos:null };
+      return { type:"", id:"", activityPos:null };
+    }
+
+    function applyLinkToRecord(next, linkSpec, trip) {
+      if (!linkSpec || !linkSpec.type) { delete next.linkedType; delete next.linkedId; return; }
+      let id=linkSpec.id;
+      if (linkSpec.activityPos) {
+        const day=trip.days && trip.days[linkSpec.activityPos.dayIndex];
+        const item=day && Array.isArray(day.items) ? day.items[linkSpec.activityPos.itemIndex] : null;
+        if (!item) { delete next.linkedType; delete next.linkedId; return; }
+        if (!(typeof item.uid === "string" && item.uid)) {
+          item.uid="tm-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,10)+"@tripmaster.app";
+        }
+        id=item.uid;
+      }
+      if (id) { next.linkedType=linkSpec.type; next.linkedId=id; }
+      else { delete next.linkedType; delete next.linkedId; }
+    }
+
+    function openBookingCenterSheet(tripId) {
+      const trip=setOperationsTrip(tripId); if(!trip)return;
+      renderBookingCenter(); openSheetEl("bookingCenterSheet");
+    }
+    function closeBookingCenterSheet() { closeSheetEl("bookingCenterSheet"); }
+
+    function openBookingSource(row) {
+      const trip=operationsTrip(); if(!trip||!row)return;
+      if(row.kind==="stay") { _logisticsTripId=trip.id; openStaySheet(row.sourceIndex); return; }
+      if(row.kind==="journey") { _logisticsTripId=trip.id; openJourneySheet(row.sourceIndex); return; }
+      if(row.kind==="activity") {
+        if (trip.id!==activeTripId && !switchTrip(trip.id,{silent:true})) return;
+        currentView="planner"; days=trip.days||[]; currentDayIndex=row.dayIndex;
+        renderCurrentView(); updateHeaderInfo(); openEditSheet(row.dayIndex,row.itemIndex,{expandMore:true});
+      }
+    }
+
+    function renderBookingCenter() {
+      const body=$("bookingCenterBody"), trip=operationsTrip(); if(!body)return;
+      body.innerHTML=""; if(!trip)return;
+      const rows=Finance.bookingEntries(trip,Logistics);
+      if(!rows.length){ const e=document.createElement("div");e.className="overview-empty";e.textContent=t("booking_center_empty");body.appendChild(e);return; }
+      const groups=[["stay",t("booking_group_stays")],["journey",t("booking_group_journeys")],["activity",t("booking_group_activities")]];
+      groups.forEach(([kind,label])=>{
+        const list=rows.filter(r=>r.kind===kind); if(!list.length)return;
+        const section=document.createElement("section");section.className="logistics-section";
+        const h=document.createElement("div");h.className="trip-base-heading";h.textContent=label;section.appendChild(h);
+        list.sort((a,b)=>(a.date||"9999").localeCompare(b.date||"9999")).forEach(row=>{
+          const btn=document.createElement("button");btn.type="button";btn.className="logistics-item booking-center-row";
+          const main=document.createElement("div");main.className="logistics-item-main";
+          const title=document.createElement("div");title.className="logistics-item-title";title.textContent=row.title||t("booking_unnamed");
+          const meta=document.createElement("div");meta.className="logistics-item-meta";
+          const bits=[];if(row.date)bits.push(row.date);if(row.bookingStatus)bits.push(bookingStatusLabel(row.bookingStatus));if(row.paymentStatus)bits.push(paymentStatusLabel(row.paymentStatus));if(row.reference)bits.push(t("booking_reference_short")+": "+row.reference);
+          meta.textContent=bits.join(" · ")||t("overview_fact_unset"); main.appendChild(title);main.appendChild(meta);btn.appendChild(main);
+          const arrow=document.createElement("span");arrow.className="logistics-item-arrow";arrow.textContent="›";btn.appendChild(arrow);
+          btn.addEventListener("click",()=>openBookingSource(row));section.appendChild(btn);
+        }); body.appendChild(section);
+      });
+    }
+
+    function openMoneySheet(tripId) {
+      const trip=setOperationsTrip(tripId);if(!trip)return;
+      renderMoneyHub();openSheetEl("moneySheet");
+    }
+    function closeMoneySheet(){closeSheetEl("moneySheet");}
+
+    function renderMoneyHub() {
+      const trip=operationsTrip();if(!trip)return;
+      const budget=Finance.budgetInfo(trip);
+      $("budgetAmount").value=budget.amount==null?"":String(budget.amount);
+      $("budgetCurrency").value=budget.currency||Finance.preferredCurrency(trip)||"";
+      const summary=$("budgetSummary");summary.innerHTML="";
+      const bs=Finance.budgetSummary(trip), totals=Finance.totalsByCurrency(trip);
+      if(bs.active){
+        const line=document.createElement("div");line.className="money-summary-main";line.textContent=t("budget_recorded")+": "+formatMoneyAmount(bs.comparableSpent,bs.budget.currency)+" · "+t("budget_remaining")+": "+formatMoneyAmount(bs.remaining,bs.budget.currency);summary.appendChild(line);
+        if(bs.otherTotals.length){const x=document.createElement("div");x.className="field-note";x.textContent=t("budget_other_currencies")+": "+bs.otherTotals.map(v=>formatMoneyAmount(v.amount,v.currency)).join(" · ");summary.appendChild(x);}
+        if(bs.exceeded){const x=document.createElement("div");x.className="readiness-row readiness-check";x.textContent=t("budget_exceeded_note");summary.appendChild(x);}
+      } else if(totals.length){const line=document.createElement("div");line.className="money-summary-main";line.textContent=t("money_recorded_totals")+": "+totals.map(v=>formatMoneyAmount(v.amount,v.currency)).join(" · ");summary.appendChild(line);}
+      else {const line=document.createElement("div");line.className="field-note";line.textContent=t("money_empty_summary");summary.appendChild(line);}
+
+      const list=$("expensesList");list.innerHTML="";
+      const expenseSource=Array.isArray(trip.expenses)?trip.expenses:[];
+      const rows=tripExpenses(trip).map((raw)=>({raw,index:expenseSource.indexOf(raw),info:Finance.expenseInfo(raw)}));
+      rows.sort((a,b)=>(a.info.date||"9999").localeCompare(b.info.date||"9999")).forEach(({raw,index,info})=>{
+        const btn=document.createElement("button");btn.type="button";btn.className="logistics-item";
+        const main=document.createElement("div");main.className="logistics-item-main";
+        const title=document.createElement("div");title.className="logistics-item-title";title.textContent=info.title||t("expense_unnamed");
+        const meta=document.createElement("div");meta.className="logistics-item-meta";const bits=[];if(info.amount!=null&&info.currency)bits.push(formatMoneyAmount(info.amount,info.currency));bits.push(expenseCategoryLabel(info.category));if(info.date)bits.push(info.date);if(info.paymentStatus)bits.push(paymentStatusLabel(info.paymentStatus));
+        if(info.linkedType&&info.linkedId){const resolved=Finance.resolveLinkedEntity(trip,info.linkedType,info.linkedId,Logistics);bits.push(resolved.state==="resolved"?entityLinkLabel(trip,info.linkedType,info.linkedId):"⚠️ "+t("link_unresolved"));}
+        meta.textContent=bits.join(" · ");main.appendChild(title);main.appendChild(meta);btn.appendChild(main);const arrow=document.createElement("span");arrow.className="logistics-item-arrow";arrow.textContent="›";btn.appendChild(arrow);btn.addEventListener("click",()=>openExpenseSheet(index));list.appendChild(btn);
+      });
+      if(!rows.length){const e=document.createElement("div");e.className="logistics-empty";e.textContent=t("expenses_empty");list.appendChild(e);}
+    }
+
+    function saveBudget() {
+      const trip=operationsTrip();if(!trip)return;
+      const rawAmount=$("budgetAmount").value.trim(), currency=Finance.currencyCode($("budgetCurrency").value);
+      if(!rawAmount){
+        if(!commitState(()=>{const next=(trip.budget&&typeof trip.budget==="object")?Object.assign({},trip.budget):{};delete next.amount;delete next.currency;if(Object.keys(next).length)trip.budget=next;else delete trip.budget;}))return;
+        renderMoneyHub();renderCurrentView();if($("overviewSheet").classList.contains("open")&&trip.id===activeTripId)renderOverview();showToast(t("toast_budget_cleared"));return;
+      }
+      const amount=Finance.validPositiveAmount(rawAmount);if(amount==null){showToast(t("toast_amount_required"));return;}if(!currency){showToast(t("toast_currency_required"));return;}
+      if(!commitState(()=>{const next=(trip.budget&&typeof trip.budget==="object")?Object.assign({},trip.budget):{};next.amount=amount;next.currency=currency;trip.budget=next;const cs=(trip.currencySettings&&typeof trip.currencySettings==="object")?Object.assign({},trip.currencySettings):{};cs.primaryCurrency=currency;trip.currencySettings=cs;}))return;
+      renderMoneyHub();renderCurrentView();if($("overviewSheet").classList.contains("open")&&trip.id===activeTripId)renderOverview();showToast(t("toast_budget_saved"));
+    }
+
+    function openExpenseSheet(index) {
+      const trip=operationsTrip();if(!trip)return;_editingExpenseIndex=Number.isInteger(index)?index:null;
+      const raw=_editingExpenseIndex!==null&&Array.isArray(trip.expenses)?trip.expenses[_editingExpenseIndex]:null, info=Finance.expenseInfo(raw);
+      $("expenseSheetHead").textContent=_editingExpenseIndex===null?t("expense_add_title"):t("expense_edit_title");
+      $("expenseTitle").value=info.title;$("expenseAmount").value=info.amount==null?"":String(info.amount);$("expenseCurrency").value=info.currency||Finance.preferredCurrency(trip)||"";$("expenseCategory").value=info.category||"other";$("expenseDate").value=info.date;$("expensePaymentStatus").value=info.paymentStatus;$("expensePaidBy").value=info.paidBy;$("expenseNote").value=info.note;
+      populateEntityLinkSelect($("expenseLink"),trip,info.linkedType,info.linkedId);$("expenseDeleteBtn").hidden=_editingExpenseIndex===null;
+      const more=$("expenseSheet").querySelector("details.logistics-more");if(more)more.open=!!(info.date||info.paymentStatus||info.paidBy||info.linkedType||info.note);openSheetEl("expenseSheet");
+    }
+    function closeExpenseSheet(){_editingExpenseIndex=null;closeSheetEl("expenseSheet");}
+
+    function readExpenseForm(existing) {
+      const title=$("expenseTitle").value.trim(),amount=Finance.validPositiveAmount($("expenseAmount").value),currency=Finance.currencyCode($("expenseCurrency").value);
+      if(!title){showToast(t("toast_expense_title_required"));return null;}if(amount==null){showToast(t("toast_amount_required"));return null;}if(!currency){showToast(t("toast_currency_required"));return null;}
+      const next=(existing&&typeof existing==="object")?Object.assign({},existing):{id:financeId("expense")};next.title=title;next.amount=amount;next.currency=currency;
+      const category=$("expenseCategory").value;next.category=Finance.EXPENSE_CATEGORIES.indexOf(category)!==-1?category:"other";
+      const date=$("expenseDate").value,pay=$("expensePaymentStatus").value,paidBy=$("expensePaidBy").value.trim(),note=$("expenseNote").value.trim();
+      if(Finance.validDate(date))next.date=date;else delete next.date;if(Finance.PAYMENT_STATUSES.indexOf(pay)!==-1)next.paymentStatus=pay;else delete next.paymentStatus;if(paidBy)next.paidBy=paidBy;else delete next.paidBy;if(note)next.note=note;else delete next.note;
+      return {next,linkSpec:readLinkSelection($("expenseLink").value)};
+    }
+    function saveExpense(){const trip=operationsTrip();if(!trip)return;const existing=_editingExpenseIndex!==null&&Array.isArray(trip.expenses)?trip.expenses[_editingExpenseIndex]:null;const read=readExpenseForm(existing);if(!read)return;const ok=commitState(()=>{applyLinkToRecord(read.next,read.linkSpec,trip);if(!Array.isArray(trip.expenses))trip.expenses=[];if(_editingExpenseIndex===null)trip.expenses.push(read.next);else trip.expenses[_editingExpenseIndex]=read.next;const cs=(trip.currencySettings&&typeof trip.currencySettings==="object")?Object.assign({},trip.currencySettings):{};if(!Finance.currencyCode(cs.primaryCurrency))cs.primaryCurrency=read.next.currency;trip.currencySettings=cs;});if(!ok)return;closeExpenseSheet();renderMoneyHub();renderCurrentView();if($("overviewSheet").classList.contains("open")&&trip.id===activeTripId)renderOverview();showToast(t("toast_expense_saved"));}
+    function deleteExpense(){const trip=operationsTrip();if(!trip||_editingExpenseIndex===null||!Array.isArray(trip.expenses)||!trip.expenses[_editingExpenseIndex])return;const index=_editingExpenseIndex;if(!commitState(()=>{trip.expenses.splice(index,1);if(!trip.expenses.length)delete trip.expenses;}))return;closeExpenseSheet();renderMoneyHub();renderCurrentView();showUndoToast(t("toast_expense_deleted"));}
+
+    function openDocumentsSheet(tripId){const trip=setOperationsTrip(tripId);if(!trip)return;renderDocumentsHub();openSheetEl("documentsSheet");}
+    function closeDocumentsSheet(){closeSheetEl("documentsSheet");}
+    function renderDocumentsHub(){const trip=operationsTrip();if(!trip)return;const derived=$("derivedDocumentsList"),stand=$("documentsList");derived.innerHTML="";stand.innerHTML="";
+      const drows=Finance.derivedConfirmationDocuments(trip,Logistics);drows.forEach(row=>{const btn=document.createElement("button");btn.type="button";btn.className="logistics-item";const main=document.createElement("div");main.className="logistics-item-main";const title=document.createElement("div");title.className="logistics-item-title";title.textContent=row.label||t("document_unnamed");const meta=document.createElement("div");meta.className="logistics-item-meta";const bits=[documentTypeLabel(row.type)];if(row.date)bits.push(row.date);if(row.reference)bits.push(t("booking_reference_short")+": "+row.reference);meta.textContent=bits.join(" · ");main.appendChild(title);main.appendChild(meta);btn.appendChild(main);const arrow=document.createElement("span");arrow.className="logistics-item-arrow";arrow.textContent="›";btn.appendChild(arrow);btn.addEventListener("click",()=>openBookingSource({kind:row.kind,sourceIndex:row.sourceIndex,dayIndex:row.dayIndex,itemIndex:row.itemIndex}));derived.appendChild(btn);});
+      if(!drows.length){const e=document.createElement("div");e.className="logistics-empty";e.textContent=t("documents_derived_empty");derived.appendChild(e);}
+      const documentSource=Array.isArray(trip.documents)?trip.documents:[];
+      const rows=tripDocuments(trip).map((raw)=>({raw,index:documentSource.indexOf(raw),info:Finance.documentInfo(raw)}));rows.forEach(({index,info})=>{const btn=document.createElement("button");btn.type="button";btn.className="logistics-item";const main=document.createElement("div");main.className="logistics-item-main";const title=document.createElement("div");title.className="logistics-item-title";title.textContent=info.label||t("document_unnamed");const meta=document.createElement("div");meta.className="logistics-item-meta";const bits=[documentTypeLabel(info.type)];if(info.status)bits.push(info.status==="needed"?t("document_status_needed"):t("document_status_available"));if(info.reference)bits.push(t("booking_reference_short")+": "+info.reference);if(info.linkedType&&info.linkedId){const resolved=Finance.resolveLinkedEntity(trip,info.linkedType,info.linkedId,Logistics);if(resolved.state==="missing")bits.push("⚠️ "+t("link_unresolved"));}meta.textContent=bits.join(" · ");main.appendChild(title);main.appendChild(meta);btn.appendChild(main);const arrow=document.createElement("span");arrow.className="logistics-item-arrow";arrow.textContent="›";btn.appendChild(arrow);btn.addEventListener("click",()=>openDocumentSheet(index));stand.appendChild(btn);});if(!rows.length){const e=document.createElement("div");e.className="logistics-empty";e.textContent=t("documents_empty");stand.appendChild(e);}}
+
+    function openDocumentSheet(index){const trip=operationsTrip();if(!trip)return;_editingDocumentIndex=Number.isInteger(index)?index:null;const raw=_editingDocumentIndex!==null&&Array.isArray(trip.documents)?trip.documents[_editingDocumentIndex]:null,info=Finance.documentInfo(raw);$("documentSheetHead").textContent=_editingDocumentIndex===null?t("document_add_title"):t("document_edit_title");$("documentLabel").value=info.label;$("documentType").value=info.type||"other";$("documentStatus").value=info.status;$("documentReference").value=info.reference;$("documentUrl").value=info.url;$("documentNote").value=info.note;populateEntityLinkSelect($("documentLink"),trip,info.linkedType,info.linkedId);$("documentDeleteBtn").hidden=_editingDocumentIndex===null;const more=$("documentSheet").querySelector("details.logistics-more");if(more)more.open=!!(info.reference||info.url||info.note||info.linkedType);openSheetEl("documentSheet");}
+    function closeDocumentSheet(){_editingDocumentIndex=null;closeSheetEl("documentSheet");}
+    function readDocumentForm(existing){const label=$("documentLabel").value.trim();if(!label){showToast(t("toast_document_label_required"));return null;}const next=(existing&&typeof existing==="object")?Object.assign({},existing):{id:financeId("doc")};next.label=label;const type=$("documentType").value,status=$("documentStatus").value,reference=$("documentReference").value.trim(),url=$("documentUrl").value.trim(),note=$("documentNote").value.trim();next.type=Finance.DOCUMENT_TYPES.indexOf(type)!==-1?type:"other";if(Finance.DOCUMENT_STATUSES.indexOf(status)!==-1)next.status=status;else delete next.status;if(reference)next.reference=reference;else delete next.reference;if(url)next.url=url;else delete next.url;if(note)next.note=note;else delete next.note;return{next,linkSpec:readLinkSelection($("documentLink").value)};}
+    function saveDocument(){const trip=operationsTrip();if(!trip)return;const existing=_editingDocumentIndex!==null&&Array.isArray(trip.documents)?trip.documents[_editingDocumentIndex]:null,read=readDocumentForm(existing);if(!read)return;const ok=commitState(()=>{applyLinkToRecord(read.next,read.linkSpec,trip);if(!Array.isArray(trip.documents))trip.documents=[];if(_editingDocumentIndex===null)trip.documents.push(read.next);else trip.documents[_editingDocumentIndex]=read.next;});if(!ok)return;closeDocumentSheet();renderDocumentsHub();renderCurrentView();if($("overviewSheet").classList.contains("open")&&trip.id===activeTripId)renderOverview();showToast(t("toast_document_saved"));}
+    function deleteDocument(){const trip=operationsTrip();if(!trip||_editingDocumentIndex===null||!Array.isArray(trip.documents)||!trip.documents[_editingDocumentIndex])return;const index=_editingDocumentIndex;if(!commitState(()=>{trip.documents.splice(index,1);if(!trip.documents.length)delete trip.documents;}))return;closeDocumentSheet();renderDocumentsHub();renderCurrentView();showUndoToast(t("toast_document_deleted"));}
+
+
+    /* ══════════════════════════════════════════════════════════════════
        OVERVIEW-001 (v1040 / C1): read-only whole-trip view
        ══════════════════════════════════════════════════════════════════ */
     function openOverviewSheet() {
@@ -3120,7 +4199,9 @@ document.addEventListener("DOMContentLoaded", () => {
       bits.push(tf("overview_summary", { d: tripDays.length, n: total }));
 
       const base = tripBase(trip);
-      if (base.name || base.location) bits.push((base.name || t("trip_base_section")) + (base.location ? " · " + base.location : ""));
+      const overviewStays = tripStays(trip);
+      if (overviewStays.length) bits.push(tf("overview_stays_count", { n: overviewStays.length }));
+      else if (base.name || base.location) bits.push((base.name || t("trip_base_section")) + (base.location ? " · " + base.location : ""));
       meta.textContent = bits.join(" · ");
 
       /* ══ OVERVIEW-002 (v1050-RC2): pre-trip control centre ══
@@ -3137,8 +4218,9 @@ document.addEventListener("DOMContentLoaded", () => {
           return range.first === range.last ? f(range.first) : f(range.first) + " – " + f(range.last);
         })()],
         [t("overview_fact_timezone"), tripTimezone(trip) || null],
-        [t("overview_fact_base"), (base.name || base.location)
-          ? (base.name || "") + (base.name && base.location ? " · " : "") + (base.location || "") : null],
+        [t("overview_fact_base"), overviewStays.length
+          ? tf("overview_stays_count", { n: overviewStays.length })
+          : ((base.name || base.location) ? (base.name || "") + (base.name && base.location ? " · " : "") + (base.location || "") : null)],
         [t("overview_fact_days"), tf("overview_summary", { d: tripDays.length, n: total })]
       ];
       const factCard = document.createElement("div");
@@ -3158,7 +4240,83 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       body.appendChild(factCard);
 
-      const mobility = mobilitySummaryLabels();
+      if (overviewStays.length) {
+        const stayCard=document.createElement("div"); stayCard.className="overview-card";
+        const title=document.createElement("div"); title.className="overview-card-title"; title.textContent=t("overview_card_stays"); stayCard.appendChild(title);
+        overviewStays.map((raw,index)=>({raw,index,info:stayInfo(raw)}))
+          .sort((a,b)=>(a.info.startDate||"9999").localeCompare(b.info.startDate||"9999"))
+          .forEach(({raw,info})=>{
+            const row=document.createElement("div"); row.className="overview-logistics-row";
+            const main=document.createElement("div"); main.className="overview-travel-day-title"; main.textContent="🏨 " + (info.name || t("stay_unnamed")); row.appendChild(main);
+            const bits=[]; if(info.startDate||info.endDate) bits.push((info.startDate||"…")+" → "+(info.endDate||"…")); if(info.location) bits.push(info.location); if(info.status) bits.push(bookingStatusLabel(info.status)); const pay=Finance.paymentStatus(raw&&raw.paymentStatus); if(pay)bits.push(paymentStatusLabel(pay));
+            if(info.confirmation) bits.push(t("booking_reference_short")+": "+info.confirmation);
+            const detail=document.createElement("div"); detail.className="overview-card-note"; detail.textContent=bits.join(" · ")||t("overview_fact_unset"); row.appendChild(detail); stayCard.appendChild(row);
+          });
+        body.appendChild(stayCard);
+      }
+
+      const overviewJourneys=tripJourneys(trip);
+      if (overviewJourneys.length) {
+        const journeyCard=document.createElement("div"); journeyCard.className="overview-card";
+        const title=document.createElement("div"); title.className="overview-card-title"; title.textContent=t("overview_card_journeys"); journeyCard.appendChild(title);
+        overviewJourneys.map(raw=>({raw,info:journeyInfo(raw)}))
+          .sort((a,b)=>(a.info.date||"9999").localeCompare(b.info.date||"9999") || (a.info.departureTime||"").localeCompare(b.info.departureTime||""))
+          .forEach(({raw,info})=>{
+            const row=document.createElement("div"); row.className="overview-logistics-row";
+            const main=document.createElement("div"); main.className="overview-travel-day-title"; main.textContent="🚆 " + (info.origin||"…") + " → " + (info.destination||"…"); row.appendChild(main);
+            const bits=[]; if(info.date)bits.push(info.date); if(info.mode)bits.push(journeyModeLabel(info.mode)); if(info.departureTime||info.arrivalTime)bits.push((info.departureTime||"…")+" → "+(info.arrivalTime||"…")); if(info.status)bits.push(bookingStatusLabel(info.status)); const pay=Finance.paymentStatus(raw&&raw.paymentStatus);if(pay)bits.push(paymentStatusLabel(pay)); if(info.serviceNumber)bits.push(info.serviceNumber); if(info.confirmation)bits.push(t("booking_reference_short")+": "+info.confirmation);
+            const detail=document.createElement("div"); detail.className="overview-card-note"; detail.textContent=bits.join(" · ")||t("overview_fact_unset"); row.appendChild(detail); journeyCard.appendChild(row);
+          });
+        body.appendChild(journeyCard);
+      }
+
+      const travelDays = tripDays.filter(isTravelDay);
+      if (travelDays.length) {
+        const travelCard = document.createElement("div");
+        travelCard.className = "overview-card";
+        const tt = document.createElement("div");
+        tt.className = "overview-card-title"; tt.textContent = t("overview_card_travel_days");
+        travelCard.appendChild(tt);
+        travelDays.forEach((day) => {
+          const row = document.createElement("div"); row.className = "overview-travel-day";
+          const title = document.createElement("div"); title.className = "overview-travel-day-title";
+          title.textContent = dayTypeIcon(dayType(day)) + " " + dayTypeLabel(dayType(day)) + " · " + formatDateForTitle(day.date, day.date || "");
+          row.appendChild(title);
+          const parts = travelDaySummaryParts(day);
+          const detail = document.createElement("div"); detail.className = "overview-card-note";
+          detail.textContent = parts.length ? parts.join(" · ") : t("travel_day_type_only");
+          row.appendChild(detail);
+          travelCard.appendChild(row);
+        });
+        body.appendChild(travelCard);
+      }
+
+
+      const bookingRowsOverview=Finance.bookingEntries(trip,Logistics);
+      if(bookingRowsOverview.length){
+        const card=document.createElement("div");card.className="overview-card overview-operations-card";
+        const title=document.createElement("div");title.className="overview-card-title";title.textContent=t("overview_card_bookings");card.appendChild(title);
+        const attention=Finance.bookingAttentionEntries(trip,Logistics).length;const note=document.createElement("div");note.className="overview-card-note";note.textContent=tf("overview_bookings_summary",{n:bookingRowsOverview.length})+(attention?" · "+tf("overview_booking_attention_short",{n:attention}):"");card.appendChild(note);
+        const btn=document.createElement("button");btn.type="button";btn.className="btn btn-muted compact-btn";btn.textContent=t("booking_center_btn");btn.addEventListener("click",()=>openBookingCenterSheet(trip.id));card.appendChild(btn);body.appendChild(card);
+      }
+
+      const moneyActive=Finance.budgetTrackingActive(trip)||Finance.expenseTrackingActive(trip);
+      if(moneyActive){
+        const card=document.createElement("div");card.className="overview-card overview-operations-card";const title=document.createElement("div");title.className="overview-card-title";title.textContent=t("overview_card_money");card.appendChild(title);
+        const bs=Finance.budgetSummary(trip),totals=Finance.totalsByCurrency(trip);const note=document.createElement("div");note.className="overview-card-note";
+        if(bs.active)note.textContent=t("budget_recorded")+": "+formatMoneyAmount(bs.comparableSpent,bs.budget.currency)+" / "+formatMoneyAmount(bs.budget.amount,bs.budget.currency);else note.textContent=totals.map(v=>formatMoneyAmount(v.amount,v.currency)).join(" · ");card.appendChild(note);
+        const btn=document.createElement("button");btn.type="button";btn.className="btn btn-muted compact-btn";btn.textContent=t("money_manage_btn");btn.addEventListener("click",()=>openMoneySheet(trip.id));card.appendChild(btn);body.appendChild(card);
+      }
+
+      const derivedDocsOverview=Finance.derivedConfirmationDocuments(trip,Logistics), standaloneDocsOverview=tripDocuments(trip);
+      if(derivedDocsOverview.length||standaloneDocsOverview.length){
+        const card=document.createElement("div");card.className="overview-card overview-operations-card";const title=document.createElement("div");title.className="overview-card-title";title.textContent=t("overview_card_documents");card.appendChild(title);
+        const needed=Finance.documentNeedsAttention(trip).length;const note=document.createElement("div");note.className="overview-card-note";note.textContent=tf("overview_documents_summary",{n:derivedDocsOverview.length+standaloneDocsOverview.length})+(needed?" · "+tf("overview_documents_needed_short",{n:needed}):"");card.appendChild(note);
+        const btn=document.createElement("button");btn.type="button";btn.className="btn btn-muted compact-btn";btn.textContent=t("documents_manage_btn");btn.addEventListener("click",()=>openDocumentsSheet(trip.id));card.appendChild(btn);body.appendChild(card);
+      }
+
+
+      const mobility = mobilitySummaryLabels(trip);
       if (mobility.length) {
         const mob = document.createElement("div");
         mob.className = "overview-card";
@@ -3174,15 +4332,24 @@ document.addEventListener("DOMContentLoaded", () => {
         body.appendChild(mob);
       }
 
-      const issues = planningIssueLabels(trip);
+      const readiness = tripReadiness(trip);
       const planCard = document.createElement("div");
       planCard.className = "overview-card";
       const pt = document.createElement("div");
       pt.className = "overview-card-title"; pt.textContent = t("overview_card_planning");
       planCard.appendChild(pt);
-      if (issues.length) {
+      const status = document.createElement("div");
+      status.className = "readiness-status readiness-" + readiness.level;
+      status.textContent = readinessLabel(readiness.level);
+      planCard.appendChild(status);
+      if (readiness.rows.length) {
         const list = document.createElement("div"); list.className = "planning-issues";
-        issues.forEach(label => { const row = document.createElement("div"); row.className = "planning-issue"; row.textContent = "• " + label; list.appendChild(row); });
+        readiness.rows.forEach(entry => {
+          const row = document.createElement("div");
+          row.className = "planning-issue readiness-row readiness-" + entry.level;
+          row.textContent = "• " + entry.text;
+          list.appendChild(row);
+        });
         planCard.appendChild(list);
       } else {
         const ok = document.createElement("div");
@@ -3190,6 +4357,23 @@ document.addEventListener("DOMContentLoaded", () => {
         planCard.appendChild(ok);
       }
       body.appendChild(planCard);
+
+      if (hasAccessPlanningNeeds()) {
+        const st = tripPlanningStats(trip);
+        const accessCard = document.createElement("div");
+        accessCard.className = "overview-card";
+        const at = document.createElement("div"); at.className = "overview-card-title"; at.textContent = t("overview_card_access");
+        accessCard.appendChild(at);
+        const chips = document.createElement("div"); chips.className = "planning-chips";
+        const addAccessChip = (text, cls) => { const c=document.createElement("span"); c.className="planning-chip"+(cls?" "+cls:""); c.textContent=text; chips.appendChild(c); };
+        addAccessChip(tf("overview_access_verified", { n: st.accessVerified }), "access-good");
+        addAccessChip(tf("overview_access_to_check_short", { n: st.accessNeedsCheck }), "access-check");
+        addAccessChip(tf("overview_access_issues_short", { n: st.accessIssues }), st.accessIssues ? "access-issue" : "");
+        accessCard.appendChild(chips);
+        const note = document.createElement("div"); note.className = "overview-card-note"; note.textContent = t("overview_access_truth_note");
+        accessCard.appendChild(note);
+        body.appendChild(accessCard);
+      }
 
       if (!tripDays.length) {
         const empty = document.createElement("div");
@@ -3208,17 +4392,38 @@ document.addEventListener("DOMContentLoaded", () => {
         const head = document.createElement("div");
         head.className = "overview-day-head";
         head.textContent = formatDateForTitle(day.date, tf("day_n", { n: index + 1 }))
+          + (isTravelDay(day) ? " · " + dayTypeIcon(dayType(day)) + " " + dayTypeLabel(dayType(day)) : "")
           + " · " + tf("timeline_activities_count", { n: (day.items && day.items.length) || 0 });
         block.appendChild(head);
+        if (isTravelDay(day)) {
+          const parts = travelDaySummaryParts(day);
+          if (parts.length) {
+            const td = document.createElement("div"); td.className = "overview-day-travel"; td.textContent = parts.join(" · "); block.appendChild(td);
+          }
+        }
+        if (logisticsTrackingActive(trip)) {
+          const logisticBits=[];
+          Logistics.staysEndingOn(trip,day.date).forEach(raw=>{const st=stayInfo(raw); logisticBits.push("↗ "+t("day_logistics_checkout")+": "+(st.name||st.location||t("overview_fact_unset")));});
+          Logistics.journeysForDate(trip,day.date).forEach(raw=>{const j=journeyInfo(raw); logisticBits.push("🚆 "+(j.origin||"…")+" → "+(j.destination||"…")+(j.departureTime||j.arrivalTime?" · "+(j.departureTime||"…")+" → "+(j.arrivalTime||"…"):""));});
+          Logistics.staysStartingOn(trip,day.date).forEach(raw=>{const st=stayInfo(raw); logisticBits.push("↘ "+t("day_logistics_checkin")+": "+(st.name||st.location||t("overview_fact_unset")));});
+          if (!logisticBits.length && Logistics.staysTrackingActive(trip)) {
+            const baseLabel=effectiveBaseLabelForDate(trip,day.date); if(baseLabel) logisticBits.push("🏨 "+t("day_logistics_base")+": "+baseLabel);
+          }
+          if(logisticBits.length){const lg=document.createElement("div");lg.className="overview-day-logistics";logisticBits.forEach(text=>{const r=document.createElement("div");r.textContent=text;lg.appendChild(r);});block.appendChild(lg);}
+        }
         const analysis = DayIntel.analyzeDay(day.items || []);
         const healthBits = [];
         if (analysis.conflicts.length) healthBits.push(tf("day_health_conflicts", { n: analysis.conflicts.length }));
         const badTimes = analysis.invalidRangeCount + analysis.malformedCount;
         if (badTimes) healthBits.push(tf("day_health_invalid_time", { n: badTimes }));
-        if (analysis.travelUnknown) healthBits.push(tf("day_health_travel_unknown", { n: analysis.travelUnknown }));
+        const insufficientTravel = analysis.pairs.filter(pair => pair.status === "insufficient").length;
+        if (insufficientTravel) healthBits.push(tf("day_health_travel_insufficient", { n: insufficientTravel }));
+        if (analysis.travelUnresolved) healthBits.push(tf("day_health_travel_unknown", { n: analysis.travelUnresolved }));
         if (hasAccessPlanningNeeds()) {
           const accessN = (day.items || []).filter(item => !itemAccessStatus(item) || itemAccessStatus(item) === "needscheck").length;
+          const accessIssues = (day.items || []).filter(item => itemAccessStatus(item) === "problem").length;
           if (accessN) healthBits.push(tf("day_health_access_checks", { n: accessN }));
+          if (accessIssues) healthBits.push(tf("day_health_access_issues", { n: accessIssues }));
         }
         if (healthBits.length) {
           const health=document.createElement("div"); health.className="overview-day-health"; health.textContent=healthBits.join(" · "); block.appendChild(health);
@@ -3230,7 +4435,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!items.length) {
           const none = document.createElement("div");
           none.className = "overview-row-empty";
-          none.textContent = t("overview_day_empty");
+          none.textContent = isTravelDay(day) ? t("overview_travel_day_empty") : t("overview_day_empty");
           block.appendChild(none);
         } else {
           items.forEach((item) => {
@@ -3247,6 +4452,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   ? `<div class="overview-item-loc">📍 ${escapeHtml(itemLocation(item))}</div>` : "") +
                 accessBadgeHtml(item) +
                 (itemAccessNote(item) ? `<div class="access-note-line">♿ ${escapeHtml(itemAccessNote(item))}</div>` : "") +
+                (itemBookingInfo(item).status ? `<div class="booking-note-line">🎟️ ${escapeHtml(bookingStatusLabel(itemBookingInfo(item).status))}${itemBookingInfo(item).reference ? " · " + escapeHtml(itemBookingInfo(item).reference) : ""}</div>` : "") +
               `</div>`;
             block.appendChild(row);
           });
@@ -3305,9 +4511,18 @@ document.addEventListener("DOMContentLoaded", () => {
         case "aiSheet":           closeAISheet(); return;
         case "newTripSheet":      closeNewTripSheet(); return;
         case "firstDaySheet":     closeFirstDaySheet(); return;
+        case "dayDetailsSheet":   closeDayDetailsSheet(); return;
         case "menuSheet":         closeMenuSheet(); return;
         case "aboutSheet":        closeAboutSheet(); return;
         case "tripDetailsSheet":  closeTripDetailsSheet(); return;
+        case "logisticsSheet":    closeLogisticsSheet(); return;
+        case "staySheet":         closeStaySheet(); return;
+        case "journeySheet":      closeJourneySheet(); return;
+        case "bookingCenterSheet": closeBookingCenterSheet(); return;
+        case "moneySheet":        closeMoneySheet(); return;
+        case "expenseSheet":      closeExpenseSheet(); return;
+        case "documentsSheet":    closeDocumentsSheet(); return;
+        case "documentSheet":     closeDocumentSheet(); return;
         case "overviewSheet":     closeOverviewSheet(); return;
         case "confirmDeleteActivitySheet": closeConfirmSheet(id); _pendingDeleteActivity = null; return;
         case "confirmDeleteDaySheet":      closeConfirmSheet(id); _pendingDeleteDay = null; return;
@@ -3385,6 +4600,13 @@ document.addEventListener("DOMContentLoaded", () => {
       closeFirstDaySheet();
       showToast(tf("toast_day_added", { n: days.length }));
     });
+
+    // Travel Day / day details
+    $("dayDetailsBtn").addEventListener("click", openDayDetailsSheet);
+    $("dayDetailsClose").addEventListener("click", closeDayDetailsSheet);
+    $("dayDetailsCancelBtn").addEventListener("click", closeDayDetailsSheet);
+    $("dayDetailsSaveBtn").addEventListener("click", saveDayDetails);
+    $("dayTypeSelect").addEventListener("change", updateTravelDayFieldsVisibility);
 
     // Home
     $("homeBtn").addEventListener("click", () => {
@@ -3474,11 +4696,71 @@ document.addEventListener("DOMContentLoaded", () => {
         if (base.name) text += `${t("trip_base_name_label")}: ${base.name}\n`;
         if (base.location) text += `${t("trip_base_location_label")}: ${base.location}\n`;
         if (base.note) text += `${t("trip_base_note_label")}: ${base.note}\n`;
+        const hasSensitiveExport = Finance.bookingEntries(exportTrip,Logistics).some(r=>r.reference||r.url) || tripDocuments(exportTrip).some(raw=>{const d=Finance.documentInfo(raw);return !!(d.reference||d.url);});
+        if (hasSensitiveExport) text += `⚠️ ${t("export_confirmation_note")}\n`;
+        const exportStays=tripStays(exportTrip);
+        if (exportStays.length) {
+          text += `\n${t("export_stays_heading")}\n`;
+          exportStays.map(raw=>({raw,info:stayInfo(raw)})).sort((a,b)=>(a.info.startDate||"9999").localeCompare(b.info.startDate||"9999")).forEach(({raw,info:st})=>{
+            text += `🏨 ${st.name || t("stay_unnamed")}${st.startDate||st.endDate ? " · " + (st.startDate||"…") + " → " + (st.endDate||"…") : ""}\n`;
+            if(st.location) text += `  📍 ${st.location}\n`;
+            if(st.checkInTime) text += `  ${t("stay_checkin_time")}: ${st.checkInTime}\n`;
+            if(st.checkOutTime) text += `  ${t("stay_checkout_time")}: ${st.checkOutTime}\n`;
+            if(st.status) text += `  ${t("booking_status_label")}: ${bookingStatusLabel(st.status)}\n`;
+            const stayPay=Finance.paymentStatus(raw&&raw.paymentStatus); if(stayPay) text += `  ${t("payment_status_label")}: ${paymentStatusLabel(stayPay)}\n`;
+            if(st.provider) text += `  ${t("booking_provider_label")}: ${st.provider}\n`;
+            if(st.confirmation) text += `  ${t("booking_reference_label")}: ${st.confirmation}\n`;
+            if(st.bookingUrl) text += `  ${t("stay_booking_url_label")}: ${st.bookingUrl}\n`;
+            if(st.note) text += `  📝 ${st.note}\n`;
+          });
+        }
+        const exportJourneys=tripJourneys(exportTrip);
+        if (exportJourneys.length) {
+          text += `\n${t("export_journeys_heading")}\n`;
+          exportJourneys.map(raw=>({raw,info:journeyInfo(raw)})).sort((a,b)=>(a.info.date||"9999").localeCompare(b.info.date||"9999") || (a.info.departureTime||"").localeCompare(b.info.departureTime||"")).forEach(({raw,info:j})=>{
+            text += `🚆 ${j.date ? j.date + " · " : ""}${j.origin||"…"} → ${j.destination||"…"}${j.mode ? " · " + journeyModeLabel(j.mode) : ""}\n`;
+            if(j.departureTime||j.arrivalTime) text += `  ${t("travel_day_departure_time")}: ${j.departureTime||"…"} · ${t("travel_day_arrival_time")}: ${j.arrivalTime||"…"}\n`;
+            if(j.provider) text += `  ${t("journey_provider_label")}: ${j.provider}\n`;
+            if(j.serviceNumber) text += `  ${t("journey_service_label")}: ${j.serviceNumber}\n`;
+            if(j.status) text += `  ${t("booking_status_label")}: ${bookingStatusLabel(j.status)}\n`;
+            const journeyPay=Finance.paymentStatus(raw&&raw.paymentStatus); if(journeyPay) text += `  ${t("payment_status_label")}: ${paymentStatusLabel(journeyPay)}\n`;
+            if(j.confirmation) text += `  ${t("booking_reference_label")}: ${j.confirmation}\n`;
+            if(j.note) text += `  📝 ${j.note}\n`;
+          });
+        }
+        const exportExpenses=tripExpenses(exportTrip);
+        const exportBudget=Finance.budgetInfo(exportTrip);
+        if(exportExpenses.length || (exportBudget.amount!=null&&exportBudget.currency)){
+          text += `\n${t("export_money_heading")}\n`;
+          if(exportBudget.amount!=null&&exportBudget.currency) text += `${t("budget_title")}: ${formatMoneyAmount(exportBudget.amount,exportBudget.currency)}\n`;
+          const totals=Finance.totalsByCurrency(exportTrip); if(totals.length) text += `${t("money_recorded_totals")}: ${totals.map(v=>formatMoneyAmount(v.amount,v.currency)).join(" · ")}\n`;
+          exportExpenses.map(Finance.expenseInfo).forEach((e)=>{
+            text += `💳 ${e.title || t("expense_unnamed")} · ${e.amount!=null&&e.currency?formatMoneyAmount(e.amount,e.currency):""} · ${expenseCategoryLabel(e.category)}\n`;
+            if(e.date) text += `  ${t("field_date")}: ${e.date}\n`; if(e.paymentStatus) text += `  ${t("payment_status_label")}: ${paymentStatusLabel(e.paymentStatus)}\n`; if(e.paidBy) text += `  ${t("expense_paid_by_label")}: ${e.paidBy}\n`; if(e.note) text += `  📝 ${e.note}\n`;
+          });
+        }
+        const standaloneDocs=tripDocuments(exportTrip);
+        if(standaloneDocs.length){
+          text += `\n${t("export_documents_heading")}\n`;
+          standaloneDocs.map(Finance.documentInfo).forEach((d)=>{text += `📄 ${d.label || t("document_unnamed")} · ${documentTypeLabel(d.type)}${d.status?" · "+(d.status==="needed"?t("document_status_needed"):t("document_status_available")):""}\n`;if(d.reference)text += `  ${t("booking_reference_label")}: ${d.reference}\n`;if(d.url)text += `  ${t("document_url_label")}: ${d.url}\n`;if(d.note)text += `  📝 ${d.note}\n`;});
+        }
         text += "\n";
       }
       days.forEach((day, index) => {
-        text += `${tf("export_day_line", { n: index + 1 })}${formatDateForTitle(day.date, "")}\n`;
-        day.items.forEach(item => {
+        text += `${tf("export_day_line", { n: index + 1 })}${formatDateForTitle(day.date, "")}${isTravelDay(day) ? " · " + dayTypeLabel(dayType(day)) : ""}\n`;
+        if (isTravelDay(day)) {
+          const info = dayTravelInfo(day);
+          if (info.origin) text += `  ${t("travel_day_origin")}: ${info.origin}\n`;
+          if (info.destination) text += `  ${t("travel_day_destination")}: ${info.destination}\n`;
+          if (info.mode) text += `  ${t("travel_day_mode")}: ${travelDayModeLabel(info.mode)}\n`;
+          if (info.departureTime) text += `  ${t("travel_day_departure_time")}: ${info.departureTime}\n`;
+          if (info.arrivalTime) text += `  ${t("travel_day_arrival_time")}: ${info.arrivalTime}\n`;
+          if (info.reference) text += `  ${t("travel_day_reference")}: ${info.reference}\n`;
+        }
+        const flow = dayBaseFlow(day);
+        if (flow.startsAtBase) text += `  🏨 ${t("day_starts_at_base")}\n`;
+        if (flow.returnsToBase) text += `  🏨 ${t("day_returns_to_base")}\n`;
+        (Array.isArray(day.items) ? day.items : []).forEach(item => {
           const end = itemEndTime(item);
           text += `${item.time}${end ? "-" + end : ""} - ${item.title} ${item.completed ? t("export_done") : ""}\n`;
           const loc = itemLocation(item);
@@ -3488,11 +4770,19 @@ document.addEventListener("DOMContentLoaded", () => {
           const status = itemAccessStatus(item);
           const anote  = itemAccessNote(item);
           if (status || anote) {
-            const label = status === "stepfree" ? t("access_badge_stepfree")
+            const label = (status === "verified" || status === "stepfree") ? t("access_badge_verified")
                         : status === "problem"  ? t("access_badge_problem")
                         : status === "needscheck" ? t("access_badge_needscheck")
                         : t("access_status_unknown");
             text += `  ♿ ${t("export_access_line")}: ${label}${anote ? " - " + anote : ""}\n`;
+          }
+          const booking = itemBookingInfo(item);
+          const activityPay = itemPaymentStatus(item);
+          if (booking.status || activityPay || booking.reference || booking.provider || booking.note) {
+            text += `  🎟️ ${t("activity_booking_section")}${booking.status ? " · " + bookingStatusLabel(booking.status) : ""}${activityPay ? " · " + paymentStatusLabel(activityPay) : ""}\n`;
+            if (booking.reference) text += `    ${t("booking_reference_label")}: ${booking.reference}\n`;
+            if (booking.provider) text += `    ${t("booking_provider_label")}: ${booking.provider}\n`;
+            if (booking.note) text += `    ${t("booking_note_label")}: ${booking.note}\n`;
           }
           const travel = itemTravelFromPrevious(item);
           if (travel.known) {
@@ -3515,16 +4805,19 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    // Today / Jump now
-    $("todayBtn").addEventListener("click", () => {
-      closeMenuSheet();
-      const idx = findTodayDayIndex();
-      if (idx !== -1) {
-        currentDayIndex = idx; renderDays(); renderActivities(currentDayIndex);
-        showToast(t("toast_jumped_today"));
-      } else {
-        showToast(t("toast_no_today"));
-      }
+    // TODAY-001 / Planner Jump now. The menu's Today entry now opens the
+    // operational view; Jump now remains a Planner shortcut.
+    $("todayBtn").addEventListener("click", () => { closeMenuSheet(); openToday(); });
+    $("todayPlannerBtn").addEventListener("click", continueFromTodayToPlanner);
+    $("todayOverviewBtn").addEventListener("click", () => { if(getActiveTrip()) openOverviewSheet(); });
+    $("todayPreviewToggleBtn").addEventListener("click", () => {
+      const trip=getActiveTrip();if(!trip)return;const c=Today.clock(null,tripTimezone(trip));
+      if(todayPreviewMode&&Today.isTripActive(trip,c)){todayPreviewMode=false;todayPreviewDate=c.date;}
+      else {todayPreviewMode=true;todayPreviewDate=todayPreviewDate||Today.choosePreviewDate(trip,c.date);}
+      renderTodayView();updateHeaderInfo();
+    });
+    $("todayPreviewSelect").addEventListener("change", () => {
+      const value=$("todayPreviewSelect").value;if(!Today.validDate(value))return;todayPreviewMode=true;todayPreviewDate=value;renderTodayView();
     });
 
     $("jumpNowBtn").addEventListener("click", () => {
@@ -3666,6 +4959,21 @@ document.addEventListener("DOMContentLoaded", () => {
       exportActivityToGoogle(saved.day, saved.item);
     });
 
+    $("editAccessQuick").addEventListener("click", () => {
+      setMoreExpanded(true);
+      window.setTimeout(() => { try { $("addAccessStatus").focus(); } catch (err) {} }, 50);
+    });
+    $("addAccessStatus").addEventListener("change", () => {
+      if (editingDayIndex !== null && editingItemIndex !== null) {
+        const day = days[editingDayIndex];
+        if (day && day.items && day.items[editingItemIndex]) {
+          const temp = Object.assign({}, day.items[editingItemIndex], { accessStatus: $("addAccessStatus").value || undefined });
+          updateAccessQuickButton(temp);
+        }
+      }
+      updateMoreBadge();
+    });
+
     // AI strip + AI button
     $("aiStripBtn").addEventListener("click", openAISheet);
     $("aiBtn").addEventListener("click", openAISheet);
@@ -3701,22 +5009,41 @@ document.addEventListener("DOMContentLoaded", () => {
       closeAISheet();
     });
 
-    /* Backdrop: close whatever is actually open, newest first. v1040 derives
-       the list from the DOM instead of naming every sheet, so a new sheet can
-       never be forgotten here again. */
+    /* RC2-A11Y-001: backdrop and keyboard handling operate on the topmost
+       modal only. A confirmation stacked over the menu must not collapse the
+       menu behind it, and Tab must not escape into the inert background. */
     $("sheetBackdrop").addEventListener("click", () => {
-      Array.prototype.slice.call(document.querySelectorAll(".sheet.open"))
-        .reverse()
-        .forEach((el) => closeAnySheet(el.id));
+      const top = topOpenSheet();
+      if (top) closeAnySheet(top.id);
     });
 
-    /* A11Y-001 (v1040 / D6): Escape closes the topmost sheet. */
+    function sheetFocusable(el) {
+      return Array.prototype.slice.call(el.querySelectorAll(
+        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+      )).filter((node) => node.getAttribute("aria-hidden") !== "true" && node.offsetParent !== null);
+    }
+
     document.addEventListener("keydown", (e) => {
-      if (e.key !== "Escape") return;
-      const open = document.querySelectorAll(".sheet.open");
-      if (!open.length) return;
-      e.preventDefault();
-      closeAnySheet(open[open.length - 1].id);
+      const top = topOpenSheet();
+      if (!top) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeAnySheet(top.id);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = sheetFocusable(top);
+      if (!focusable.length) {
+        e.preventDefault();
+        try { top.focus(); } catch (err) {}
+        return;
+      }
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !top.contains(document.activeElement))) {
+        e.preventDefault(); last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !top.contains(document.activeElement))) {
+        e.preventDefault(); first.focus();
+      }
     });
 
     // DAY-DEL-001 (v1040 / A1): the day confirmation's own buttons.
@@ -3745,6 +5072,39 @@ document.addEventListener("DOMContentLoaded", () => {
     $("tripDetailsClose").addEventListener("click", closeTripDetailsSheet);
     $("tripDetailsCancelBtn").addEventListener("click", closeTripDetailsSheet);
     $("tripDetailsSaveBtn").addEventListener("click", saveTripDetails);
+    $("tripLogisticsBtn").addEventListener("click", () => openLogisticsSheet(_editingTripId));
+    $("tripBookingsBtn").addEventListener("click", () => openBookingCenterSheet(_editingTripId));
+    $("tripMoneyBtn").addEventListener("click", () => openMoneySheet(_editingTripId));
+    $("tripDocumentsBtn").addEventListener("click", () => openDocumentsSheet(_editingTripId));
+
+    // v1070 logistics hub + editors
+    $("logisticsClose").addEventListener("click", closeLogisticsSheet);
+    $("addStayBtn").addEventListener("click", () => openStaySheet(null));
+    $("addJourneyBtn").addEventListener("click", () => openJourneySheet(null));
+    $("staySheetClose").addEventListener("click", closeStaySheet);
+    $("stayCancelBtn").addEventListener("click", closeStaySheet);
+    $("staySaveBtn").addEventListener("click", saveStay);
+    $("stayDeleteBtn").addEventListener("click", deleteStay);
+    $("journeySheetClose").addEventListener("click", closeJourneySheet);
+    $("journeyCancelBtn").addEventListener("click", closeJourneySheet);
+    $("journeySaveBtn").addEventListener("click", saveJourney);
+    $("journeyDeleteBtn").addEventListener("click", deleteJourney);
+
+    // v1080 booking, money and document organization
+    $("bookingCenterClose").addEventListener("click", closeBookingCenterSheet);
+    $("moneyClose").addEventListener("click", closeMoneySheet);
+    $("budgetSaveBtn").addEventListener("click", saveBudget);
+    $("addExpenseBtn").addEventListener("click", () => openExpenseSheet(null));
+    $("expenseSheetClose").addEventListener("click", closeExpenseSheet);
+    $("expenseCancelBtn").addEventListener("click", closeExpenseSheet);
+    $("expenseSaveBtn").addEventListener("click", saveExpense);
+    $("expenseDeleteBtn").addEventListener("click", deleteExpense);
+    $("documentsClose").addEventListener("click", closeDocumentsSheet);
+    $("addDocumentBtn").addEventListener("click", () => openDocumentSheet(null));
+    $("documentSheetClose").addEventListener("click", closeDocumentSheet);
+    $("documentCancelBtn").addEventListener("click", closeDocumentSheet);
+    $("documentSaveBtn").addEventListener("click", saveDocument);
+    $("documentDeleteBtn").addEventListener("click", deleteDocument);
 
     // OVERVIEW-001 (v1040 / C1)
     $("overviewBtn").addEventListener("click", () => {
@@ -3880,7 +5240,8 @@ document.addEventListener("DOMContentLoaded", () => {
        localStorage — it only re-renders the currently visible day. */
     setInterval(() => {
       if (document.hidden) return;
-      renderActivities(currentDayIndex);
+      if (currentView === "today") renderTodayView();
+      else if (currentView === "planner") renderActivities(currentDayIndex);
     }, 30000);
 
     // BOOT-WATCHDOG-001: only marked ready after initialization and wiring complete.

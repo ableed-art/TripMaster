@@ -17,7 +17,7 @@
     const KEY_SAFETY_SNAPSHOT = "tm_safety_snapshot";
 
     // ── Beta readiness (v1009) ──
-    const APP_VERSION = "v1050-RC2-FIX1";
+    const APP_VERSION = "v1090-RC2";
     // Support address for "שלח משוב". Set, so the mailto opens with the To
     // field, subject and body prefilled; the tester still picks which of
     // their own mail accounts sends it. Blank here would leave To empty.
