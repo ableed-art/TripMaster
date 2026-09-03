@@ -1167,6 +1167,16 @@
 
     #aiSheet { height: 90%; }
 
+    .ai-agent-note {
+      margin: -2px 0 12px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      background: var(--primary-soft);
+      color: var(--sub);
+      font-size: .8rem;
+      line-height: 1.5;
+    }
+
     .ai-input-row {
       display: flex;
       gap: 8px;

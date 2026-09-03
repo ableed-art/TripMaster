@@ -17,11 +17,16 @@
     const KEY_SAFETY_SNAPSHOT = "tm_safety_snapshot";
 
     // ── Beta readiness (v1009) ──
-    const APP_VERSION = "v1090-RC2";
+    const APP_VERSION = "v1090-RC3";
     // Support address for "שלח משוב". Set, so the mailto opens with the To
     // field, subject and body prefilled; the tester still picks which of
     // their own mail accounts sends it. Blank here would leave To empty.
     const FEEDBACK_EMAIL = "tripmaster.app@gmail.com";
+
+    /* AI-PROXY-001 (v1090-RC3): public backend endpoint for the read-only
+       Planner Agent. No provider API key is stored or sent by the PWA. */
+    const AGENT_API_BASE_URL = "https://incompatible-slushy-fossil.replit.app";
+    const AGENT_QUERY_URL = AGENT_API_BASE_URL + "/v1/agent/query";
 
     /* ── PARTNER-001 (v1020): inert commercial foundation ──
        Structure only. PARTNERS_LIVE is false, every entry has url: null and

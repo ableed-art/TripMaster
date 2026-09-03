@@ -153,7 +153,6 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentDayIndex  = 0;
     let editingDayIndex  = null;
     let editingItemIndex = null;
-    let lastAIPlan       = [];
     let isSavingActivity = false; // BUG-001 preventive guard: blocks duplicate rapid-tap saves
 
     /* ── BOOT-001 fix: safe localStorage JSON read ──
@@ -3607,60 +3606,112 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     /* ── AI ── */
-    function openAISheet() { openSheetEl("aiSheet"); }
+    function openAISheet() {
+      if (!$("aiOutput").innerText.trim()) $("aiOutput").innerText = t("ai_output_empty");
+      openSheetEl("aiSheet");
+    }
     function closeAISheet() { closeSheetEl("aiSheet"); }
+
+    function aiTypeLabel(type) {
+      const labels = { issue:t("ai_type_issue"), check:t("ai_type_check"), suggestion:t("ai_type_suggestion"), info:t("ai_type_info") };
+      return labels[type] || t("ai_type_info");
+    }
+
+    function aiConfidenceLabel(confidence) {
+      return confidence === "known" ? t("ai_confidence_known") : t("ai_confidence_inferred");
+    }
+
+    function renderAgentResult(payload) {
+      const out = $("aiOutput");
+      const result = payload && payload.result && typeof payload.result === "object" ? payload.result : null;
+      if (!result || typeof result.summary !== "string") throw new Error("invalid_agent_response");
+      const lines = [];
+      lines.push(result.summary.trim());
+      const items = Array.isArray(result.items) ? result.items : [];
+      if (items.length) {
+        lines.push("", t("ai_findings_heading"));
+        items.forEach((item) => {
+          if (!item || typeof item !== "object") return;
+          const title = String(item.title || "").trim();
+          const reason = String(item.reason || "").trim();
+          const action = item.proposedAction == null ? "" : String(item.proposedAction).trim();
+          if (!title && !reason) return;
+          lines.push(`• ${aiTypeLabel(item.type)} · ${aiConfidenceLabel(item.confidence)}${title ? ` - ${title}` : ""}`);
+          if (reason) lines.push(`  ${reason}`);
+          if (action) lines.push(`  ${t("ai_proposed_action")}: ${action}`);
+        });
+      }
+      const unknowns = Array.isArray(result.unknowns) ? result.unknowns : [];
+      if (unknowns.length) {
+        lines.push("", t("ai_unknowns_heading"));
+        unknowns.forEach((row) => {
+          if (!row || typeof row !== "object") return;
+          const question = String(row.question || "").trim();
+          const reason = String(row.reason || "").trim();
+          if (question) lines.push(`• ${question}`);
+          if (reason) lines.push(`  ${reason}`);
+        });
+      }
+      if (result.advisoryOnly === true) lines.push("", t("ai_advisory_footer"));
+      out.classList.remove("loading");
+      out.style.fontStyle = "normal";
+      out.innerText = lines.join("\n").trim();
+      if (payload.requestId) console.info("TripMaster Planner Agent requestId:", payload.requestId);
+    }
+
+    function aiErrorText(status, data, err) {
+      if (err && err.name === "AbortError") return t("ai_error_timeout");
+      if (!navigator.onLine) return t("ai_error_offline");
+      const code = data && data.error && data.error.code ? data.error.code : "";
+      if (status === 429 || code === "rate_limited") return t("ai_error_rate_limit");
+      if (status === 422 || code === "invalid_context" || code === "invalid_request") return t("ai_error_context");
+      if (status === 503 || code === "agent_unavailable" || code === "openai_rate_limited") return t("ai_error_unavailable");
+      if (status === 502 || status === 504 || code === "agent_timeout" || code === "agent_error") return t("ai_error_temporary");
+      if (err && err.message === "invalid_agent_response") return t("ai_error_response");
+      return t("ai_error_network");
+    }
 
     async function runAI() {
       const prompt = $("aiPromptInput").value.trim();
-      if (!prompt) { showToast("הכנס תיאור לטיול"); return; }
+      if (!prompt) { showToast(t("ai_prompt_required")); return; }
+      const trip = getActiveTrip();
+      if (!trip) { showToast(t("ai_no_trip")); return; }
       const out = $("aiOutput");
       out.classList.add("loading");
-      out.innerText = "🤖 חושב…";
+      out.style.fontStyle = "italic";
+      out.innerText = t("ai_thinking");
       $("aiImportBtn").style.display = "none";
-      lastAIPlan = [];
-      const apiKey = settings.apiKey || "";
-      if (!apiKey) {
+      if (!navigator.onLine) {
         out.classList.remove("loading");
-        out.innerText = "⚠️ חסר API Key — הכנס אותו בהגדרות (☰)";
+        out.innerText = t("ai_error_offline");
         return;
       }
-      const systemPrompt = `אתה מתכנן טיולים מקצועי. ענה אך ורק בפורמט JSON הבא, ללא טקסט נוסף:
-{"summary":"תקציר קצר","activities":[{"time":"HH:MM","title":"שם הפעילות","note":"כתובת / טיפ"}]}
-כללים: 5-8 פעילויות, שעות ריאליות 09:00-22:00, כלול ארוחות.
-`;   // FIELDS-001 (v1020 RC3): stale city/hotel interpolation removed. AI stays hidden.
+      const tripContext = Finance.buildTripContext(trip, { includeSensitive:false });
+      const requestId = "tm-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,10);
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 30000);
+      let status = 0, data = null;
       try {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
+        const res = await fetch(AGENT_QUERY_URL, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-calls": "true"
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-20250514", max_tokens: 1000,
-            system: systemPrompt,
-            messages: [{ role: "user", content: prompt }]
-          })
+          mode: "cors",
+          cache: "no-store",
+          credentials: "omit",
+          headers: { "Content-Type":"application/json", "X-Request-ID":requestId },
+          body: JSON.stringify({ tripContext, request:prompt, mode:"planner" }),
+          signal: controller.signal
         });
-        const data = await res.json();
-        const raw  = (data.content || []).map(b => b.text || "").join("");
-        let parsed;
-        try { parsed = JSON.parse(raw.replace(/```json|```/g, "").trim()); }
-        catch { out.classList.remove("loading"); out.innerText = raw || "לא התקבלה תשובה תקינה"; return; }
-        let text = `📋 ${parsed.summary || ""}\n\n`;
-        (parsed.activities || []).forEach(a => {
-          text += `${a.time}  ${a.title}\n`;
-          if (a.note) text += `        📍 ${a.note}\n`;
-          text += "\n";
-        });
-        out.classList.remove("loading");
-        out.innerText = text.trim();
-        lastAIPlan = parsed.activities || [];
-        if (lastAIPlan.length > 0) $("aiImportBtn").style.display = "block";
+        status = res.status;
+        try { data = await res.json(); } catch (_) { data = null; }
+        if (!res.ok) throw new Error("agent_http_" + res.status);
+        renderAgentResult(data);
       } catch (err) {
         out.classList.remove("loading");
-        out.innerText = `שגיאה: ${err.message}`;
+        out.style.fontStyle = "normal";
+        out.innerText = aiErrorText(status, data, err);
+        console.warn("TripMaster Planner Agent request failed", { status, code:data && data.error && data.error.code || "", error:err && err.name || "Error" });
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     }
 
@@ -4976,38 +5027,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // AI strip + AI button
     $("aiStripBtn").addEventListener("click", openAISheet);
+    $("aiStripBtn").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openAISheet(); } });
     $("aiBtn").addEventListener("click", openAISheet);
     $("aiSheetClose").addEventListener("click", closeAISheet);
     $("aiSendBtn").addEventListener("click", runAI);
     $("aiPromptInput").addEventListener("keydown", (e) => { if (e.key === "Enter") runAI(); });
     $("aiClearBtn").addEventListener("click", () => {
-      $("aiOutput").innerText = "הכנס תיאור של הטיול ולחץ שלח — ה-AI יציע תוכנית יום מפורטת 🗺️";
+      $("aiOutput").innerText = t("ai_output_empty");
       $("aiOutput").classList.remove("loading");
       $("aiImportBtn").style.display = "none";
       $("aiPromptInput").value = "";
-      lastAIPlan = [];
     });
-    $("aiImportBtn").addEventListener("click", () => {
-      if (lastAIPlan.length === 0) return;
-      let day = days[currentDayIndex];
-      if (!day) {
-        day = { date: todayISO(), items: [] };
-        days.push(day);
-        days.sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
-        currentDayIndex = days.indexOf(day);
-      }
-      lastAIPlan.forEach(a => {
-        day.items.push({ time: a.time || "12:00", title: a.title || "", note: a.note || "", completed: false });
-      });
-      day.items.sort((a, b) => a.time.localeCompare(b.time));
-      // STORE-001 (v1040 / A7): unreachable while AI-DISABLE-001 hides the
-      // entry points, but guarded anyway so re-enabling AI cannot bring an
-      // unguarded write back with it.
-      if (!persistState()) { reportStorageFailure(); return; }
-      renderDays(); renderActivities(currentDayIndex);
-      showToast(`${lastAIPlan.length} פעילויות יובאו ✔`);
-      closeAISheet();
-    });
+    // Planner Agent is advisory-only. The legacy import control stays hidden
+    // and deliberately has no mutation handler.
+
 
     /* RC2-A11Y-001: backdrop and keyboard handling operate on the topmost
        modal only. A confirmation stacked over the menu must not collapse the

@@ -160,18 +160,14 @@
       <div class="timeline-list" id="activityList"></div>
     </div>
 
-    <!-- AI suggestion strip —
-         AI-DISABLE-001 (v1009): hidden for public beta. The AI helper currently
-         sends the user's Anthropic API key directly from the browser
-         (see runAI()), which is not safe for external testers. Postponed
-         until a backend/proxy exists (see AI-PROXY-001). Markup, function,
-         and event listener are left intact so this can be re-enabled by
-         removing the inline style once a proxy is in place. -->
-    <div class="ai-suggestion-strip" id="aiStripBtn" style="display:none">
-      <div class="ai-strip-icon">💡</div>
+    <!-- AI-PROXY-001 (v1090-RC3): Planner Agent now runs through the
+         TripMaster backend. The PWA never stores or sends a provider API key. -->
+    <div class="ai-suggestion-strip" id="aiStripBtn" role="button" tabindex="0"
+         data-i18n-aria-label="ai_open_aria" aria-label="פתח את TripMaster AI">
+      <div class="ai-strip-icon">🤖</div>
       <div class="ai-strip-text">
-        <div class="ai-strip-title">וגם הצעות AI</div>
-        <div class="ai-strip-sub">קבל הצעות מותאמות אישית לטיול שלך</div>
+        <div class="ai-strip-title" data-i18n="ai_strip_title">TripMaster AI</div>
+        <div class="ai-strip-sub" data-i18n="ai_strip_sub">שאל את Planner Agent על הטיול הזה</div>
       </div>
       <div class="ai-strip-arrow">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -186,7 +182,8 @@
   <!-- ══ BOTTOM BAR ══ -->
   <div class="bottom-bar">
     <div class="bottom-actions">
-      <!-- AI-DISABLE-001 (v1009): hidden alongside aiStripBtn, same reason. -->
+      <!-- Planner Agent has one primary discoverable entry point in the planner strip.
+           This legacy compact FAB remains hidden to avoid duplicate controls. -->
       <button class="fab-secondary" id="aiBtn" type="button" title="AI" style="display:none">🤖</button>
       <button class="fab-primary" id="addBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -610,26 +607,22 @@
     </div>
   </div>
 
-  <!-- ══ AI SHEET ══ —
-       AI-DISABLE-001 (v1009): no longer reachable from normal UI since both
-       aiStripBtn and aiBtn are hidden. Left in place untouched (not deleted)
-       so re-enabling AI later is a matter of un-hiding the entry points. -->
+  <!-- ══ PLANNER AGENT SHEET (v1090-RC3) ══ -->
   <div class="sheet" id="aiSheet" role="dialog" aria-modal="true" aria-labelledby="aiSheetTitle">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h3 id="aiSheetTitle">🤖 תכנון יום עם AI</h3>
+      <h3 id="aiSheetTitle" data-i18n="ai_sheet_title">🤖 TripMaster AI Planner</h3>
       <button class="sheet-close" id="aiSheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
+    <div class="ai-agent-note" data-i18n="ai_agent_note">הסוכן קורא רק מידע מסונן מהטיול הנוכחי ומציע הצעות בלבד. הוא לא משנה הזמנות או את המסלול.</div>
     <div class="ai-input-row">
-      <input id="aiPromptInput" placeholder="למשל: יום בלונדון, אוהב מוזיאונים, 3 ילדים קטנים" />
-      <button id="aiSendBtn" type="button">שלח</button>
+      <input id="aiPromptInput" data-i18n-placeholder="ai_prompt_placeholder" placeholder="למשל: מה כדאי לבדוק לפני מחר?" autocomplete="off" maxlength="2000" />
+      <button id="aiSendBtn" type="button" data-i18n="ai_send">שלח</button>
     </div>
-    <div id="aiOutput" style="color:var(--sub);font-style:italic">
-      הכנס תיאור של הטיול ולחץ שלח — ה-AI יציע תוכנית יום מפורטת 🗺️
-    </div>
+    <div id="aiOutput" role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="ai-actions" style="margin-top:10px">
-      <button class="btn btn-primary" id="aiImportBtn" type="button">➕ ייבא לטיול</button>
-      <button class="btn btn-muted" id="aiClearBtn" type="button">נקה</button>
+      <button class="btn btn-primary" id="aiImportBtn" type="button" style="display:none">➕ ייבא לטיול</button>
+      <button class="btn btn-muted" id="aiClearBtn" type="button" data-i18n="ai_clear">נקה</button>
     </div>
   </div>
 
@@ -1177,7 +1170,7 @@
     <div class="about-body">
       <!-- Overwritten at boot by app.js from APP_VERSION; the literal is only
            a pre-script fallback. -->
-      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1090-RC2</span>
+      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1090-RC3</span>
 
       <h4 data-i18n="about_privacy_h">🔒 פרטיות</h4>
       <div>

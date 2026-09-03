@@ -4,7 +4,7 @@
 // name carries the RC suffix. Updating from a previous release works
 // through the normal install -> skipWaiting -> activate -> claim path, and
 // the activate handler deletes every cache whose name is not this one.
-const CACHE_NAME = "tripmaster-v1090-rc2";
+const CACHE_NAME = "tripmaster-v1090-rc3";
 
 // Core assets required for the app shell to work offline.
 // If any of these fail to cache, installation fails (as intended).
