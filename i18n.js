@@ -22,6 +22,7 @@
            names, activity titles, notes, addresses, backup payloads) is
            never passed through t() and is never rewritten.
        Active languages: he (default), en, ar, ru, es, pt.
+       Amharic foundation: am -> am-ET, LTR, intentionally inactive until full native-reviewed copy exists.
        Other languages are listed in LANG_META with active:false so the
        selector cannot expose them until real, product-quality copy exists.
        ══════════════════════════════════════════════════════════════════ */
@@ -38,7 +39,7 @@
       // than shipping nothing. renderLanguageOptions() filters on `active`
       // and setLanguage() rejects inactive codes, so this cannot be selected
       // or persisted. Activate only after native review of the complete active key set.
-      am: { lang: "am",    dir: "ltr", label: "አማርኛ",      active: false }
+      am: { lang: "am-ET", dir: "ltr", label: "አማርኛ",      active: false }
     });
 
     const DEFAULT_LANG = "he";
@@ -129,7 +130,7 @@
         prefs_budget_high: "מפנק",
         prefs_notes: "הערות חופשיות",
         prefs_notes_ph: "מה חשוב לכם בטיול הזה?",
-        prefs_note: "ההעדפות נשמרות במכשיר ונכללות בגיבוי. הן שמורות לתכנון עתידי ואינן משנות כרגע את התוכנית שלכם.",
+        prefs_note: "ההעדפות נשמרות במכשיר ונכללות בגיבוי. כשמשתמשים ב-TripMaster AI, חלק מההעדפות המובנות לתכנון עשויות להיכלל במידע המסונן שנשלח עם הבקשה.",
 
         /* TripMaster Access */
         access_title: "♿ TripMaster Access",
@@ -147,7 +148,7 @@
         access_wc_electric: "ממונע",
         access_notes_label: "צרכים והעדפות לתכנון",
         access_notes_ph: "מה יעזור לכם בתכנון?",
-        access_note: "אין צורך לפרט מידע רפואי. נשמר במכשיר בלבד.",
+        access_note: "אין צורך לפרט מידע רפואי. ההערה החופשית נשמרת במכשיר ואינה נשלחת ל-AI כברירת מחדל; העדפות Access מובנות עשויות להיכלל בבקשת AI.",
 
         /* travel tools */
         tools_title: "🧰 כלים לטיול",
@@ -245,8 +246,8 @@
         /* about */
         about_title: "ℹ️ אודות TripMaster",
         about_privacy_h: "🔒 פרטיות",
-        about_privacy_1: "כל הנתונים נשמרים מקומית על המכשיר שלך בלבד.",
-        about_privacy_2: "אין חשבון, אין שרת, ואין סנכרון ענן כרגע.",
+        about_privacy_1: "נתוני הטיול נשמרים מקומית במכשיר שלך כברירת מחדל.",
+        about_privacy_2: "אין כרגע חשבון או סנכרון ענן. כשמשתמשים ב-TripMaster AI, נשלח לשרת רק מידע מסונן שנדרש כדי לענות לבקשה.",
         about_beta_h: "🧪 איך לבדוק (Beta)",
         about_beta_1: "נסו להוסיף, לערוך ולמחוק פעילויות בכמה ימים",
         about_beta_2: "עברו בין טיולים ובדקו שהנתונים נשמרים נכון",
@@ -784,7 +785,7 @@
         prefs_budget_high: "Splurge",
         prefs_notes: "Anything else",
         prefs_notes_ph: "What matters most on this trip?",
-        prefs_note: "Preferences stay on this device and are included in backups. They are saved for future planning features and do not change your plan today.",
+        prefs_note: "Preferences are stored on this device and included in backups. When you use TripMaster AI, selected structured planning preferences may be included in the filtered context sent with the request.",
 
         /* TripMaster Access */
         access_title: "♿ TripMaster Access",
@@ -802,7 +803,7 @@
         access_wc_electric: "Powered",
         access_notes_label: "Needs and preferences for planning",
         access_notes_ph: "What would help you plan?",
-        access_note: "No need to share medical details. Stored on this device only.",
+        access_note: "No need to share medical details. This free-text note stays on the device and is not sent to AI by default; structured Access preferences may be included in an AI request.",
 
         /* travel tools */
         tools_title: "🧰 Travel tools",
@@ -900,8 +901,8 @@
         /* about */
         about_title: "ℹ️ About TripMaster",
         about_privacy_h: "🔒 Privacy",
-        about_privacy_1: "All your data is stored locally, on your device only.",
-        about_privacy_2: "No account, no server, and no cloud sync for now.",
+        about_privacy_1: "Your trip data is stored locally on this device by default.",
+        about_privacy_2: "There is no account or cloud sync for now. When you use TripMaster AI, only a filtered trip context needed to answer your request is sent to the AI service.",
         about_beta_h: "🧪 How to test (Beta)",
         about_beta_1: "Add, edit and delete activities across a few days",
         about_beta_2: "Switch between trips and check the data stays where it should",
@@ -1439,7 +1440,7 @@
         prefs_budget_high: "مميز",
         prefs_notes: "ملاحظات إضافية",
         prefs_notes_ph: "ما الأهم بالنسبة لك في هذه الرحلة؟",
-        prefs_note: "التفضيلات تبقى على هذا الجهاز وتُدرج ضمن النسخة الاحتياطية. تُحفظ لميزات تخطيط مستقبلية ولا تغيّر خطتك حاليًا.",
+        prefs_note: "تُحفظ التفضيلات على هذا الجهاز وتُدرج في النسخة الاحتياطية. عند استخدام TripMaster AI، قد تُضمّن بعض تفضيلات التخطيط المنظمة في السياق المنقح المرسل مع الطلب.",
 
         /* TripMaster Access */
         access_title: "♿ TripMaster Access",
@@ -1457,7 +1458,7 @@
         access_wc_electric: "كهربائي",
         access_notes_label: "الاحتياجات والتفضيلات للتخطيط",
         access_notes_ph: "ما الذي يساعدك في التخطيط؟",
-        access_note: "لا حاجة لذكر تفاصيل طبية. تُحفظ على هذا الجهاز فقط.",
+        access_note: "لا حاجة لذكر تفاصيل طبية. تبقى هذه الملاحظة الحرة على الجهاز ولا تُرسل إلى الذكاء الاصطناعي افتراضيًا؛ وقد تُضمّن تفضيلات Access المنظمة في طلب الذكاء الاصطناعي.",
 
         /* travel tools */
         tools_title: "🧰 أدوات السفر",
@@ -1555,8 +1556,8 @@
         /* about */
         about_title: "ℹ️ حول TripMaster",
         about_privacy_h: "🔒 الخصوصية",
-        about_privacy_1: "كل بياناتك محفوظة محليًا على جهازك فقط.",
-        about_privacy_2: "بلا حساب، بلا خادم، وبلا مزامنة سحابية حاليًا.",
+        about_privacy_1: "تُحفظ بيانات رحلتك محليًا على هذا الجهاز افتراضيًا.",
+        about_privacy_2: "لا يوجد حساب أو مزامنة سحابية حاليًا. عند استخدام TripMaster AI، تُرسل إلى خدمة الذكاء الاصطناعي فقط بيانات رحلة منقحة لازمة للإجابة على طلبك.",
         about_beta_h: "🧪 كيف تختبر (نسخة تجريبية)",
         about_beta_1: "أضف أنشطة وعدّلها واحذفها على مدى عدة أيام",
         about_beta_2: "بدّل بين الرحلات وتأكد أن البيانات تبقى في مكانها",
@@ -2094,7 +2095,7 @@
         prefs_budget_high: "Не экономить",
         prefs_notes: "Что-нибудь ещё",
         prefs_notes_ph: "Что для вас важнее всего в этой поездке?",
-        prefs_note: "Предпочтения хранятся на этом устройстве и входят в резервную копию. Они сохранены для будущих функций планирования и пока не влияют на ваш план.",
+        prefs_note: "Предпочтения хранятся на этом устройстве и входят в резервную копию. При использовании TripMaster AI некоторые структурированные предпочтения планирования могут входить в отфильтрованный контекст запроса.",
 
         /* TripMaster Access */
         access_title: "♿ TripMaster Access",
@@ -2112,7 +2113,7 @@
         access_wc_electric: "Электрическая",
         access_notes_label: "Потребности и предпочтения для планирования",
         access_notes_ph: "Что помогло бы вам при планировании?",
-        access_note: "Медицинские подробности указывать не нужно. Хранится только на этом устройстве.",
+        access_note: "Медицинские подробности указывать не нужно. Эта свободная заметка остается на устройстве и по умолчанию не отправляется ИИ; структурированные настройки Access могут входить в запрос ИИ.",
 
         /* travel tools */
         tools_title: "🧰 Инструменты для поездки",
@@ -2210,8 +2211,8 @@
         /* about */
         about_title: "ℹ️ О TripMaster",
         about_privacy_h: "🔒 Конфиденциальность",
-        about_privacy_1: "Все ваши данные хранятся локально, только на вашем устройстве.",
-        about_privacy_2: "Пока никаких аккаунтов, серверов и облачной синхронизации.",
+        about_privacy_1: "Данные поездки по умолчанию хранятся локально на этом устройстве.",
+        about_privacy_2: "Пока нет аккаунта или облачной синхронизации. При использовании TripMaster AI в сервис ИИ отправляется только отфильтрованный контекст поездки, необходимый для ответа.",
         about_beta_h: "🧪 Как тестировать (бета)",
         about_beta_1: "Добавляйте, меняйте и удаляйте активности в разные дни",
         about_beta_2: "Переключайтесь между поездками и проверяйте, что данные на месте",
@@ -2749,7 +2750,7 @@
         prefs_budget_high: "Sin límites",
         prefs_notes: "Algo más",
         prefs_notes_ph: "¿Qué es lo más importante en este viaje?",
-        prefs_note: "Las preferencias se quedan en este dispositivo y se incluyen en las copias. Se guardan para funciones de planificación futuras y hoy no cambian tu plan.",
+        prefs_note: "Las preferencias se guardan en este dispositivo y se incluyen en las copias. Al usar TripMaster AI, algunas preferencias estructuradas de planificación pueden incluirse en el contexto filtrado enviado con la solicitud.",
 
         /* TripMaster Access */
         access_title: "♿ TripMaster Access",
@@ -2767,7 +2768,7 @@
         access_wc_electric: "Eléctrica",
         access_notes_label: "Necesidades y preferencias para planificar",
         access_notes_ph: "¿Qué te ayudaría a planificar?",
-        access_note: "No hace falta dar detalles médicos. Se guarda solo en este dispositivo.",
+        access_note: "No hace falta dar detalles médicos. Esta nota de texto libre permanece en el dispositivo y no se envía a la IA por defecto; las preferencias estructuradas de Access pueden incluirse en una solicitud de IA.",
 
         /* travel tools */
         tools_title: "🧰 Herramientas de viaje",
@@ -2865,8 +2866,8 @@
         /* about */
         about_title: "ℹ️ Acerca de TripMaster",
         about_privacy_h: "🔒 Privacidad",
-        about_privacy_1: "Todos tus datos se guardan localmente, solo en tu dispositivo.",
-        about_privacy_2: "Sin cuenta, sin servidor y sin sincronización en la nube por ahora.",
+        about_privacy_1: "Los datos de tu viaje se guardan localmente en este dispositivo de forma predeterminada.",
+        about_privacy_2: "Por ahora no hay cuenta ni sincronización en la nube. Al usar TripMaster AI, solo se envía al servicio de IA el contexto filtrado del viaje necesario para responder.",
         about_beta_h: "🧪 Cómo probar (Beta)",
         about_beta_1: "Añade, edita y elimina actividades en varios días",
         about_beta_2: "Cambia entre viajes y comprueba que los datos siguen donde deben",
@@ -3404,7 +3405,7 @@
         prefs_budget_high: "Sem economizar",
         prefs_notes: "Mais alguma coisa",
         prefs_notes_ph: "O que é mais importante nesta viagem?",
-        prefs_note: "As preferências ficam neste aparelho e entram no backup. Elas ficam guardadas para recursos de planejamento futuros e hoje não mudam o seu plano.",
+        prefs_note: "As preferências ficam neste aparelho e entram no backup. Ao usar o TripMaster AI, algumas preferências estruturadas de planejamento podem ser incluídas no contexto filtrado enviado com a solicitação.",
 
         /* TripMaster Access */
         access_title: "♿ TripMaster Access",
@@ -3422,7 +3423,7 @@
         access_wc_electric: "Motorizada",
         access_notes_label: "Necessidades e preferências para o planejamento",
         access_notes_ph: "O que ajudaria você a planejar?",
-        access_note: "Não precisa informar detalhes médicos. Fica salvo só neste aparelho.",
+        access_note: "Não precisa informar detalhes médicos. Esta nota em texto livre fica no aparelho e não é enviada à IA por padrão; preferências estruturadas de Access podem ser incluídas em uma solicitação de IA.",
 
         /* travel tools */
         tools_title: "🧰 Ferramentas de viagem",
@@ -3520,8 +3521,8 @@
         /* about */
         about_title: "ℹ️ Sobre o TripMaster",
         about_privacy_h: "🔒 Privacidade",
-        about_privacy_1: "Todos os seus dados ficam salvos localmente, só no seu aparelho.",
-        about_privacy_2: "Sem conta, sem servidor e sem sincronização na nuvem por enquanto.",
+        about_privacy_1: "Os dados da sua viagem ficam salvos localmente neste aparelho por padrão.",
+        about_privacy_2: "Por enquanto não há conta nem sincronização na nuvem. Ao usar o TripMaster AI, só o contexto filtrado da viagem necessário para responder é enviado ao serviço de IA.",
         about_beta_h: "🧪 Como testar (Beta)",
         about_beta_1: "Adicione, edite e exclua atividades em vários dias",
         about_beta_2: "Alterne entre viagens e confira se os dados continuam no lugar",
@@ -4008,7 +4009,7 @@ Object.assign(TRANSLATIONS.es,{today_level_issue:"Problema",today_level_check:"R
 Object.assign(TRANSLATIONS.pt,{today_level_issue:"Problema",today_level_check:"Verificar",today_level_info:"Info"});
 
 
-/* AI-PROXY-001 (v1090-RC3): Planner Agent UI vocabulary. */
+/* AI-PROXY-001 (v1090-RC4): Planner Agent UI vocabulary. */
 Object.assign(TRANSLATIONS.he, {
   ai_strip_title:"TripMaster AI", ai_strip_sub:"שאל את Planner Agent על הטיול הזה", ai_open_aria:"פתח את TripMaster AI", ai_sheet_title:"🤖 TripMaster AI Planner", ai_agent_note:"הסוכן קורא רק מידע מסונן מהטיול הנוכחי ומציע הצעות בלבד. הוא לא משנה הזמנות או את המסלול.", ai_prompt_placeholder:"למשל: מה כדאי לבדוק לפני מחר?", ai_send:"שלח", ai_clear:"נקה", ai_output_empty:"שאל שאלה על הטיול וה-Planner Agent יבדוק את המידע שכבר שמור ב-TripMaster.", ai_prompt_required:"כתוב שאלה ל-Planner Agent", ai_no_trip:"בחר טיול קודם", ai_thinking:"🤖 בודק את הטיול…", ai_findings_heading:"נקודות לבדיקה", ai_unknowns_heading:"מה עדיין לא ידוע", ai_proposed_action:"הצעה", ai_advisory_footer:"הצעות בלבד - TripMaster לא שינה דבר בטיול.", ai_type_issue:"בעיה", ai_type_check:"בדיקה", ai_type_suggestion:"הצעה", ai_type_info:"מידע", ai_confidence_known:"ידוע", ai_confidence_inferred:"הערכה", ai_error_offline:"אין חיבור לאינטרנט. שאר TripMaster ממשיך לעבוד כרגיל.", ai_error_timeout:"ה-Planner Agent לא ענה בזמן. אפשר לנסות שוב.", ai_error_rate_limit:"יש כרגע יותר מדי בקשות. נסה שוב בעוד רגע.", ai_error_context:"לא הצלחתי לשלוח את נתוני הטיול בפורמט שהסוכן מצפה לו.", ai_error_unavailable:"שירות ה-AI אינו זמין כרגע.", ai_error_temporary:"ה-Planner Agent אינו זמין כרגע. אפשר לנסות שוב.", ai_error_response:"התקבלה תשובה לא תקינה מה-Planner Agent.", ai_error_network:"לא הצלחתי להתחבר ל-Planner Agent. שאר TripMaster ממשיך לעבוד כרגיל."
 });
@@ -4027,3 +4028,517 @@ Object.assign(TRANSLATIONS.es, {
 Object.assign(TRANSLATIONS.pt, {
   ai_strip_title:"TripMaster AI", ai_strip_sub:"Pergunte ao Planner Agent sobre esta viagem", ai_open_aria:"Abrir TripMaster AI", ai_sheet_title:"🤖 TripMaster AI Planner", ai_agent_note:"O agente lê apenas dados higienizados da viagem atual e fornece somente sugestões. Ele não altera reservas nem o roteiro.", ai_prompt_placeholder:"Por exemplo: o que devo verificar antes de amanhã?", ai_send:"Enviar", ai_clear:"Limpar", ai_output_empty:"Faça uma pergunta sobre a viagem e o Planner Agent revisará o que já está salvo no TripMaster.", ai_prompt_required:"Digite uma pergunta para o Planner Agent", ai_no_trip:"Escolha uma viagem primeiro", ai_thinking:"🤖 Revisando a viagem…", ai_findings_heading:"Pontos para verificar", ai_unknowns_heading:"Ainda desconhecido", ai_proposed_action:"Sugestão", ai_advisory_footer:"Somente sugestões - o TripMaster não alterou nada na sua viagem.", ai_type_issue:"Problema", ai_type_check:"Verificar", ai_type_suggestion:"Sugestão", ai_type_info:"Info", ai_confidence_known:"Conhecido", ai_confidence_inferred:"Inferido", ai_error_offline:"Você está offline. O restante do TripMaster continua funcionando normalmente.", ai_error_timeout:"O Planner Agent não respondeu a tempo. Você pode tentar novamente.", ai_error_rate_limit:"Há muitas solicitações agora. Tente novamente em instantes.", ai_error_context:"Não foi possível enviar os dados da viagem no formato esperado pelo agente.", ai_error_unavailable:"O serviço de IA não está disponível no momento.", ai_error_temporary:"O Planner Agent está temporariamente indisponível. Você pode tentar novamente.", ai_error_response:"O Planner Agent retornou uma resposta inválida.", ai_error_network:"Não foi possível conectar ao Planner Agent. O restante do TripMaster continua funcionando normalmente."
 });
+
+
+/* v1090-RC4: visible trip operations + multi-agent quick prompts + background-safe request states. */
+Object.assign(TRANSLATIONS.he,{
+  ops_today_title:"היום / מה עכשיו",ops_today_live:"פתח את מצב היום",ops_today_preview:"תצוגה מקדימה לטיול",ops_logistics_title:"לינות ונסיעות",ops_logistics_meta:"{stays} לינות · {journeys} נסיעות",ops_bookings_title:"מרכז הזמנות",ops_bookings_meta:"{n} פריטים · {attention} דורשים תשומת לב",
+  ai_sheet_title:"🤖 TripMaster AI",ai_strip_sub:"שאל את TripMaster על הטיול הזה",ai_agent_note:"TripMaster משתמש במידע מסונן מהטיול הנוכחי ויכול להפנות את השאלה לסוכן המתאים. הוא מציע הצעות בלבד ולא משנה הזמנות או את המסלול.",ai_output_empty:"שאל שאלה על הטיול. TripMaster ישתמש במה שכבר שמור ויפנה לסוכן המתאים.",ai_prompt_required:"כתוב שאלה על הטיול",ai_thinking:"🤖 בודק את הטיול…",
+  ai_quick_now:"מה חשוב עכשיו?",ai_quick_bookings:"מה דורש טיפול בהזמנות?",ai_quick_research:"ספר לי על מקום בטיול",ai_quick_recovery:"משהו השתבש",
+  ai_state_working:"TripMaster עובד על התשובה…",ai_state_background:"הבדיקה ממשיכה. אם Android עצר את החיבור, TripMaster ינסה שוב כשתחזור.",ai_state_retrying:"חזרת לאפליקציה - מנסה שוב אוטומטית…",ai_error_timeout:"הבדיקה ארכה יותר מהצפוי. אפשר לנסות שוב."
+});
+Object.assign(TRANSLATIONS.en,{
+  ops_today_title:"Today / what now",ops_today_live:"Open Today mode",ops_today_preview:"Preview the trip",ops_logistics_title:"Stays & journeys",ops_logistics_meta:"{stays} stays · {journeys} journeys",ops_bookings_title:"Booking Center",ops_bookings_meta:"{n} items · {attention} need attention",
+  ai_sheet_title:"🤖 TripMaster AI",ai_strip_sub:"Ask TripMaster about this trip",ai_agent_note:"TripMaster uses sanitized data from the current trip and can route your question to the right agent. It gives advice only and does not change bookings or your itinerary.",ai_output_empty:"Ask a question about the trip. TripMaster will use what is already stored and route it to the right agent.",ai_prompt_required:"Enter a question about the trip",ai_thinking:"🤖 Reviewing the trip…",
+  ai_quick_now:"What matters now?",ai_quick_bookings:"What needs booking attention?",ai_quick_research:"Tell me about a place",ai_quick_recovery:"Something went wrong",
+  ai_state_working:"TripMaster is working on the answer…",ai_state_background:"The check is continuing. If Android paused the connection, TripMaster will retry when you return.",ai_state_retrying:"You're back - retrying automatically…",ai_error_timeout:"The check took longer than expected. You can try again."
+});
+Object.assign(TRANSLATIONS.ar,{
+  ops_today_title:"اليوم / ماذا الآن",ops_today_live:"فتح وضع اليوم",ops_today_preview:"معاينة الرحلة",ops_logistics_title:"الإقامات والرحلات",ops_logistics_meta:"{stays} إقامات · {journeys} رحلات",ops_bookings_title:"مركز الحجوزات",ops_bookings_meta:"{n} عناصر · {attention} تحتاج انتباهًا",
+  ai_sheet_title:"🤖 TripMaster AI",ai_strip_sub:"اسأل TripMaster عن هذه الرحلة",ai_agent_note:"يستخدم TripMaster بيانات منقحة من الرحلة الحالية ويمكنه توجيه سؤالك إلى الوكيل المناسب. يقدم اقتراحات فقط ولا يغيّر الحجوزات أو خط السير.",ai_output_empty:"اطرح سؤالاً عن الرحلة. سيستخدم TripMaster ما هو محفوظ ويوجهه إلى الوكيل المناسب.",ai_prompt_required:"اكتب سؤالاً عن الرحلة",ai_thinking:"🤖 يراجع الرحلة…",
+  ai_quick_now:"ما المهم الآن؟",ai_quick_bookings:"ما الحجوزات التي تحتاج انتباهًا؟",ai_quick_research:"أخبرني عن مكان في الرحلة",ai_quick_recovery:"حدثت مشكلة",
+  ai_state_working:"TripMaster يعمل على الإجابة…",ai_state_background:"تستمر المراجعة. إذا أوقف Android الاتصال فسيحاول TripMaster مجددًا عند عودتك.",ai_state_retrying:"عدت إلى التطبيق - تتم المحاولة مجددًا تلقائيًا…",ai_error_timeout:"استغرقت المراجعة وقتًا أطول من المتوقع. يمكنك المحاولة مجددًا."
+});
+Object.assign(TRANSLATIONS.ru,{
+  ops_today_title:"Сегодня / что сейчас",ops_today_live:"Открыть режим Today",ops_today_preview:"Предпросмотр поездки",ops_logistics_title:"Проживание и поездки",ops_logistics_meta:"Проживаний: {stays} · поездок: {journeys}",ops_bookings_title:"Центр бронирований",ops_bookings_meta:"Элементов: {n} · требуют внимания: {attention}",
+  ai_sheet_title:"🤖 TripMaster AI",ai_strip_sub:"Спросите TripMaster об этой поездке",ai_agent_note:"TripMaster использует очищенные данные текущей поездки и может направить вопрос подходящему агенту. Он только советует и не меняет бронирования или маршрут.",ai_output_empty:"Задайте вопрос о поездке. TripMaster использует уже сохраненные данные и направит вопрос подходящему агенту.",ai_prompt_required:"Введите вопрос о поездке",ai_thinking:"🤖 Проверяю поездку…",
+  ai_quick_now:"Что важно сейчас?",ai_quick_bookings:"Что требует внимания в бронированиях?",ai_quick_research:"Расскажи о месте",ai_quick_recovery:"Что-то пошло не так",
+  ai_state_working:"TripMaster готовит ответ…",ai_state_background:"Проверка продолжается. Если Android приостановил соединение, TripMaster повторит запрос после возвращения.",ai_state_retrying:"Вы вернулись - повторяю запрос автоматически…",ai_error_timeout:"Проверка заняла больше времени, чем ожидалось. Можно попробовать снова."
+});
+Object.assign(TRANSLATIONS.es,{
+  ops_today_title:"Hoy / qué hago ahora",ops_today_live:"Abrir modo Hoy",ops_today_preview:"Vista previa del viaje",ops_logistics_title:"Alojamientos y trayectos",ops_logistics_meta:"{stays} alojamientos · {journeys} trayectos",ops_bookings_title:"Centro de reservas",ops_bookings_meta:"{n} elementos · {attention} requieren atención",
+  ai_sheet_title:"🤖 TripMaster AI",ai_strip_sub:"Pregunta a TripMaster sobre este viaje",ai_agent_note:"TripMaster usa datos saneados del viaje actual y puede dirigir la pregunta al agente adecuado. Solo ofrece sugerencias y no modifica reservas ni el itinerario.",ai_output_empty:"Haz una pregunta sobre el viaje. TripMaster usará lo que ya está guardado y la dirigirá al agente adecuado.",ai_prompt_required:"Escribe una pregunta sobre el viaje",ai_thinking:"🤖 Revisando el viaje…",
+  ai_quick_now:"¿Qué importa ahora?",ai_quick_bookings:"¿Qué reservas requieren atención?",ai_quick_research:"Cuéntame sobre un lugar",ai_quick_recovery:"Algo salió mal",
+  ai_state_working:"TripMaster está preparando la respuesta…",ai_state_background:"La revisión continúa. Si Android pausó la conexión, TripMaster volverá a intentarlo cuando regreses.",ai_state_retrying:"Has vuelto - reintentando automáticamente…",ai_error_timeout:"La revisión tardó más de lo esperado. Puedes intentarlo de nuevo."
+});
+Object.assign(TRANSLATIONS.pt,{
+  ops_today_title:"Hoje / o que fazer agora",ops_today_live:"Abrir modo Hoje",ops_today_preview:"Prévia da viagem",ops_logistics_title:"Hospedagens e viagens",ops_logistics_meta:"{stays} hospedagens · {journeys} viagens",ops_bookings_title:"Central de reservas",ops_bookings_meta:"{n} itens · {attention} precisam de atenção",
+  ai_sheet_title:"🤖 TripMaster AI",ai_strip_sub:"Pergunte ao TripMaster sobre esta viagem",ai_agent_note:"O TripMaster usa dados higienizados da viagem atual e pode encaminhar sua pergunta ao agente adequado. Ele fornece apenas sugestões e não altera reservas nem o roteiro.",ai_output_empty:"Faça uma pergunta sobre a viagem. O TripMaster usará o que já está salvo e encaminhará ao agente adequado.",ai_prompt_required:"Digite uma pergunta sobre a viagem",ai_thinking:"🤖 Revisando a viagem…",
+  ai_quick_now:"O que importa agora?",ai_quick_bookings:"O que precisa de atenção nas reservas?",ai_quick_research:"Conte-me sobre um lugar",ai_quick_recovery:"Algo deu errado",
+  ai_state_working:"O TripMaster está preparando a resposta…",ai_state_background:"A verificação continua. Se o Android pausou a conexão, o TripMaster tentará novamente quando você voltar.",ai_state_retrying:"Você voltou - tentando novamente automaticamente…",ai_error_timeout:"A verificação demorou mais do que o esperado. Você pode tentar novamente."
+});
+
+Object.assign(TRANSLATIONS.he,{ai_not_verified:"לא מאומת",ai_trip_data_label:"נתוני הטיול",ai_stay_record_state:"אין רשומת לינה מלאה",ai_matched_trip_item:"פריט שזוהה מהטיול"});
+Object.assign(TRANSLATIONS.en,{ai_not_verified:"not verified",ai_trip_data_label:"trip data",ai_stay_record_state:"no complete stay record",ai_matched_trip_item:"item matched from the trip"});
+Object.assign(TRANSLATIONS.ar,{ai_not_verified:"غير موثّق",ai_trip_data_label:"بيانات الرحلة",ai_stay_record_state:"لا يوجد سجل إقامة كامل",ai_matched_trip_item:"عنصر تم التعرف عليه من الرحلة"});
+Object.assign(TRANSLATIONS.ru,{ai_not_verified:"не подтверждено",ai_trip_data_label:"данные поездки",ai_stay_record_state:"нет полной записи о проживании",ai_matched_trip_item:"объект найден в поездке"});
+Object.assign(TRANSLATIONS.es,{ai_not_verified:"no verificado",ai_trip_data_label:"datos del viaje",ai_stay_record_state:"no hay un registro completo del alojamiento",ai_matched_trip_item:"elemento identificado en el viaje"});
+Object.assign(TRANSLATIONS.pt,{ai_not_verified:"não verificado",ai_trip_data_label:"dados da viagem",ai_stay_record_state:"não há registro completo de hospedagem",ai_matched_trip_item:"item identificado na viagem"});
+/* RC4-AI-PRESENTATION-002: user-facing replacements for backend diagnostics. */
+Object.assign(TRANSLATIONS.he,{ai_no_matching_records:"לא נמצאו רשומות מתאימות",ai_busy_day_label:"יום עמוס",ai_missing_end_time_label:"חסר זמן סיום",ai_today_context_missing:"אין כרגע הקשר מספיק למצב ״היום״",ai_schema_entities:"לינות / נסיעות / פעילויות",ai_trip_snapshot_label:"נתוני הטיול"});
+Object.assign(TRANSLATIONS.en,{ai_no_matching_records:"no matching records were found",ai_busy_day_label:"busy day",ai_missing_end_time_label:"missing end time",ai_today_context_missing:"current-day context is not available",ai_schema_entities:"stays / journeys / activities",ai_trip_snapshot_label:"trip data"});
+Object.assign(TRANSLATIONS.ar,{ai_no_matching_records:"لم يتم العثور على سجلات مطابقة",ai_busy_day_label:"يوم مزدحم",ai_missing_end_time_label:"وقت الانتهاء غير مذكور",ai_today_context_missing:"سياق اليوم الحالي غير متاح",ai_schema_entities:"إقامات / تنقلات / أنشطة",ai_trip_snapshot_label:"بيانات الرحلة"});
+Object.assign(TRANSLATIONS.ru,{ai_no_matching_records:"подходящие записи не найдены",ai_busy_day_label:"насыщенный день",ai_missing_end_time_label:"не указано время окончания",ai_today_context_missing:"контекст текущего дня недоступен",ai_schema_entities:"проживание / поездки / активности",ai_trip_snapshot_label:"данные поездки"});
+Object.assign(TRANSLATIONS.es,{ai_no_matching_records:"no se encontraron registros coincidentes",ai_busy_day_label:"día cargado",ai_missing_end_time_label:"falta la hora de finalización",ai_today_context_missing:"no está disponible el contexto del día actual",ai_schema_entities:"alojamientos / trayectos / actividades",ai_trip_snapshot_label:"datos del viaje"});
+Object.assign(TRANSLATIONS.pt,{ai_no_matching_records:"nenhum registro correspondente foi encontrado",ai_busy_day_label:"dia cheio",ai_missing_end_time_label:"horário de término ausente",ai_today_context_missing:"o contexto do dia atual não está disponível",ai_schema_entities:"hospedagens / viagens / atividades",ai_trip_snapshot_label:"dados da viagem"});
+
+
+
+/* RC4-UX-CLEANUP-001: keep AI presentation product-facing. Internal agent
+   routing and sanitized-context terminology are intentionally not exposed. */
+Object.assign(TRANSLATIONS.he,{
+  ops_hub_aria:"כלים מרכזיים לטיול",ai_quick_aria:"שאלות מהירות",
+  ai_agent_note:"כשמשתמשים ב-TripMaster AI, נשלח לשירות ה-AI מידע מסונן מהטיול הנוכחי כדי לענות. מסמכים, קישורי הזמנה ומספרי אישור אינם נשלחים כברירת מחדל, וה-AI לא משנה את הטיול.",
+  ai_output_empty:"שאל שאלה על הטיול. TripMaster ישתמש קודם במה שכבר שמור בטיול.",
+  ai_error_context:"לא הצלחתי להכין מספיק מידע מהטיול לשאלה הזאת. אפשר לנסות לנסח אותה מחדש.",
+  ai_error_temporary:"TripMaster AI אינו זמין כרגע. אפשר לנסות שוב.",
+  ai_error_response:"קיבלתי תשובה שלא הצלחתי להציג. אפשר לנסות שוב.",
+  ai_error_network:"לא הצלחתי להתחבר ל-TripMaster AI. שאר TripMaster ממשיך לעבוד כרגיל."
+});
+Object.assign(TRANSLATIONS.en,{
+  ops_hub_aria:"Key trip tools",ai_quick_aria:"Quick questions",
+  ai_agent_note:"When you use TripMaster AI, a filtered context from the current trip is sent to the AI service to answer. Documents, booking URLs and confirmation numbers are not sent by default, and AI does not change the trip.",
+  ai_output_empty:"Ask a question about the trip. TripMaster will first use what is already saved in the trip.",
+  ai_error_context:"TripMaster could not prepare enough trip information for this question. Try rephrasing it.",
+  ai_error_temporary:"TripMaster AI is temporarily unavailable. You can try again.",
+  ai_error_response:"TripMaster received a response it could not display. You can try again.",
+  ai_error_network:"TripMaster could not reach TripMaster AI. The rest of the app continues to work normally."
+});
+Object.assign(TRANSLATIONS.ar,{
+  ops_hub_aria:"أدوات الرحلة الرئيسية",ai_quick_aria:"أسئلة سريعة",
+  ai_agent_note:"عند استخدام TripMaster AI، يُرسل سياق منقح من الرحلة الحالية إلى خدمة الذكاء الاصطناعي للإجابة. لا تُرسل المستندات أو روابط الحجز أو أرقام التأكيد افتراضيًا، ولا يغيّر الذكاء الاصطناعي الرحلة.",
+  ai_output_empty:"اطرح سؤالاً عن الرحلة. سيستخدم TripMaster أولاً ما هو محفوظ بالفعل في الرحلة.",
+  ai_error_context:"تعذر على TripMaster تجهيز معلومات كافية من الرحلة لهذا السؤال. جرّب إعادة صياغته.",
+  ai_error_temporary:"TripMaster AI غير متاح مؤقتًا. يمكنك المحاولة مجددًا.",
+  ai_error_response:"تلقى TripMaster ردًا تعذر عرضه. يمكنك المحاولة مجددًا.",
+  ai_error_network:"تعذر الاتصال بـ TripMaster AI. يستمر باقي التطبيق بالعمل بشكل طبيعي."
+});
+Object.assign(TRANSLATIONS.ru,{
+  ops_hub_aria:"Основные инструменты поездки",ai_quick_aria:"Быстрые вопросы",
+  ai_agent_note:"При использовании TripMaster AI в сервис ИИ отправляется отфильтрованный контекст текущей поездки для ответа. Документы, ссылки бронирований и номера подтверждений по умолчанию не отправляются, а ИИ не изменяет поездку.",
+  ai_output_empty:"Задайте вопрос о поездке. TripMaster сначала использует то, что уже сохранено в поездке.",
+  ai_error_context:"TripMaster не смог подготовить достаточно данных поездки для этого вопроса. Попробуйте переформулировать его.",
+  ai_error_temporary:"TripMaster AI временно недоступен. Можно попробовать снова.",
+  ai_error_response:"TripMaster получил ответ, который не удалось отобразить. Можно попробовать снова.",
+  ai_error_network:"Не удалось подключиться к TripMaster AI. Остальная часть приложения продолжает работать."
+});
+Object.assign(TRANSLATIONS.es,{
+  ops_hub_aria:"Herramientas principales del viaje",ai_quick_aria:"Preguntas rápidas",
+  ai_agent_note:"Al usar TripMaster AI, se envía al servicio de IA un contexto filtrado del viaje actual para responder. Los documentos, enlaces de reserva y números de confirmación no se envían por defecto, y la IA no modifica el viaje.",
+  ai_output_empty:"Haz una pregunta sobre el viaje. TripMaster usará primero lo que ya está guardado en el viaje.",
+  ai_error_context:"TripMaster no pudo preparar suficiente información del viaje para esta pregunta. Prueba a reformularla.",
+  ai_error_temporary:"TripMaster AI no está disponible temporalmente. Puedes intentarlo de nuevo.",
+  ai_error_response:"TripMaster recibió una respuesta que no pudo mostrar. Puedes intentarlo de nuevo.",
+  ai_error_network:"No se pudo conectar con TripMaster AI. El resto de la app sigue funcionando normalmente."
+});
+Object.assign(TRANSLATIONS.pt,{
+  ops_hub_aria:"Principais ferramentas da viagem",ai_quick_aria:"Perguntas rápidas",
+  ai_agent_note:"Ao usar o TripMaster AI, um contexto filtrado da viagem atual é enviado ao serviço de IA para responder. Documentos, links de reserva e números de confirmação não são enviados por padrão, e a IA não altera a viagem.",
+  ai_output_empty:"Faça uma pergunta sobre a viagem. O TripMaster usará primeiro o que já está salvo na viagem.",
+  ai_error_context:"O TripMaster não conseguiu preparar informações suficientes da viagem para esta pergunta. Tente reformulá-la.",
+  ai_error_temporary:"O TripMaster AI está temporariamente indisponível. Você pode tentar novamente.",
+  ai_error_response:"O TripMaster recebeu uma resposta que não conseguiu exibir. Você pode tentar novamente.",
+  ai_error_network:"Não foi possível conectar ao TripMaster AI. O restante do app continua funcionando normalmente."
+});
+
+
+/* RC4-FIX2: app-only hardening vocabulary. */
+Object.assign(TRANSLATIONS.he,{journey_arrival_date:"תאריך הגעה",journey_arrival_date_note:"השתמשו בזה כשנסיעה מגיעה אחרי חצות או בתאריך מאוחר יותר.",toast_journey_arrival_date_invalid:"תאריך ההגעה לא יכול להיות לפני תאריך היציאה",toast_journey_arrival_date_required:"לנסיעה שחוצה חצות צריך לציין תאריך הגעה",toast_journey_time_range:"שעת ההגעה לא יכולה להיות לפני שעת היציאה באותו תאריך",ops_more_aria:"כלים נוספים לטיול",ops_money_meta:"{n} הוצאות · תקציב {budget}",ops_documents_meta:"{n} מסמכים / אישורים"});
+Object.assign(TRANSLATIONS.en,{journey_arrival_date:"Arrival date",journey_arrival_date_note:"Use this when a journey arrives after midnight or on a later date.",toast_journey_arrival_date_invalid:"Arrival date cannot be before the departure date",toast_journey_arrival_date_required:"A journey that crosses midnight needs an arrival date",toast_journey_time_range:"Arrival time cannot be earlier than departure time on the same date",ops_more_aria:"More trip tools",ops_money_meta:"{n} expenses · budget {budget}",ops_documents_meta:"{n} documents / confirmations"});
+Object.assign(TRANSLATIONS.ar,{journey_arrival_date:"تاريخ الوصول",journey_arrival_date_note:"استخدم هذا عندما تصل الرحلة بعد منتصف الليل أو في تاريخ لاحق.",toast_journey_arrival_date_invalid:"لا يمكن أن يكون تاريخ الوصول قبل تاريخ المغادرة",toast_journey_arrival_date_required:"الرحلة التي تتجاوز منتصف الليل تحتاج إلى تاريخ وصول",toast_journey_time_range:"لا يمكن أن يكون وقت الوصول قبل وقت المغادرة في التاريخ نفسه",ops_more_aria:"أدوات إضافية للرحلة",ops_money_meta:"{n} مصروفات · الميزانية {budget}",ops_documents_meta:"{n} مستندات / تأكيدات"});
+Object.assign(TRANSLATIONS.ru,{journey_arrival_date:"Дата прибытия",journey_arrival_date_note:"Укажите её, если поездка заканчивается после полуночи или в более позднюю дату.",toast_journey_arrival_date_invalid:"Дата прибытия не может быть раньше даты отправления",toast_journey_arrival_date_required:"Для поездки через полночь нужна дата прибытия",toast_journey_time_range:"В тот же день время прибытия не может быть раньше времени отправления",ops_more_aria:"Дополнительные инструменты поездки",ops_money_meta:"{n} расходов · бюджет {budget}",ops_documents_meta:"{n} документов / подтверждений"});
+Object.assign(TRANSLATIONS.es,{journey_arrival_date:"Fecha de llegada",journey_arrival_date_note:"Úsala cuando el trayecto llegue después de medianoche o en una fecha posterior.",toast_journey_arrival_date_invalid:"La fecha de llegada no puede ser anterior a la fecha de salida",toast_journey_arrival_date_required:"Un trayecto que cruza medianoche necesita fecha de llegada",toast_journey_time_range:"La hora de llegada no puede ser anterior a la salida en la misma fecha",ops_more_aria:"Más herramientas del viaje",ops_money_meta:"{n} gastos · presupuesto {budget}",ops_documents_meta:"{n} documentos / confirmaciones"});
+Object.assign(TRANSLATIONS.pt,{journey_arrival_date:"Data de chegada",journey_arrival_date_note:"Use quando a viagem chegar depois da meia-noite ou em uma data posterior.",toast_journey_arrival_date_invalid:"A data de chegada não pode ser anterior à data de partida",toast_journey_arrival_date_required:"Uma viagem que cruza a meia-noite precisa de data de chegada",toast_journey_time_range:"A hora de chegada não pode ser anterior à partida na mesma data",ops_more_aria:"Mais ferramentas da viagem",ops_money_meta:"{n} despesas · orçamento {budget}",ops_documents_meta:"{n} documentos / confirmações"});
+
+/* RC4-FIX3: major app hardening — overnight activities/Travel Day, update UX,
+   notification permission, Access note visibility and concise Today announcements. */
+Object.assign(TRANSLATIONS.he,{
+  field_end_next_day:"מסתיימת ביום הבא",toast_end_next_day_needs_time:"כדי לסמן שהפעילות מסתיימת ביום הבא צריך להזין שעת סיום",
+  travel_day_arrival_date:"תאריך הגעה",travel_day_arrival_date_note:"השתמשו בזה כשיום הנסיעה מסתיים אחרי חצות או בתאריך מאוחר יותר.",travel_day_arrival_date_short:"הגעה",
+  today_alerts_enable:"אפשר התראות",today_alerts_enabled:"התראות פעילות",today_alerts_blocked:"התראות חסומות",today_alerts_unsupported:"התראות דפדפן אינן נתמכות במכשיר הזה",today_alerts_granted:"התראות הופעלו בזמן שהאפליקציה פתוחה",today_alerts_not_granted:"לא ניתנה הרשאה להתראות",today_live_announce_now:"עכשיו: {title}",today_live_announce_next:"הבא: {title}",
+  access_profile_saved_note:"הערת Access שנשמרה",update_ready_title:"עדכון TripMaster מוכן",update_ready_body:"גרסה חדשה מוכנה. אפשר לרענן כשנוח בלי לאבד את נתוני הטיול.",update_later:"אחר כך",update_reload:"רענן עכשיו"
+});
+Object.assign(TRANSLATIONS.en,{
+  field_end_next_day:"Ends the next day",toast_end_next_day_needs_time:"Enter an end time before marking the activity as ending the next day",
+  travel_day_arrival_date:"Arrival date",travel_day_arrival_date_note:"Use this when the Travel Day reaches the destination after midnight or on a later date.",travel_day_arrival_date_short:"Arrival",
+  today_alerts_enable:"Enable alerts",today_alerts_enabled:"Alerts enabled",today_alerts_blocked:"Alerts blocked",today_alerts_unsupported:"Browser alerts are not supported on this device",today_alerts_granted:"Alerts enabled while the app is open",today_alerts_not_granted:"Notification permission was not granted",today_live_announce_now:"Now: {title}",today_live_announce_next:"Next: {title}",
+  access_profile_saved_note:"Saved Access note",update_ready_title:"TripMaster update ready",update_ready_body:"A newer version is ready. Reload when convenient without losing trip data.",update_later:"Later",update_reload:"Reload now"
+});
+Object.assign(TRANSLATIONS.ar,{
+  field_end_next_day:"ينتهي في اليوم التالي",toast_end_next_day_needs_time:"أدخل وقت انتهاء قبل تحديد أن النشاط ينتهي في اليوم التالي",
+  travel_day_arrival_date:"تاريخ الوصول",travel_day_arrival_date_note:"استخدمه عندما ينتهي يوم السفر بعد منتصف الليل أو في تاريخ لاحق.",travel_day_arrival_date_short:"الوصول",
+  today_alerts_enable:"تفعيل التنبيهات",today_alerts_enabled:"التنبيهات مفعلة",today_alerts_blocked:"التنبيهات محظورة",today_alerts_unsupported:"تنبيهات المتصفح غير مدعومة على هذا الجهاز",today_alerts_granted:"تم تفعيل التنبيهات أثناء فتح التطبيق",today_alerts_not_granted:"لم يتم منح إذن التنبيهات",today_live_announce_now:"الآن: {title}",today_live_announce_next:"التالي: {title}",
+  access_profile_saved_note:"ملاحظة وصول محفوظة",update_ready_title:"تحديث TripMaster جاهز",update_ready_body:"يتوفر إصدار أحدث. أعد التحميل عندما يناسبك دون فقد بيانات الرحلة.",update_later:"لاحقًا",update_reload:"إعادة التحميل الآن"
+});
+Object.assign(TRANSLATIONS.ru,{
+  field_end_next_day:"Заканчивается на следующий день",toast_end_next_day_needs_time:"Укажите время окончания, прежде чем отмечать следующий день",
+  travel_day_arrival_date:"Дата прибытия",travel_day_arrival_date_note:"Используйте, если день переезда заканчивается после полуночи или позже.",travel_day_arrival_date_short:"Прибытие",
+  today_alerts_enable:"Включить уведомления",today_alerts_enabled:"Уведомления включены",today_alerts_blocked:"Уведомления заблокированы",today_alerts_unsupported:"Уведомления браузера не поддерживаются на этом устройстве",today_alerts_granted:"Уведомления включены, пока приложение открыто",today_alerts_not_granted:"Разрешение на уведомления не предоставлено",today_live_announce_now:"Сейчас: {title}",today_live_announce_next:"Далее: {title}",
+  access_profile_saved_note:"Сохраненная заметка Access",update_ready_title:"Обновление TripMaster готово",update_ready_body:"Новая версия готова. Перезагрузите приложение в удобный момент без потери данных.",update_later:"Позже",update_reload:"Перезагрузить"
+});
+Object.assign(TRANSLATIONS.es,{
+  field_end_next_day:"Termina al día siguiente",toast_end_next_day_needs_time:"Introduce una hora de fin antes de marcar que termina al día siguiente",
+  travel_day_arrival_date:"Fecha de llegada",travel_day_arrival_date_note:"Úsala cuando el día de viaje termine después de medianoche o en una fecha posterior.",travel_day_arrival_date_short:"Llegada",
+  today_alerts_enable:"Activar avisos",today_alerts_enabled:"Avisos activados",today_alerts_blocked:"Avisos bloqueados",today_alerts_unsupported:"Los avisos del navegador no son compatibles con este dispositivo",today_alerts_granted:"Avisos activados mientras la app esté abierta",today_alerts_not_granted:"No se concedió permiso para notificaciones",today_live_announce_now:"Ahora: {title}",today_live_announce_next:"Siguiente: {title}",
+  access_profile_saved_note:"Nota de Access guardada",update_ready_title:"Actualización de TripMaster lista",update_ready_body:"Hay una versión nueva lista. Recarga cuando te convenga sin perder los datos del viaje.",update_later:"Más tarde",update_reload:"Recargar ahora"
+});
+Object.assign(TRANSLATIONS.pt,{
+  field_end_next_day:"Termina no dia seguinte",toast_end_next_day_needs_time:"Informe um horário de término antes de marcar que termina no dia seguinte",
+  travel_day_arrival_date:"Data de chegada",travel_day_arrival_date_note:"Use quando o dia de viagem terminar depois da meia-noite ou em uma data posterior.",travel_day_arrival_date_short:"Chegada",
+  today_alerts_enable:"Ativar alertas",today_alerts_enabled:"Alertas ativados",today_alerts_blocked:"Alertas bloqueados",today_alerts_unsupported:"Alertas do navegador não são compatíveis com este dispositivo",today_alerts_granted:"Alertas ativados enquanto o app estiver aberto",today_alerts_not_granted:"A permissão para notificações não foi concedida",today_live_announce_now:"Agora: {title}",today_live_announce_next:"Próximo: {title}",
+  access_profile_saved_note:"Nota de Access salva",update_ready_title:"Atualização do TripMaster pronta",update_ready_body:"Uma versão mais nova está pronta. Recarregue quando for conveniente sem perder os dados da viagem.",update_later:"Mais tarde",update_reload:"Recarregar agora"
+});
+Object.assign(TRANSLATIONS.he,{toast_travel_day_arrival_date_invalid:"תאריך ההגעה של יום הנסיעה לא יכול להיות לפני תאריך היום",toast_travel_day_arrival_date_required:"יום נסיעה שחוצה חצות צריך תאריך הגעה",toast_travel_day_time_range:"שעת ההגעה לא יכולה להיות לפני שעת היציאה באותו תאריך"});
+Object.assign(TRANSLATIONS.en,{toast_travel_day_arrival_date_invalid:"Travel Day arrival date cannot be before the day date",toast_travel_day_arrival_date_required:"A Travel Day that crosses midnight needs an arrival date",toast_travel_day_time_range:"Arrival time cannot be earlier than departure time on the same date"});
+Object.assign(TRANSLATIONS.ar,{toast_travel_day_arrival_date_invalid:"لا يمكن أن يكون تاريخ وصول يوم السفر قبل تاريخ اليوم",toast_travel_day_arrival_date_required:"يوم السفر الذي يتجاوز منتصف الليل يحتاج إلى تاريخ وصول",toast_travel_day_time_range:"لا يمكن أن يكون وقت الوصول قبل وقت المغادرة في التاريخ نفسه"});
+Object.assign(TRANSLATIONS.ru,{toast_travel_day_arrival_date_invalid:"Дата прибытия дня переезда не может быть раньше даты дня",toast_travel_day_arrival_date_required:"Для дня переезда через полночь нужна дата прибытия",toast_travel_day_time_range:"В тот же день время прибытия не может быть раньше отправления"});
+Object.assign(TRANSLATIONS.es,{toast_travel_day_arrival_date_invalid:"La fecha de llegada del día de viaje no puede ser anterior a la fecha del día",toast_travel_day_arrival_date_required:"Un día de viaje que cruza medianoche necesita fecha de llegada",toast_travel_day_time_range:"La llegada no puede ser anterior a la salida en la misma fecha"});
+Object.assign(TRANSLATIONS.pt,{toast_travel_day_arrival_date_invalid:"A data de chegada do dia de viagem não pode ser anterior à data do dia",toast_travel_day_arrival_date_required:"Um dia de viagem que cruza a meia-noite precisa de data de chegada",toast_travel_day_time_range:"A chegada não pode ser anterior à partida na mesma data"});
+Object.assign(TRANSLATIONS.he,{planner_readiness_title:"מוכנות הטיול",planner_readiness_meta:"{issues} בעיות · {checks} דברים לבדיקה",planner_readiness_clear:"אין כרגע בעיות תכנון פתוחות"});
+Object.assign(TRANSLATIONS.en,{planner_readiness_title:"Trip readiness",planner_readiness_meta:"{issues} issues · {checks} checks",planner_readiness_clear:"No open planning issues right now"});
+Object.assign(TRANSLATIONS.ar,{planner_readiness_title:"جاهزية الرحلة",planner_readiness_meta:"{issues} مشكلات · {checks} عناصر للمراجعة",planner_readiness_clear:"لا توجد مشكلات تخطيط مفتوحة حاليًا"});
+Object.assign(TRANSLATIONS.ru,{planner_readiness_title:"Готовность поездки",planner_readiness_meta:"Проблем: {issues} · проверок: {checks}",planner_readiness_clear:"Сейчас нет открытых проблем планирования"});
+Object.assign(TRANSLATIONS.es,{planner_readiness_title:"Preparación del viaje",planner_readiness_meta:"{issues} problemas · {checks} revisiones",planner_readiness_clear:"No hay problemas de planificación abiertos ahora"});
+Object.assign(TRANSLATIONS.pt,{planner_readiness_title:"Prontidão da viagem",planner_readiness_meta:"{issues} problemas · {checks} verificações",planner_readiness_clear:"Não há problemas de planejamento em aberto agora"});
+
+/* v1100-RC1 — Readiness 2.0 */
+Object.assign(TRANSLATIONS.he,{
+  readiness_center_title:"מרכז מוכנות",
+  readiness_center_summary:"{issues} בעיות · {checks} דברים לבדיקה",
+  readiness_ready_detail:"הטיול נראה מוכן לפי המידע שנשמר כרגע.",
+  readiness_review_action:"בדיקה וטיפול",
+  readiness_area_schedule:"זמנים ומסלול",
+  readiness_area_logistics:"לינות ונסיעות",
+  readiness_area_bookings:"הזמנות",
+  readiness_area_money:"תקציב ותשלומים",
+  readiness_area_documents:"מסמכים",
+  readiness_area_access:"נגישות",
+  readiness_area_setup:"פרטי טיול"
+});
+Object.assign(TRANSLATIONS.en,{
+  readiness_center_title:"Readiness center",
+  readiness_center_summary:"{issues} issues · {checks} checks",
+  readiness_ready_detail:"The trip looks ready based on the information currently saved.",
+  readiness_review_action:"Review & fix",
+  readiness_area_schedule:"Schedule & timing",
+  readiness_area_logistics:"Stays & journeys",
+  readiness_area_bookings:"Bookings",
+  readiness_area_money:"Budget & payments",
+  readiness_area_documents:"Documents",
+  readiness_area_access:"Access",
+  readiness_area_setup:"Trip details"
+});
+Object.assign(TRANSLATIONS.ar,{
+  readiness_center_title:"مركز جاهزية الرحلة",
+  readiness_center_summary:"{issues} مشكلات · {checks} عناصر للمراجعة",
+  readiness_ready_detail:"تبدو الرحلة جاهزة استنادًا إلى المعلومات المحفوظة حاليًا.",
+  readiness_review_action:"مراجعة ومعالجة",
+  readiness_area_schedule:"الجدول والتوقيت",
+  readiness_area_logistics:"الإقامات والتنقلات",
+  readiness_area_bookings:"الحجوزات",
+  readiness_area_money:"الميزانية والمدفوعات",
+  readiness_area_documents:"المستندات",
+  readiness_area_access:"إمكانية الوصول",
+  readiness_area_setup:"تفاصيل الرحلة"
+});
+Object.assign(TRANSLATIONS.ru,{
+  readiness_center_title:"Центр готовности",
+  readiness_center_summary:"Проблем: {issues} · проверок: {checks}",
+  readiness_ready_detail:"По сохранённым данным поездка выглядит готовой.",
+  readiness_review_action:"Проверить и исправить",
+  readiness_area_schedule:"Маршрут и время",
+  readiness_area_logistics:"Проживание и поездки",
+  readiness_area_bookings:"Бронирования",
+  readiness_area_money:"Бюджет и платежи",
+  readiness_area_documents:"Документы",
+  readiness_area_access:"Доступность",
+  readiness_area_setup:"Детали поездки"
+});
+Object.assign(TRANSLATIONS.es,{
+  readiness_center_title:"Centro de preparación",
+  readiness_center_summary:"{issues} problemas · {checks} revisiones",
+  readiness_ready_detail:"El viaje parece listo según la información guardada actualmente.",
+  readiness_review_action:"Revisar y resolver",
+  readiness_area_schedule:"Horario y tiempos",
+  readiness_area_logistics:"Alojamientos y trayectos",
+  readiness_area_bookings:"Reservas",
+  readiness_area_money:"Presupuesto y pagos",
+  readiness_area_documents:"Documentos",
+  readiness_area_access:"Accesibilidad",
+  readiness_area_setup:"Detalles del viaje"
+});
+Object.assign(TRANSLATIONS.pt,{
+  readiness_center_title:"Centro de prontidão",
+  readiness_center_summary:"{issues} problemas · {checks} verificações",
+  readiness_ready_detail:"A viagem parece pronta com base nas informações salvas atualmente.",
+  readiness_review_action:"Revisar e resolver",
+  readiness_area_schedule:"Agenda e horários",
+  readiness_area_logistics:"Hospedagens e viagens",
+  readiness_area_bookings:"Reservas",
+  readiness_area_money:"Orçamento e pagamentos",
+  readiness_area_documents:"Documentos",
+  readiness_area_access:"Acessibilidade",
+  readiness_area_setup:"Detalhes da viagem"
+});
+
+/* v1100-RC2 — Beta Operations Pack */
+Object.assign(TRANSLATIONS.he,{
+  currency_choose:"בחר מטבע",
+  booking_filter_group_aria:"סינון מרכז ההזמנות",documents_filter_group_aria:"סינון מסמכים",
+  filter_all:"הכול",filter_needs_attention:"דורש טיפול",filter_needed:"נדרש",
+  booking_summary:"{total} פריטי הזמנה · {attention} דורשים טיפול · {paid} שולמו",
+  booking_center_no_attention:"אין כרגע פריטי הזמנה שדורשים טיפול.",
+  budget_progress_label:"{pct}% מהתקציב נרשם",
+  money_insights_summary:"{expenses} הוצאות · {attention} תשלומים דורשים טיפול",
+  money_top_categories:"הקטגוריות המובילות",
+  payment_attention_badge:"תשלום דורש טיפול",
+  documents_summary:"{total} מסמכים ואישורים · {needed} עדיין נדרשים",
+  documents_no_needed:"אין כרגע מסמכים שמסומנים כנדרשים."
+});
+Object.assign(TRANSLATIONS.en,{
+  currency_choose:"Choose currency",
+  booking_filter_group_aria:"Booking Center filters",documents_filter_group_aria:"Document filters",
+  filter_all:"All",filter_needs_attention:"Needs attention",filter_needed:"Needed",
+  booking_summary:"{total} booking items · {attention} need attention · {paid} paid",
+  booking_center_no_attention:"No booking items need attention right now.",
+  budget_progress_label:"{pct}% of the budget recorded",
+  money_insights_summary:"{expenses} expenses · {attention} payments need attention",
+  money_top_categories:"Top categories",
+  payment_attention_badge:"Payment needs attention",
+  documents_summary:"{total} documents & confirmations · {needed} still needed",
+  documents_no_needed:"No documents are currently marked as needed."
+});
+Object.assign(TRANSLATIONS.ar,{
+  currency_choose:"اختر العملة",
+  booking_filter_group_aria:"مرشحات مركز الحجوزات",documents_filter_group_aria:"مرشحات المستندات",
+  filter_all:"الكل",filter_needs_attention:"يحتاج إلى متابعة",filter_needed:"مطلوب",
+  booking_summary:"{total} عناصر حجز · {attention} تحتاج إلى متابعة · {paid} مدفوعة",
+  booking_center_no_attention:"لا توجد عناصر حجز تحتاج إلى متابعة الآن.",
+  budget_progress_label:"تم تسجيل {pct}% من الميزانية",
+  money_insights_summary:"{expenses} مصروفات · {attention} مدفوعات تحتاج إلى متابعة",
+  money_top_categories:"أعلى الفئات",
+  payment_attention_badge:"الدفع يحتاج إلى متابعة",
+  documents_summary:"{total} مستندات وتأكيدات · {needed} ما زالت مطلوبة",
+  documents_no_needed:"لا توجد مستندات محددة كمطلوبة الآن."
+});
+Object.assign(TRANSLATIONS.ru,{
+  currency_choose:"Выберите валюту",
+  booking_filter_group_aria:"Фильтры центра бронирований",documents_filter_group_aria:"Фильтры документов",
+  filter_all:"Все",filter_needs_attention:"Требует внимания",filter_needed:"Нужно",
+  booking_summary:"Бронирований: {total} · требуют внимания: {attention} · оплачено: {paid}",
+  booking_center_no_attention:"Сейчас нет бронирований, требующих внимания.",
+  budget_progress_label:"Записано {pct}% бюджета",
+  money_insights_summary:"Расходов: {expenses} · платежей требуют внимания: {attention}",
+  money_top_categories:"Основные категории",
+  payment_attention_badge:"Платёж требует внимания",
+  documents_summary:"Документов и подтверждений: {total} · ещё нужно: {needed}",
+  documents_no_needed:"Сейчас нет документов, отмеченных как необходимые."
+});
+Object.assign(TRANSLATIONS.es,{
+  currency_choose:"Elige una moneda",
+  booking_filter_group_aria:"Filtros del centro de reservas",documents_filter_group_aria:"Filtros de documentos",
+  filter_all:"Todo",filter_needs_attention:"Requiere atención",filter_needed:"Necesario",
+  booking_summary:"{total} elementos de reserva · {attention} requieren atención · {paid} pagados",
+  booking_center_no_attention:"Ahora no hay reservas que requieran atención.",
+  budget_progress_label:"{pct}% del presupuesto registrado",
+  money_insights_summary:"{expenses} gastos · {attention} pagos requieren atención",
+  money_top_categories:"Categorías principales",
+  payment_attention_badge:"El pago requiere atención",
+  documents_summary:"{total} documentos y confirmaciones · {needed} aún necesarios",
+  documents_no_needed:"Ahora no hay documentos marcados como necesarios."
+});
+Object.assign(TRANSLATIONS.pt,{
+  currency_choose:"Escolha a moeda",
+  booking_filter_group_aria:"Filtros da central de reservas",documents_filter_group_aria:"Filtros de documentos",
+  filter_all:"Todos",filter_needs_attention:"Precisa de atenção",filter_needed:"Necessário",
+  booking_summary:"{total} itens de reserva · {attention} precisam de atenção · {paid} pagos",
+  booking_center_no_attention:"Nenhum item de reserva precisa de atenção agora.",
+  budget_progress_label:"{pct}% do orçamento registrado",
+  money_insights_summary:"{expenses} despesas · {attention} pagamentos precisam de atenção",
+  money_top_categories:"Principais categorias",
+  payment_attention_badge:"Pagamento precisa de atenção",
+  documents_summary:"{total} documentos e confirmações · {needed} ainda necessários",
+  documents_no_needed:"Nenhum documento está marcado como necessário agora."
+});
+
+Object.assign(TRANSLATIONS.he,{money_filter_group_aria:"סינון הוצאות",money_no_attention:"אין כרגע תשלומי הוצאות שדורשים טיפול."});
+Object.assign(TRANSLATIONS.en,{money_filter_group_aria:"Expense filters",money_no_attention:"No expense payments need attention right now."});
+Object.assign(TRANSLATIONS.ar,{money_filter_group_aria:"مرشحات المصروفات",money_no_attention:"لا توجد مدفوعات مصروفات تحتاج إلى متابعة الآن."});
+Object.assign(TRANSLATIONS.ru,{money_filter_group_aria:"Фильтры расходов",money_no_attention:"Сейчас нет платежей по расходам, требующих внимания."});
+Object.assign(TRANSLATIONS.es,{money_filter_group_aria:"Filtros de gastos",money_no_attention:"Ahora no hay pagos de gastos que requieran atención."});
+Object.assign(TRANSLATIONS.pt,{money_filter_group_aria:"Filtros de despesas",money_no_attention:"Nenhum pagamento de despesas precisa de atenção agora."});
+
+
+/* v1200-RC1 — Trip Board + traveller checklist */
+Object.assign(TRANSLATIONS.he,{
+  trip_board_title:"לוח הטיול",trip_board_tabs_aria:"חלקי לוח הטיול",trip_board_agenda:"כל הטיול",trip_board_tasks:"רשימת משימות",
+  trip_board_search_label:"חיפוש בכל הטיול",trip_board_search_ph:"פעילות, מקום, מלון, רכבת…",trip_board_summary:"{days} ימים · {activities} פעילויות · {tasks} משימות פתוחות",trip_board_meta:"{days} ימים · {tasks} משימות פתוחות",
+  trip_board_day_items:"{n} פריטים",trip_board_day_empty:"אין פריטים ליום הזה",trip_board_no_results:"לא נמצאו פריטים שמתאימים לחיפוש",trip_board_empty:"עדיין אין ימים או פריטים בטיול.",
+  trip_task_add_label:"הוספת משימה לטיול",trip_task_add_ph:"לקנות כרטיסים, לבדוק הסעה…",trip_task_add_btn:"הוסף",trip_task_progress:"{done} מתוך {total} הושלמו",trip_task_none:"עדיין אין משימות אישיות לטיול.",trip_task_mark_done:"סמן כהושלם",trip_task_mark_open:"החזר לפתוח",trip_task_delete:"מחק משימה",trip_task_deleted:"המשימה נמחקה",trip_task_required:"צריך לכתוב משימה",trip_task_added:"המשימה נוספה",
+  readiness_open_tasks:"{n} משימות אישיות עדיין פתוחות",readiness_area_tasks:"משימות אישיות"
+});
+Object.assign(TRANSLATIONS.en,{
+  trip_board_title:"Trip Board",trip_board_tabs_aria:"Trip Board sections",trip_board_agenda:"Whole trip",trip_board_tasks:"Checklist",
+  trip_board_search_label:"Search the whole trip",trip_board_search_ph:"Activity, place, hotel, train…",trip_board_summary:"{days} days · {activities} activities · {tasks} open tasks",trip_board_meta:"{days} days · {tasks} open tasks",
+  trip_board_day_items:"{n} items",trip_board_day_empty:"No items for this day",trip_board_no_results:"No trip items match this search",trip_board_empty:"There are no trip days or items yet.",
+  trip_task_add_label:"Add a trip task",trip_task_add_ph:"Buy tickets, check transfer…",trip_task_add_btn:"Add",trip_task_progress:"{done} of {total} completed",trip_task_none:"No personal trip tasks yet.",trip_task_mark_done:"Mark completed",trip_task_mark_open:"Mark open",trip_task_delete:"Delete task",trip_task_deleted:"Task deleted",trip_task_required:"Enter a task first",trip_task_added:"Task added",
+  readiness_open_tasks:"{n} personal trip tasks are still open",readiness_area_tasks:"Personal tasks"
+});
+Object.assign(TRANSLATIONS.ar,{
+  trip_board_title:"لوحة الرحلة",trip_board_tabs_aria:"أقسام لوحة الرحلة",trip_board_agenda:"الرحلة كاملة",trip_board_tasks:"قائمة المهام",
+  trip_board_search_label:"البحث في الرحلة كلها",trip_board_search_ph:"نشاط، مكان، فندق، قطار…",trip_board_summary:"{days} أيام · {activities} أنشطة · {tasks} مهام مفتوحة",trip_board_meta:"{days} أيام · {tasks} مهام مفتوحة",
+  trip_board_day_items:"{n} عناصر",trip_board_day_empty:"لا توجد عناصر لهذا اليوم",trip_board_no_results:"لا توجد عناصر تطابق البحث",trip_board_empty:"لا توجد أيام أو عناصر في الرحلة بعد.",
+  trip_task_add_label:"إضافة مهمة للرحلة",trip_task_add_ph:"شراء تذاكر، فحص النقل…",trip_task_add_btn:"إضافة",trip_task_progress:"اكتمل {done} من {total}",trip_task_none:"لا توجد مهام شخصية للرحلة بعد.",trip_task_mark_done:"وضع كمكتمل",trip_task_mark_open:"إعادة إلى مفتوح",trip_task_delete:"حذف المهمة",trip_task_deleted:"تم حذف المهمة",trip_task_required:"أدخل مهمة أولًا",trip_task_added:"تمت إضافة المهمة",
+  readiness_open_tasks:"{n} مهام شخصية ما زالت مفتوحة",readiness_area_tasks:"مهام شخصية"
+});
+Object.assign(TRANSLATIONS.ru,{
+  trip_board_title:"Панель поездки",trip_board_tabs_aria:"Разделы панели поездки",trip_board_agenda:"Вся поездка",trip_board_tasks:"Список задач",
+  trip_board_search_label:"Поиск по всей поездке",trip_board_search_ph:"Активность, место, отель, поезд…",trip_board_summary:"Дней: {days} · активностей: {activities} · открытых задач: {tasks}",trip_board_meta:"Дней: {days} · задач: {tasks}",
+  trip_board_day_items:"Элементов: {n}",trip_board_day_empty:"На этот день нет элементов",trip_board_no_results:"Ничего не найдено",trip_board_empty:"В поездке пока нет дней или элементов.",
+  trip_task_add_label:"Добавить задачу поездки",trip_task_add_ph:"Купить билеты, проверить трансфер…",trip_task_add_btn:"Добавить",trip_task_progress:"Выполнено {done} из {total}",trip_task_none:"Личных задач поездки пока нет.",trip_task_mark_done:"Отметить выполненной",trip_task_mark_open:"Вернуть в открытые",trip_task_delete:"Удалить задачу",trip_task_deleted:"Задача удалена",trip_task_required:"Сначала введите задачу",trip_task_added:"Задача добавлена",
+  readiness_open_tasks:"Открытых личных задач: {n}",readiness_area_tasks:"Личные задачи"
+});
+Object.assign(TRANSLATIONS.es,{
+  trip_board_title:"Panel del viaje",trip_board_tabs_aria:"Secciones del panel del viaje",trip_board_agenda:"Todo el viaje",trip_board_tasks:"Lista de tareas",
+  trip_board_search_label:"Buscar en todo el viaje",trip_board_search_ph:"Actividad, lugar, hotel, tren…",trip_board_summary:"{days} días · {activities} actividades · {tasks} tareas abiertas",trip_board_meta:"{days} días · {tasks} tareas abiertas",
+  trip_board_day_items:"{n} elementos",trip_board_day_empty:"No hay elementos para este día",trip_board_no_results:"No hay elementos que coincidan con la búsqueda",trip_board_empty:"Todavía no hay días ni elementos en el viaje.",
+  trip_task_add_label:"Añadir tarea del viaje",trip_task_add_ph:"Comprar entradas, revisar traslado…",trip_task_add_btn:"Añadir",trip_task_progress:"{done} de {total} completadas",trip_task_none:"Aún no hay tareas personales del viaje.",trip_task_mark_done:"Marcar como completada",trip_task_mark_open:"Marcar como abierta",trip_task_delete:"Eliminar tarea",trip_task_deleted:"Tarea eliminada",trip_task_required:"Escribe una tarea primero",trip_task_added:"Tarea añadida",
+  readiness_open_tasks:"Quedan {n} tareas personales abiertas",readiness_area_tasks:"Tareas personales"
+});
+Object.assign(TRANSLATIONS.pt,{
+  trip_board_title:"Painel da viagem",trip_board_tabs_aria:"Seções do painel da viagem",trip_board_agenda:"Viagem inteira",trip_board_tasks:"Lista de tarefas",
+  trip_board_search_label:"Pesquisar na viagem inteira",trip_board_search_ph:"Atividade, lugar, hotel, trem…",trip_board_summary:"{days} dias · {activities} atividades · {tasks} tarefas abertas",trip_board_meta:"{days} dias · {tasks} tarefas abertas",
+  trip_board_day_items:"{n} itens",trip_board_day_empty:"Nenhum item para este dia",trip_board_no_results:"Nenhum item corresponde à pesquisa",trip_board_empty:"Ainda não há dias ou itens na viagem.",
+  trip_task_add_label:"Adicionar tarefa da viagem",trip_task_add_ph:"Comprar ingressos, verificar transfer…",trip_task_add_btn:"Adicionar",trip_task_progress:"{done} de {total} concluídas",trip_task_none:"Ainda não há tarefas pessoais da viagem.",trip_task_mark_done:"Marcar como concluída",trip_task_mark_open:"Marcar como aberta",trip_task_delete:"Excluir tarefa",trip_task_deleted:"Tarefa excluída",trip_task_required:"Digite uma tarefa primeiro",trip_task_added:"Tarefa adicionada",
+  readiness_open_tasks:"{n} tarefas pessoais ainda estão abertas",readiness_area_tasks:"Tarefas pessoais"
+});
+
+
+/* v1300-RC1 — multi-trip productivity */
+Object.assign(TRANSLATIONS.he,{trip_duplicate_btn:"📑 שכפל טיול",trip_copy_name:"{name} — עותק",toast_trip_duplicated:"נוצר עותק חדש של הטיול",home_past_trips:"טיולים קודמים"});
+Object.assign(TRANSLATIONS.en,{trip_duplicate_btn:"📑 Duplicate trip",trip_copy_name:"{name} — copy",toast_trip_duplicated:"A new trip copy was created",home_past_trips:"Past trips"});
+Object.assign(TRANSLATIONS.ar,{trip_duplicate_btn:"📑 نسخ الرحلة",trip_copy_name:"{name} — نسخة",toast_trip_duplicated:"تم إنشاء نسخة جديدة من الرحلة",home_past_trips:"رحلات سابقة"});
+Object.assign(TRANSLATIONS.ru,{trip_duplicate_btn:"📑 Дублировать поездку",trip_copy_name:"{name} — копия",toast_trip_duplicated:"Создана новая копия поездки",home_past_trips:"Прошлые поездки"});
+Object.assign(TRANSLATIONS.es,{trip_duplicate_btn:"📑 Duplicar viaje",trip_copy_name:"{name} — copia",toast_trip_duplicated:"Se creó una nueva copia del viaje",home_past_trips:"Viajes anteriores"});
+Object.assign(TRANSLATIONS.pt,{trip_duplicate_btn:"📑 Duplicar viagem",trip_copy_name:"{name} — cópia",toast_trip_duplicated:"Uma nova cópia da viagem foi criada",home_past_trips:"Viagens anteriores"});
+
+
+/* v1400-RC1 — beta reliability / local recovery center */
+Object.assign(TRANSLATIONS.he,{
+  safety_center_title:"מרכז בטיחות נתונים",safety_center_note:"תמונת הבטיחות נשמרת רק במכשיר ושומרת עותק אחרון אחד.",safety_snapshot_heading:"תמונת בטיחות מקומית",safety_snapshot_create:"צור תמונה עכשיו",safety_snapshot_restore:"שחזר תמונה",safety_snapshot_available:"נשמר: {date} · סיבה: {reason} · {trips} טיולים",safety_snapshot_none:"אין כרגע תמונת בטיחות מקומית.",safety_snapshot_created:"נוצרה תמונת בטיחות מקומית",
+  safety_backup_heading:"גיבוי נייד",safety_backup_note:"קובץ גיבוי שהורדתם הוא עדיין העותק הבטוח ביותר אם המכשיר או אחסון הדפדפן יאבדו.",
+  safety_health_version:"גרסת אפליקציה",safety_health_network:"חיבור",safety_health_storage:"אחסון מקומי",safety_health_offline:"מעטפת אופליין",safety_health_trips:"טיולים שמורים",safety_health_active:"טיול פעיל",safety_health_usage:"שימוש באחסון",
+  safety_online:"מחובר",safety_offline:"אופליין",safety_storage_ok:"תקין לכתיבה",safety_storage_problem:"בעיית כתיבה",safety_offline_ready:"מוכן",safety_offline_not_controlled:"עדיין לא בשליטת Service Worker",safety_none:"אין",safety_usage_value:"{pct}% מהמכסה",
+  safety_reason_reset:"לפני איפוס",safety_reason_restore:"לפני שחזור",safety_reason_trip_delete:"לפני מחיקת טיול",safety_reason_manual:"נוצר ידנית",safety_reason_other:"שמירה אוטומטית"
+});
+Object.assign(TRANSLATIONS.en,{
+  safety_center_title:"Data Safety Center",safety_center_note:"The safety snapshot stays on this device and keeps only the latest copy.",safety_snapshot_heading:"Local safety snapshot",safety_snapshot_create:"Create snapshot now",safety_snapshot_restore:"Restore snapshot",safety_snapshot_available:"Saved: {date} · reason: {reason} · {trips} trips",safety_snapshot_none:"No local safety snapshot is available right now.",safety_snapshot_created:"Local safety snapshot created",
+  safety_backup_heading:"Portable backup",safety_backup_note:"A downloaded backup is still the safest copy if the phone or browser storage is lost.",
+  safety_health_version:"App version",safety_health_network:"Connection",safety_health_storage:"Local storage",safety_health_offline:"Offline shell",safety_health_trips:"Saved trips",safety_health_active:"Active trip",safety_health_usage:"Storage usage",
+  safety_online:"Online",safety_offline:"Offline",safety_storage_ok:"Writable",safety_storage_problem:"Write problem",safety_offline_ready:"Ready",safety_offline_not_controlled:"Not controlled by the Service Worker yet",safety_none:"None",safety_usage_value:"{pct}% of quota",
+  safety_reason_reset:"Before reset",safety_reason_restore:"Before restore",safety_reason_trip_delete:"Before trip deletion",safety_reason_manual:"Created manually",safety_reason_other:"Automatic safety save"
+});
+Object.assign(TRANSLATIONS.ar,{
+  safety_center_title:"مركز أمان البيانات",safety_center_note:"تبقى لقطة الأمان على هذا الجهاز وتحتفظ بآخر نسخة فقط.",safety_snapshot_heading:"لقطة أمان محلية",safety_snapshot_create:"إنشاء لقطة الآن",safety_snapshot_restore:"استعادة اللقطة",safety_snapshot_available:"حُفظت: {date} · السبب: {reason} · {trips} رحلات",safety_snapshot_none:"لا توجد لقطة أمان محلية الآن.",safety_snapshot_created:"تم إنشاء لقطة أمان محلية",
+  safety_backup_heading:"نسخة احتياطية قابلة للنقل",safety_backup_note:"تبقى النسخة الاحتياطية المحمّلة أكثر أمانًا إذا فُقد الهاتف أو تخزين المتصفح.",
+  safety_health_version:"إصدار التطبيق",safety_health_network:"الاتصال",safety_health_storage:"التخزين المحلي",safety_health_offline:"غلاف دون اتصال",safety_health_trips:"الرحلات المحفوظة",safety_health_active:"الرحلة النشطة",safety_health_usage:"استخدام التخزين",
+  safety_online:"متصل",safety_offline:"دون اتصال",safety_storage_ok:"قابل للكتابة",safety_storage_problem:"مشكلة كتابة",safety_offline_ready:"جاهز",safety_offline_not_controlled:"لم يتحكم Service Worker بعد",safety_none:"لا يوجد",safety_usage_value:"{pct}% من السعة",
+  safety_reason_reset:"قبل إعادة الضبط",safety_reason_restore:"قبل الاستعادة",safety_reason_trip_delete:"قبل حذف الرحلة",safety_reason_manual:"أُنشئت يدويًا",safety_reason_other:"حفظ أمان تلقائي"
+});
+Object.assign(TRANSLATIONS.ru,{
+  safety_center_title:"Центр безопасности данных",safety_center_note:"Локальный снимок хранится только на этом устройстве и содержит одну последнюю копию.",safety_snapshot_heading:"Локальный снимок безопасности",safety_snapshot_create:"Создать снимок",safety_snapshot_restore:"Восстановить снимок",safety_snapshot_available:"Сохранено: {date} · причина: {reason} · поездок: {trips}",safety_snapshot_none:"Локального снимка безопасности сейчас нет.",safety_snapshot_created:"Локальный снимок создан",
+  safety_backup_heading:"Переносная резервная копия",safety_backup_note:"Скачанный файл резервной копии остаётся самым надёжным вариантом при потере телефона или данных браузера.",
+  safety_health_version:"Версия приложения",safety_health_network:"Соединение",safety_health_storage:"Локальное хранилище",safety_health_offline:"Офлайн-оболочка",safety_health_trips:"Сохранённые поездки",safety_health_active:"Активная поездка",safety_health_usage:"Использование хранилища",
+  safety_online:"Онлайн",safety_offline:"Офлайн",safety_storage_ok:"Запись работает",safety_storage_problem:"Ошибка записи",safety_offline_ready:"Готово",safety_offline_not_controlled:"Service Worker ещё не контролирует страницу",safety_none:"Нет",safety_usage_value:"{pct}% квоты",
+  safety_reason_reset:"Перед сбросом",safety_reason_restore:"Перед восстановлением",safety_reason_trip_delete:"Перед удалением поездки",safety_reason_manual:"Создан вручную",safety_reason_other:"Автоматическое сохранение"
+});
+Object.assign(TRANSLATIONS.es,{
+  safety_center_title:"Centro de seguridad de datos",safety_center_note:"La instantánea de seguridad permanece en este dispositivo y conserva solo la copia más reciente.",safety_snapshot_heading:"Instantánea local de seguridad",safety_snapshot_create:"Crear instantánea ahora",safety_snapshot_restore:"Restaurar instantánea",safety_snapshot_available:"Guardada: {date} · motivo: {reason} · {trips} viajes",safety_snapshot_none:"No hay una instantánea local disponible ahora.",safety_snapshot_created:"Instantánea local creada",
+  safety_backup_heading:"Copia portátil",safety_backup_note:"Una copia descargada sigue siendo la opción más segura si se pierde el teléfono o el almacenamiento del navegador.",
+  safety_health_version:"Versión de la app",safety_health_network:"Conexión",safety_health_storage:"Almacenamiento local",safety_health_offline:"Modo sin conexión",safety_health_trips:"Viajes guardados",safety_health_active:"Viaje activo",safety_health_usage:"Uso de almacenamiento",
+  safety_online:"En línea",safety_offline:"Sin conexión",safety_storage_ok:"Escribible",safety_storage_problem:"Problema de escritura",safety_offline_ready:"Listo",safety_offline_not_controlled:"Service Worker aún no controla la página",safety_none:"Ninguno",safety_usage_value:"{pct}% de la cuota",
+  safety_reason_reset:"Antes de restablecer",safety_reason_restore:"Antes de restaurar",safety_reason_trip_delete:"Antes de borrar el viaje",safety_reason_manual:"Creada manualmente",safety_reason_other:"Guardado automático"
+});
+Object.assign(TRANSLATIONS.pt,{
+  safety_center_title:"Central de segurança de dados",safety_center_note:"O snapshot de segurança fica neste dispositivo e mantém apenas a cópia mais recente.",safety_snapshot_heading:"Snapshot local de segurança",safety_snapshot_create:"Criar snapshot agora",safety_snapshot_restore:"Restaurar snapshot",safety_snapshot_available:"Salvo: {date} · motivo: {reason} · {trips} viagens",safety_snapshot_none:"Nenhum snapshot local está disponível agora.",safety_snapshot_created:"Snapshot local criado",
+  safety_backup_heading:"Backup portátil",safety_backup_note:"Um backup baixado continua sendo a cópia mais segura se o telefone ou o armazenamento do navegador for perdido.",
+  safety_health_version:"Versão do app",safety_health_network:"Conexão",safety_health_storage:"Armazenamento local",safety_health_offline:"Estrutura offline",safety_health_trips:"Viagens salvas",safety_health_active:"Viagem ativa",safety_health_usage:"Uso de armazenamento",
+  safety_online:"Online",safety_offline:"Offline",safety_storage_ok:"Gravação ok",safety_storage_problem:"Problema de gravação",safety_offline_ready:"Pronto",safety_offline_not_controlled:"Service Worker ainda não controla a página",safety_none:"Nenhuma",safety_usage_value:"{pct}% da cota",
+  safety_reason_reset:"Antes do reset",safety_reason_restore:"Antes da restauração",safety_reason_trip_delete:"Antes de excluir a viagem",safety_reason_manual:"Criado manualmente",safety_reason_other:"Salvamento automático de segurança"
+});
+
+Object.assign(TRANSLATIONS.he,{today_progress_title:"התקדמות היום",today_progress_meta:"{done} מתוך {total} פעילויות הושלמו",today_mark_done:"סמן כהושלם",today_mark_open:"החזר לפתוח",toast_undone_status:"הפעילות חזרה לפתוחה"});
+Object.assign(TRANSLATIONS.en,{today_progress_title:"Day progress",today_progress_meta:"{done} of {total} activities completed",today_mark_done:"Mark done",today_mark_open:"Mark open",toast_undone_status:"Activity marked open again"});
+Object.assign(TRANSLATIONS.ar,{today_progress_title:"تقدم اليوم",today_progress_meta:"اكتمل {done} من {total} أنشطة",today_mark_done:"وضع كمكتمل",today_mark_open:"إعادة إلى مفتوح",toast_undone_status:"أعيد النشاط إلى مفتوح"});
+Object.assign(TRANSLATIONS.ru,{today_progress_title:"Прогресс дня",today_progress_meta:"Выполнено {done} из {total}",today_mark_done:"Отметить выполненным",today_mark_open:"Вернуть в открытые",toast_undone_status:"Активность снова открыта"});
+Object.assign(TRANSLATIONS.es,{today_progress_title:"Progreso del día",today_progress_meta:"{done} de {total} actividades completadas",today_mark_done:"Marcar hecha",today_mark_open:"Marcar abierta",toast_undone_status:"La actividad vuelve a estar abierta"});
+Object.assign(TRANSLATIONS.pt,{today_progress_title:"Progresso do dia",today_progress_meta:"{done} de {total} atividades concluídas",today_mark_done:"Marcar concluída",today_mark_open:"Marcar aberta",toast_undone_status:"Atividade marcada como aberta novamente"});
+
+Object.assign(TRANSLATIONS.he,{today_progress_title:"התקדמות היום",today_progress_meta:"{done} מתוך {total} פעילויות הושלמו",today_mark_done:"סמן כהושלם",today_mark_open:"החזר לפתוח",toast_undone_status:"הפעילות חזרה לפתוחה"});
+Object.assign(TRANSLATIONS.en,{today_progress_title:"Day progress",today_progress_meta:"{done} of {total} activities completed",today_mark_done:"Mark done",today_mark_open:"Mark open",toast_undone_status:"Activity marked open again"});
+Object.assign(TRANSLATIONS.ar,{today_progress_title:"تقدم اليوم",today_progress_meta:"اكتمل {done} من {total} أنشطة",today_mark_done:"وضع كمكتمل",today_mark_open:"إعادة إلى مفتوح",toast_undone_status:"أعيد النشاط إلى مفتوح"});
+Object.assign(TRANSLATIONS.ru,{today_progress_title:"Прогресс дня",today_progress_meta:"Выполнено {done} из {total}",today_mark_done:"Отметить выполненным",today_mark_open:"Вернуть в открытые",toast_undone_status:"Активность снова открыта"});
+Object.assign(TRANSLATIONS.es,{today_progress_title:"Progreso del día",today_progress_meta:"{done} de {total} actividades completadas",today_mark_done:"Marcar hecha",today_mark_open:"Marcar abierta",toast_undone_status:"La actividad vuelve a estar abierta"});
+Object.assign(TRANSLATIONS.pt,{today_progress_title:"Progresso do dia",today_progress_meta:"{done} de {total} atividades concluídas",today_mark_done:"Marcar concluída",today_mark_open:"Marcar aberta",toast_undone_status:"Atividade marcada como aberta novamente"});
+
+/* v1700-RC1 — Trip Board 2.0 / trip lifecycle / itinerary productivity */
+Object.assign(TRANSLATIONS.he,{
+  trip_board_attention:"דורש תשומת לב",trip_board_attention_summary:"{issues} בעיות · {checks} דברים לבדיקה",trip_board_attention_clear:"אין כרגע דברים שדורשים טיפול בטיול.",
+  trip_task_date_label:"תאריך יעד",trip_task_priority_label:"עדיפות",trip_task_priority_normal:"רגילה",trip_task_priority_high:"גבוהה",trip_task_priority_low:"נמוכה",trip_task_overdue:"באיחור",trip_task_due_today:"להיום",trip_task_progress_due:"{done} מתוך {total} הושלמו · {overdue} באיחור · {today} להיום",
+  readiness_overdue_tasks:"{n} משימות עברו את תאריך היעד",readiness_tasks_due_today:"{n} משימות מיועדות להיום",
+  day_duplicate_btn:"📋 שכפל תכנון יום",day_duplicate_note:"מעתיק את תכנון היום לתאריך הפנוי הבא. סטטוס השלמה ואישורי הזמנה/תשלום מתאפסים בעותק.",toast_day_duplicated:"תכנון היום שוכפל ל-{date}",toast_day_duplicate_failed:"לא ניתן למצוא תאריך פנוי לשכפול היום",
+  activity_duplicate_btn:"📋 שכפל פעילות",toast_activity_duplicated:"הפעילות שוכפלה. אפשר לערוך עכשיו את העותק.",
+  trip_archive_btn:"📦 העבר לארכיון",trip_unarchive_btn:"📤 החזר מהארכיון",toast_trip_archived:"הטיול הועבר לארכיון",toast_trip_unarchived:"הטיול הוחזר מהארכיון",home_archived_trips:"טיולים בארכיון"
+});
+Object.assign(TRANSLATIONS.en,{
+  trip_board_attention:"Attention",trip_board_attention_summary:"{issues} issues · {checks} checks",trip_board_attention_clear:"Nothing currently needs attention in this trip.",
+  trip_task_date_label:"Due date",trip_task_priority_label:"Priority",trip_task_priority_normal:"Normal",trip_task_priority_high:"High",trip_task_priority_low:"Low",trip_task_overdue:"Overdue",trip_task_due_today:"Due today",trip_task_progress_due:"{done} of {total} completed · {overdue} overdue · {today} due today",
+  readiness_overdue_tasks:"{n} tasks are past their due date",readiness_tasks_due_today:"{n} tasks are due today",
+  day_duplicate_btn:"📋 Duplicate day plan",day_duplicate_note:"Copies the day plan to the next free date. Completion and booking/payment confirmations are reset in the copy.",toast_day_duplicated:"Day plan duplicated to {date}",toast_day_duplicate_failed:"Could not find a free date for the duplicated day",
+  activity_duplicate_btn:"📋 Duplicate activity",toast_activity_duplicated:"Activity duplicated. You can edit the copy now.",
+  trip_archive_btn:"📦 Archive trip",trip_unarchive_btn:"📤 Restore from archive",toast_trip_archived:"Trip moved to archive",toast_trip_unarchived:"Trip restored from archive",home_archived_trips:"Archived trips"
+});
+Object.assign(TRANSLATIONS.ar,{
+  trip_board_attention:"يحتاج إلى انتباه",trip_board_attention_summary:"{issues} مشكلات · {checks} عناصر للمراجعة",trip_board_attention_clear:"لا يوجد حاليًا ما يحتاج إلى معالجة في هذه الرحلة.",
+  trip_task_date_label:"تاريخ الاستحقاق",trip_task_priority_label:"الأولوية",trip_task_priority_normal:"عادية",trip_task_priority_high:"عالية",trip_task_priority_low:"منخفضة",trip_task_overdue:"متأخرة",trip_task_due_today:"مستحقة اليوم",trip_task_progress_due:"اكتمل {done} من {total} · {overdue} متأخرة · {today} لليوم",
+  readiness_overdue_tasks:"{n} مهام تجاوزت موعدها",readiness_tasks_due_today:"{n} مهام مستحقة اليوم",
+  day_duplicate_btn:"📋 نسخ خطة اليوم",day_duplicate_note:"ينسخ خطة اليوم إلى أقرب تاريخ متاح. تتم إعادة تعيين حالة الإكمال وتأكيدات الحجز/الدفع في النسخة.",toast_day_duplicated:"تم نسخ خطة اليوم إلى {date}",toast_day_duplicate_failed:"تعذر العثور على تاريخ متاح لنسخ اليوم",
+  activity_duplicate_btn:"📋 نسخ النشاط",toast_activity_duplicated:"تم نسخ النشاط. يمكنك تعديل النسخة الآن.",
+  trip_archive_btn:"📦 أرشفة الرحلة",trip_unarchive_btn:"📤 استعادة من الأرشيف",toast_trip_archived:"تم نقل الرحلة إلى الأرشيف",toast_trip_unarchived:"تمت استعادة الرحلة من الأرشيف",home_archived_trips:"الرحلات المؤرشفة"
+});
+Object.assign(TRANSLATIONS.ru,{
+  trip_board_attention:"Требует внимания",trip_board_attention_summary:"Проблем: {issues} · проверок: {checks}",trip_board_attention_clear:"Сейчас в поездке нет пунктов, требующих внимания.",
+  trip_task_date_label:"Срок",trip_task_priority_label:"Приоритет",trip_task_priority_normal:"Обычный",trip_task_priority_high:"Высокий",trip_task_priority_low:"Низкий",trip_task_overdue:"Просрочено",trip_task_due_today:"На сегодня",trip_task_progress_due:"Выполнено {done} из {total} · просрочено: {overdue} · на сегодня: {today}",
+  readiness_overdue_tasks:"Просроченных задач: {n}",readiness_tasks_due_today:"Задач на сегодня: {n}",
+  day_duplicate_btn:"📋 Дублировать план дня",day_duplicate_note:"Копирует план дня на ближайшую свободную дату. Выполнение и подтверждения бронирования/оплаты в копии сбрасываются.",toast_day_duplicated:"План дня скопирован на {date}",toast_day_duplicate_failed:"Не удалось найти свободную дату для копии дня",
+  activity_duplicate_btn:"📋 Дублировать активность",toast_activity_duplicated:"Активность скопирована. Теперь можно отредактировать копию.",
+  trip_archive_btn:"📦 В архив",trip_unarchive_btn:"📤 Вернуть из архива",toast_trip_archived:"Поездка перемещена в архив",toast_trip_unarchived:"Поездка восстановлена из архива",home_archived_trips:"Архив поездок"
+});
+Object.assign(TRANSLATIONS.es,{
+  trip_board_attention:"Requiere atención",trip_board_attention_summary:"{issues} problemas · {checks} revisiones",trip_board_attention_clear:"Ahora no hay nada que requiera atención en este viaje.",
+  trip_task_date_label:"Fecha límite",trip_task_priority_label:"Prioridad",trip_task_priority_normal:"Normal",trip_task_priority_high:"Alta",trip_task_priority_low:"Baja",trip_task_overdue:"Atrasada",trip_task_due_today:"Para hoy",trip_task_progress_due:"{done} de {total} completadas · {overdue} atrasadas · {today} para hoy",
+  readiness_overdue_tasks:"{n} tareas superaron su fecha límite",readiness_tasks_due_today:"{n} tareas vencen hoy",
+  day_duplicate_btn:"📋 Duplicar plan del día",day_duplicate_note:"Copia el plan del día a la siguiente fecha libre. El estado de finalización y las confirmaciones de reserva/pago se reinician en la copia.",toast_day_duplicated:"Plan del día duplicado para {date}",toast_day_duplicate_failed:"No se encontró una fecha libre para duplicar el día",
+  activity_duplicate_btn:"📋 Duplicar actividad",toast_activity_duplicated:"Actividad duplicada. Ya puedes editar la copia.",
+  trip_archive_btn:"📦 Archivar viaje",trip_unarchive_btn:"📤 Restaurar del archivo",toast_trip_archived:"Viaje movido al archivo",toast_trip_unarchived:"Viaje restaurado del archivo",home_archived_trips:"Viajes archivados"
+});
+Object.assign(TRANSLATIONS.pt,{
+  trip_board_attention:"Precisa de atenção",trip_board_attention_summary:"{issues} problemas · {checks} verificações",trip_board_attention_clear:"Nada precisa de atenção nesta viagem agora.",
+  trip_task_date_label:"Data limite",trip_task_priority_label:"Prioridade",trip_task_priority_normal:"Normal",trip_task_priority_high:"Alta",trip_task_priority_low:"Baixa",trip_task_overdue:"Atrasada",trip_task_due_today:"Para hoje",trip_task_progress_due:"{done} de {total} concluídas · {overdue} atrasadas · {today} para hoje",
+  readiness_overdue_tasks:"{n} tarefas passaram da data limite",readiness_tasks_due_today:"{n} tarefas vencem hoje",
+  day_duplicate_btn:"📋 Duplicar plano do dia",day_duplicate_note:"Copia o plano do dia para a próxima data livre. O status de conclusão e as confirmações de reserva/pagamento são redefinidos na cópia.",toast_day_duplicated:"Plano do dia duplicado para {date}",toast_day_duplicate_failed:"Não foi possível encontrar uma data livre para duplicar o dia",
+  activity_duplicate_btn:"📋 Duplicar atividade",toast_activity_duplicated:"Atividade duplicada. Agora você pode editar a cópia.",
+  trip_archive_btn:"📦 Arquivar viagem",trip_unarchive_btn:"📤 Restaurar do arquivo",toast_trip_archived:"Viagem movida para o arquivo",toast_trip_unarchived:"Viagem restaurada do arquivo",home_archived_trips:"Viagens arquivadas"
+});
+Object.assign(TRANSLATIONS.he,{today_tasks_title:"משימות לטיול",today_tasks_overdue:"באיחור",today_tasks_due:"מיועד להיום",today_tasks_open_board:"פתח רשימת משימות"});
+Object.assign(TRANSLATIONS.en,{today_tasks_title:"Trip tasks",today_tasks_overdue:"Overdue",today_tasks_due:"Due today",today_tasks_open_board:"Open checklist"});
+Object.assign(TRANSLATIONS.ar,{today_tasks_title:"مهام الرحلة",today_tasks_overdue:"متأخرة",today_tasks_due:"مستحقة اليوم",today_tasks_open_board:"فتح قائمة المهام"});
+Object.assign(TRANSLATIONS.ru,{today_tasks_title:"Задачи поездки",today_tasks_overdue:"Просрочено",today_tasks_due:"На сегодня",today_tasks_open_board:"Открыть список задач"});
+Object.assign(TRANSLATIONS.es,{today_tasks_title:"Tareas del viaje",today_tasks_overdue:"Atrasada",today_tasks_due:"Para hoy",today_tasks_open_board:"Abrir lista de tareas"});
+Object.assign(TRANSLATIONS.pt,{today_tasks_title:"Tarefas da viagem",today_tasks_overdue:"Atrasada",today_tasks_due:"Para hoje",today_tasks_open_board:"Abrir checklist"});
+Object.assign(TRANSLATIONS.he,{trip_task_filters_aria:"סינון רשימת משימות",trip_task_filter_open:"פתוחות",trip_task_filter_done:"הושלמו",trip_task_filter_empty:"אין משימות שמתאימות לסינון הזה."});
+Object.assign(TRANSLATIONS.en,{trip_task_filters_aria:"Checklist filters",trip_task_filter_open:"Open",trip_task_filter_done:"Done",trip_task_filter_empty:"No tasks match this filter."});
+Object.assign(TRANSLATIONS.ar,{trip_task_filters_aria:"مرشحات قائمة المهام",trip_task_filter_open:"مفتوحة",trip_task_filter_done:"مكتملة",trip_task_filter_empty:"لا توجد مهام تطابق هذا المرشح."});
+Object.assign(TRANSLATIONS.ru,{trip_task_filters_aria:"Фильтры списка задач",trip_task_filter_open:"Открытые",trip_task_filter_done:"Выполненные",trip_task_filter_empty:"Нет задач для этого фильтра."});
+Object.assign(TRANSLATIONS.es,{trip_task_filters_aria:"Filtros de tareas",trip_task_filter_open:"Abiertas",trip_task_filter_done:"Completadas",trip_task_filter_empty:"No hay tareas para este filtro."});
+Object.assign(TRANSLATIONS.pt,{trip_task_filters_aria:"Filtros do checklist",trip_task_filter_open:"Abertas",trip_task_filter_done:"Concluídas",trip_task_filter_empty:"Nenhuma tarefa corresponde a este filtro."});

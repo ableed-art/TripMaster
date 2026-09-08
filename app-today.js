@@ -30,6 +30,10 @@
     const dt=new Date(Date.UTC(Number(d.slice(0,4)),Number(d.slice(5,7))-1,Number(d.slice(8,10))));
     dt.setUTCDate(dt.getUTCDate()+n); return dateISO(dt.getUTCFullYear(),dt.getUTCMonth()+1,dt.getUTCDate());
   }
+  function diffDays(fromDate,toDate){
+    const a=validDate(fromDate),b=validDate(toDate);if(!a||!b)return 0;
+    return Math.round((Date.parse(b+"T00:00:00Z")-Date.parse(a+"T00:00:00Z"))/86400000);
+  }
   function validTimeZone(tz){try{return !!tz&&typeof tz==="string"&&!!new Intl.DateTimeFormat("en-US",{timeZone:tz});}catch(e){return false;}}
 
   /* Deterministic trip-local wall clock. `nowInput` may be Date/ms for tests.
@@ -51,17 +55,17 @@
   function dayForDate(trip,date){const d=validDate(date);return d?days(trip).find(x=>validDate(x.date)===d)||null:null;}
   function tripDateRange(trip){
     const dates=[];
-    days(trip).forEach(day=>{const d=validDate(day.date);if(d)dates.push(d);});
+    days(trip).forEach(day=>{const d=validDate(day.date);if(d){dates.push(d);if(Array.isArray(day.items)&&day.items.some(item=>item&&item.endNextDay===true&&validTime(item.endTime)))dates.push(addDays(d,1));if(T&&T.hasTravelDayDetails&&T.hasTravelDayDetails(day)){const td=T.travelDayInfo(day);if(td.arrivalDate)dates.push(td.arrivalDate);}}});
     if(L){
       L.tripStays(trip).forEach(raw=>{const s=L.stayInfo(raw);if(s.startDate)dates.push(s.startDate);if(s.endDate)dates.push(s.endDate);});
-      L.tripJourneys(trip).forEach(raw=>{const j=L.journeyInfo(raw);if(j.date)dates.push(j.date);});
+      L.tripJourneys(trip).forEach(raw=>{const j=L.journeyInfo(raw);if(j.date)dates.push(j.date);if(j.arrivalDate)dates.push(j.arrivalDate);});
     }
     if(!dates.length)return null;dates.sort();return {first:dates[0],last:dates[dates.length-1]};
   }
   function isTripActive(trip, clockState){const r=tripDateRange(trip),d=clockState&&validDate(clockState.date);return !!(r&&d&&r.first<=d&&d<=r.last);}
   function previewDates(trip){
-    const set=new Set();days(trip).forEach(x=>{const d=validDate(x.date);if(d)set.add(d);});
-    if(L){L.tripJourneys(trip).forEach(raw=>{const d=L.journeyInfo(raw).date;if(d)set.add(d);});L.tripStays(trip).forEach(raw=>{const s=L.stayInfo(raw);if(s.startDate)set.add(s.startDate);if(s.endDate)set.add(s.endDate);});}
+    const set=new Set();days(trip).forEach(x=>{const d=validDate(x.date);if(d){set.add(d);if(Array.isArray(x.items)&&x.items.some(item=>item&&item.endNextDay===true&&validTime(item.endTime)))set.add(addDays(d,1));if(T&&T.hasTravelDayDetails&&T.hasTravelDayDetails(x)){const td=T.travelDayInfo(x);if(td.arrivalDate)set.add(td.arrivalDate);}}});
+    if(L){L.tripJourneys(trip).forEach(raw=>{const j=L.journeyInfo(raw);if(j.date)set.add(j.date);if(j.arrivalDate)set.add(j.arrivalDate);});L.tripStays(trip).forEach(raw=>{const s=L.stayInfo(raw);if(s.startDate)set.add(s.startDate);if(s.endDate)set.add(s.endDate);});}
     return Array.from(set).sort();
   }
   function choosePreviewDate(trip, referenceDate){const ds=previewDates(trip);if(!ds.length)return "";const r=validDate(referenceDate);return (r&&ds.find(d=>d>=r))||ds[0];}
@@ -76,18 +80,30 @@
     return event;
   }
 
-  function activityEvents(trip,day,date){
+  function activityEventsForDay(trip,day,date,offset){
     const source=day&&Array.isArray(day.items)?day.items:[];
+    const dayOffset=Number.isInteger(offset)?offset:0;
     return source.map((item,itemIndex)=>{
       if(!item||typeof item!=="object")return null;
       const e=eventBase("activity",date,clean(item.title));
-      e.startTime=validTime(item.time);e.endTime=validTime(item.endTime);e.startMin=parseTime(e.startTime);e.endMin=parseTime(e.endTime);e.timingKnown=e.startMin!==null;
-      if(e.endMin!==null&&e.startMin!==null&&e.endMin<e.startMin)e.endMin=null; // cross-midnight cannot be proven from date-only Today stream.
+      e.startTime=validTime(item.time);e.endTime=validTime(item.endTime);
+      const start=parseTime(e.startTime),end=parseTime(e.endTime);
+      const nextDay=item.endNextDay===true;
+      e.startMin=start===null?null:start-dayOffset*1440;
+      e.endMin=end===null?null:end+(nextDay?1440:0)-dayOffset*1440;
+      e.timingKnown=e.startMin!==null;
+      if(e.endMin!==null&&e.startMin!==null&&e.endMin<=e.startMin)e.endMin=null;
       e.location=clean(item.location);e.accessStatus=clean(item.accessStatus);e.accessNote=clean(item.accessNote);e.completed=item.completed===true;
       const b=activityBooking(item);e.bookingStatus=b.status;e.paymentStatus=F&&F.paymentStatus?F.paymentStatus(item&&item.booking&&item.booking.paymentStatus):"";e.hasReference=!!b.reference;e.hasBooking=!!(b.status||b.reference||b.provider||b.note||e.paymentStatus);
       const id=clean(item.uid);e.source={kind:"activity",id,dayIndex:canonicalIndex(trip,"days",day),itemIndex};
       return addLinkedDocuments(trip,e);
     }).filter(Boolean);
+  }
+  function activityEvents(trip,day,date){
+    const own=activityEventsForDay(trip,day,date,0);
+    const prevDate=addDays(date,-1),prevDay=dayForDate(trip,prevDate);
+    const carry=activityEventsForDay(trip,prevDay,date,1).filter(e=>e.endMin!==null&&e.endMin>0);
+    return carry.concat(own);
   }
   function stayEvents(trip,date){
     if(!L)return [];
@@ -98,21 +114,40 @@
   }
   function journeyEvents(trip,date){
     if(!L)return [];
-    return L.journeysForDate(trip,date).map(raw=>{const j=L.journeyInfo(raw),e=eventBase("journey",date,[j.origin,j.destination].filter(Boolean).join(" → "));e.startTime=j.departureTime;e.endTime=j.arrivalTime;e.startMin=parseTime(e.startTime);e.endMin=parseTime(e.endTime);e.timingKnown=e.startMin!==null;if(e.endMin!==null&&e.startMin!==null&&e.endMin<e.startMin)e.endMin=null;e.subtitle=[j.mode,j.provider,j.serviceNumber].filter(Boolean).join(" · ");e.bookingStatus=j.status;e.paymentStatus=payment(raw);e.hasReference=!!j.confirmation;e.hasBooking=!!(j.status||j.confirmation||j.provider||e.paymentStatus);e.source={kind:"journey",id:j.id,index:canonicalIndex(trip,"journeys",raw)};return addLinkedDocuments(trip,e);});
+    const rows=L.journeysTouchingDate?L.journeysTouchingDate(trip,date):L.journeysForDate(trip,date);
+    return rows.map(raw=>{
+      const j=L.journeyInfo(raw),e=eventBase("journey",date,[j.origin,j.destination].filter(Boolean).join(" → "));
+      const totalDays=j.arrivalDate&&j.arrivalDate>=j.date?Math.max(0,diffDays(j.date,j.arrivalDate)):0;
+      const offset=Math.max(0,diffDays(j.date,date));
+      e.startTime=j.departureTime;e.endTime=j.arrivalTime;
+      const dep=parseTime(e.startTime),arr=parseTime(e.endTime);
+      e.startMin=dep===null?null:dep-offset*1440;
+      e.endMin=arr===null?null:arr+(totalDays-offset)*1440;
+      e.timingKnown=e.startMin!==null;
+      if(totalDays===0&&e.endMin!==null&&e.startMin!==null&&e.endMin<e.startMin)e.endMin=null;
+      e.subtitle=[j.mode,j.provider,j.serviceNumber].filter(Boolean).join(" · ");e.bookingStatus=j.status;e.paymentStatus=payment(raw);e.hasReference=!!j.confirmation;e.hasBooking=!!(j.status||j.confirmation||j.provider||e.paymentStatus);e.source={kind:"journey",id:j.id,index:canonicalIndex(trip,"journeys",raw)};return addLinkedDocuments(trip,e);
+    });
+  }
+  function oneTravelDayEvent(trip,day,viewDate,canonicalJourneys){
+    if(!T||!day||T.dayType(day)==="normal"||!T.hasTravelDayDetails(day))return null;
+    const info=T.travelDayInfo(day),startDate=validDate(day.date);if(!startDate)return null;
+    const title=[info.origin,info.destination].filter(Boolean).join(" → ");
+    const duplicate=(canonicalJourneys||[]).some(e=>e.startTime===info.departureTime&&e.title===title);if(duplicate)return null;
+    const totalDays=info.arrivalDate&&info.arrivalDate>=startDate?Math.max(0,diffDays(startDate,info.arrivalDate)):0;
+    const offset=Math.max(0,diffDays(startDate,viewDate));if(offset>totalDays)return null;
+    const e=eventBase("travelday",viewDate,title);e.startTime=info.departureTime;e.endTime=info.arrivalTime;
+    const dep=parseTime(e.startTime),arr=parseTime(e.endTime);e.startMin=dep===null?null:dep-offset*1440;e.endMin=arr===null?null:arr+(totalDays-offset)*1440;e.timingKnown=e.startMin!==null;
+    if(totalDays===0&&e.endMin!==null&&e.startMin!==null&&e.endMin<=e.startMin)e.endMin=null;e.subtitle=info.mode;e.hasReference=!!info.reference;e.source={kind:"travelday",id:"",dayIndex:canonicalIndex(trip,"days",day)};return e;
   }
   function travelDayEvents(trip,day,date,canonicalJourneys){
-    if(!T||!day||T.dayType(day)==="normal"||!T.hasTravelDayDetails(day))return [];
-    const info=T.travelDayInfo(day);
-    // Travel Day remains its own canonical day context. If a canonical journey
-    // already expresses the same operation, do not duplicate it in timeline.
-    const duplicate=(canonicalJourneys||[]).some(e=>e.startTime===info.departureTime&&e.title===[info.origin,info.destination].filter(Boolean).join(" → "));
-    if(duplicate)return [];
-    const e=eventBase("travelday",date,[info.origin,info.destination].filter(Boolean).join(" → "));e.startTime=info.departureTime;e.endTime=info.arrivalTime;e.startMin=parseTime(e.startTime);e.endMin=parseTime(e.endTime);e.timingKnown=e.startMin!==null;if(e.endMin!==null&&e.startMin!==null&&e.endMin<e.startMin)e.endMin=null;e.subtitle=info.mode;e.hasReference=!!info.reference;e.source={kind:"travelday",id:"",dayIndex:canonicalIndex(trip,"days",day)};return [e];
+    const out=[];const own=oneTravelDayEvent(trip,day,date,canonicalJourneys);if(own)out.push(own);
+    days(trip).forEach(candidate=>{if(candidate===day)return;const info=T&&T.travelDayInfo?T.travelDayInfo(candidate):null;if(!info||info.arrivalDate!==date)return;const carry=oneTravelDayEvent(trip,candidate,date,canonicalJourneys);if(carry)out.push(carry);});
+    return out;
   }
   function travelSegments(day,activityList,date){
     if(!D||!day)return [];
-    const analysis=D.analyzeDay(Array.isArray(day.items)?day.items:[]),out=[];
-    analysis.pairs.forEach(pair=>{const tr=pair.travel;if(!tr||!tr.known)return;const next=activityList.find(e=>e.source&&e.source.itemIndex===pair.secondIndex);const prev=activityList.find(e=>e.source&&e.source.itemIndex===pair.firstIndex);const e=eventBase("travel",date,"");e.travel={mode:tr.mode,durationMin:tr.durationMin,note:tr.note,status:pair.status,availableGapMin:pair.availableGapMin,bufferMin:pair.bufferMin,unresolved:tr.unresolved===true};e.title=[prev&&prev.title,next&&next.title].filter(Boolean).join(" → ");e.startTime=prev&&prev.endTime||"";e.startMin=prev&&prev.endMin!=null?prev.endMin:null;e.timingKnown=e.startMin!==null;e.source={kind:"travel",id:"",dayIndex:(next&&next.source&&Number.isInteger(next.source.dayIndex)?next.source.dayIndex:-1),itemIndex:pair.secondIndex};out.push(e);});
+    const analysis=D.analyzeDay(Array.isArray(day.items)?day.items:[]),out=[],dayIndex=activityList.find(e=>e.source&&e.source.kind==="activity"&&e.source.dayIndex>=0&&day.items&&day.items[e.source.itemIndex])?.source.dayIndex;
+    analysis.pairs.forEach(pair=>{const tr=pair.travel;if(!tr||!tr.known)return;const next=activityList.find(e=>e.source&&e.source.kind==="activity"&&e.source.dayIndex===dayIndex&&e.source.itemIndex===pair.secondIndex);const prev=activityList.find(e=>e.source&&e.source.kind==="activity"&&e.source.dayIndex===dayIndex&&e.source.itemIndex===pair.firstIndex);const e=eventBase("travel",date,"");e.travel={mode:tr.mode,durationMin:tr.durationMin,note:tr.note,status:pair.status,availableGapMin:pair.availableGapMin,bufferMin:pair.bufferMin,unresolved:tr.unresolved===true};e.title=[prev&&prev.title,next&&next.title].filter(Boolean).join(" → ");e.startTime=prev&&prev.endTime||"";e.startMin=prev&&prev.endMin!=null?prev.endMin:null;e.timingKnown=e.startMin!==null;e.source={kind:"travel",id:"",dayIndex:Number.isInteger(dayIndex)?dayIndex:-1,itemIndex:pair.secondIndex};out.push(e);});
     return out;
   }
   function eventSort(a,b){

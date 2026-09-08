@@ -7,11 +7,10 @@
   "scope": "./",
   "display": "standalone",
   "display_override": ["standalone"],
-  "orientation": "portrait-primary",
   "background_color": "#F4F4F8",
   "theme_color": "#0B2239",
-  "lang": "he",
-  "dir": "rtl",
+  "lang": "en",
+  "dir": "auto",
   "categories": ["travel", "productivity", "utilities"],
   "icons": [
     { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

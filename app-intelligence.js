@@ -49,11 +49,13 @@
       const startRaw = item && typeof item.time === "string" ? item.time : "";
       const endRaw = item && typeof item.endTime === "string" ? item.endTime : "";
       const start = parseTime(startRaw);
-      const end = endRaw ? parseTime(endRaw) : null;
+      const parsedEnd = endRaw ? parseTime(endRaw) : null;
+      const endNextDay = !!(item && item.endNextDay === true);
+      const end = parsedEnd !== null && endNextDay ? parsedEnd + 1440 : parsedEnd;
       const malformedStart = !!startRaw && start === null;
-      const malformedEnd = !!endRaw && end === null;
-      const invalidRange = start !== null && end !== null && end < start;
-      return { item, originalIndex, startRaw, endRaw, start, end, malformedStart, malformedEnd, invalidRange };
+      const malformedEnd = !!endRaw && parsedEnd === null;
+      const invalidRange = start !== null && end !== null && end <= start;
+      return { item, originalIndex, startRaw, endRaw, start, end, endNextDay, malformedStart, malformedEnd, invalidRange };
     });
     const chronological = entries.slice().sort((a, b) => {
       if (a.start === null && b.start === null) return a.originalIndex - b.originalIndex;

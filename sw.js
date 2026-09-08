@@ -4,7 +4,7 @@
 // name carries the RC suffix. Updating from a previous release works
 // through the normal install -> skipWaiting -> activate -> claim path, and
 // the activate handler deletes every cache whose name is not this one.
-const CACHE_NAME = "tripmaster-v1090-rc3";
+const CACHE_NAME = "tripmaster-v1700-rc1-beta-productivity";
 
 // Core assets required for the app shell to work offline.
 // If any of these fail to cache, installation fails (as intended).
@@ -21,6 +21,7 @@ const CORE_ASSETS = [
   "./app-finance.js",
   "./app-travel.js",
   "./app-today.js",
+  "./app-operations.js",
   "./app.js",
   "./boot-watchdog.js",
   "./sw-register.js",
@@ -68,9 +69,10 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       caches.match(e.request).then((cached) => {
         if (cached) return cached;
-        return fetch(e.request).catch(() =>
-          caches.match("./index.html")
-        );
+        return fetch(e.request).then((response) => {
+          if (response && response.ok) return response;
+          return caches.match("./index.html");
+        }).catch(() => caches.match("./index.html"));
       })
     );
     return;

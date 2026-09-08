@@ -160,6 +160,7 @@
       destination: cleanString(src.destination),
       departureTime: validTime(src.departureTime),
       arrivalTime: validTime(src.arrivalTime),
+      arrivalDate: validDate(src.arrivalDate),
       provider: cleanString(src.provider),
       serviceNumber: cleanString(src.serviceNumber),
       confirmation: cleanString(src.confirmation),
@@ -177,6 +178,17 @@
   function journeysForDate(trip, date) {
     const d = validDate(date);
     return d ? tripJourneys(trip).filter((raw) => journeyInfo(raw).date === d) : [];
+  }
+
+  function journeysTouchingDate(trip, date) {
+    const d = validDate(date);
+    if (!d) return [];
+    return tripJourneys(trip).filter((raw) => {
+      const info = journeyInfo(raw);
+      if (!info.date) return false;
+      const end = info.arrivalDate && info.arrivalDate >= info.date ? info.arrivalDate : info.date;
+      return info.date <= d && d <= end;
+    });
   }
 
   function nextStay(trip, fromDate) {
@@ -223,6 +235,7 @@
     journeyInfo,
     tripJourneys,
     journeysForDate,
+    journeysTouchingDate,
     nextStay,
     nextJourney
   });

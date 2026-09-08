@@ -1,9 +1,9 @@
 /* ══ DIR-BOOT-001 (v1040) ═══════════════════════════════════════════════
-     Cold-boot direction flash. <html> ships as lang="he" dir="rtl", and the
-     saved language is only applied by applyLanguage() inside
-     DOMContentLoaded — i.e. after config.js, i18n.js, the stylesheet and the
-     first paint. An English/Russian/Spanish/Portuguese user therefore saw a
-     right-to-left frame before the layout flipped.
+     Cold-boot direction flash. <html> ships as lang="he" dir="rtl", while
+     the final UI language is applied later by app.js. This tiny pre-body boot
+     step applies an existing saved language immediately; on a true first run
+     it mirrors the device-language rule (supported locale, otherwise English)
+     so an international user does not first see a right-to-left frame.
 
      This reads ONE key, synchronously, before the body is parsed, and sets
      the two attributes applyLanguage() would have set anyway. It is a
@@ -23,12 +23,25 @@
   (function () {
     try {
       var raw = localStorage.getItem("tm_settings_clean");
-      if (!raw) return;
-      var lang = JSON.parse(raw).language;
       var DIRS = {
         he: ["he", "rtl"], en: ["en", "ltr"], ar: ["ar", "rtl"],
-        ru: ["ru", "ltr"], es: ["es", "ltr"], pt: ["pt-BR", "ltr"]
+        ru: ["ru", "ltr"], es: ["es", "ltr"], pt: ["pt-BR", "ltr"],
+        am: ["am-ET", "ltr"]
       };
+      var lang = null;
+      if (raw) {
+        lang = JSON.parse(raw).language;
+      } else {
+        /* I18N-FIRST-RUN-001: on a true first run use the first supported
+           browser/device language; unsupported locales start in English. */
+        var list = (navigator.languages && navigator.languages.length)
+          ? navigator.languages : [navigator.language || "en"];
+        for (var i = 0; i < list.length; i++) {
+          var primary = String(list[i] || "").toLowerCase().replace(/_/g, "-").split("-")[0];
+          if (DIRS[primary]) { lang = primary; break; }
+        }
+        if (!lang) lang = "en";
+      }
       var m = DIRS[lang];
       if (!m) return;
       document.documentElement.lang = m[0];

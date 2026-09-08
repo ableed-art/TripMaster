@@ -1,10 +1,13 @@
 document.addEventListener("DOMContentLoaded", () => {
+  try {
+    if (typeof window.__tmBootProgress === "function") window.__tmBootProgress("dom-init");
     const $ = (id) => document.getElementById(id);
     const DayIntel = window.TripMasterIntelligence;
     const Logistics = window.TripMasterLogistics;
     const Finance = window.TripMasterFinance;
     const Travel = window.TripMasterTravel;
     const Today = window.TripMasterToday;
+    const Operations = window.TripMasterOperations;
     if (!DayIntel || typeof DayIntel.analyzeDay !== "function") {
       throw new Error("TripMaster intelligence module unavailable");
     }
@@ -20,10 +23,38 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!Today || typeof Today.buildToday !== "function") {
       throw new Error("TripMaster Today model module unavailable");
     }
+    if (!Operations || typeof Operations.taskStats !== "function") {
+      throw new Error("TripMaster operations model module unavailable");
+    }
+    if (typeof window.__tmBootProgress === "function") window.__tmBootProgress("modules-ready");
 
     /* Current UI language. Reassigned once settings are loaded (see below)
        and by setLanguage(). Declared before any t() caller runs. */
     let currentLang = DEFAULT_LANG;
+
+    /* I18N-FIRST-RUN-001 (v1090-RC4): a brand-new international user should
+       never have to navigate an unfamiliar Hebrew UI just to find language.
+       On FIRST RUN ONLY, prefer the browser/device language when TripMaster
+       already supports it. If the device language is unsupported, start in
+       English. Existing users keep their persisted language unchanged. */
+    function detectFirstRunLanguage() {
+      const candidates = [];
+      try {
+        if (typeof navigator !== "undefined" && Array.isArray(navigator.languages)) {
+          navigator.languages.forEach((x) => { if (x) candidates.push(String(x)); });
+        }
+        if (typeof navigator !== "undefined" && navigator.language) {
+          candidates.push(String(navigator.language));
+        }
+      } catch (err) {}
+
+      for (const raw of candidates) {
+        const normalized = raw.trim().toLowerCase().replace(/_/g, "-");
+        const primary = normalized.split("-")[0];
+        if (activeLanguages().indexOf(primary) !== -1) return primary;
+      }
+      return activeLanguages().indexOf("en") !== -1 ? "en" : DEFAULT_LANG;
+    }
 
     /* ── t(key): safe translation lookup ──
        Never throws and never returns undefined:
@@ -50,6 +81,28 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
       return out;
+    }
+
+    /* I18N-PLURAL-001 (v1500): locale-aware plural selection foundation.
+       Existing strings continue to use tf() unchanged. New/updated copy may
+       define <key>_one / <key>_other (and any CLDR category) and call
+       tfPlural(key, count, params). If a category-specific key is absent,
+       the legacy base key is used, so this is additive for all six active
+       languages. Amharic activation is gated on native-reviewed plural copy. */
+    function pluralCategory(count, langCode = currentLang) {
+      const meta = LANG_META[langCode] || LANG_META[DEFAULT_LANG];
+      try { return new Intl.PluralRules(meta.lang).select(Number(count)); }
+      catch (_) { return Number(count) === 1 ? "one" : "other"; }
+    }
+
+    function tfPlural(key, count, params) {
+      const category = pluralCategory(count);
+      const candidate = key + "_" + category;
+      const table = TRANSLATIONS[currentLang] || {};
+      const base = TRANSLATIONS[DEFAULT_LANG] || {};
+      const selected = Object.prototype.hasOwnProperty.call(table, candidate) ||
+        Object.prototype.hasOwnProperty.call(base, candidate) ? candidate : key;
+      return tf(selected, Object.assign({ n: count }, params || {}));
     }
 
     /* ── Document language + direction ──
@@ -84,44 +137,34 @@ document.addEventListener("DOMContentLoaded", () => {
        translation cannot be selected. Each button carries its own
        lang/dir so endonyms render correctly inside either page direction. */
     function renderLanguageOptions() {
-      // I18N-003 (v1030 RC5): paint the collapsed row's current-language
-      // label. The globe lives in the static markup, so only the endonym is
-      // written here, carrying its own lang/dir for correct bidi in any page
-      // direction.
-      const cur = $("langCurrentLabel");
-      const curMeta = LANG_META[currentLang] || LANG_META[DEFAULT_LANG];
-      if (cur) {
-        cur.textContent = curMeta.label;
-        cur.setAttribute("lang", curMeta.lang);
-        cur.setAttribute("dir", curMeta.dir);
-      }
+      // RC4-UX-003: language selection is exposed only through the persistent
+      // header globe. Keeping one surface avoids duplicated settings UI.
+      [$("languageQuickOptions")].filter(Boolean).forEach((row) => {
+        row.innerHTML = "";
+        activeLanguages().forEach((code) => {
+          const meta = LANG_META[code];
+          const on = code === currentLang;
+          const b = document.createElement("button");
+          b.className = "lang-option" + (on ? " on" : "");
+          b.type = "button";
+          b.dataset.lang = code;
+          b.setAttribute("aria-pressed", on ? "true" : "false");
 
-      const row = $("langOptions");
-      if (!row) return;
-      row.innerHTML = "";
-      activeLanguages().forEach((code) => {
-        const meta = LANG_META[code];
-        const on = code === currentLang;
-        const b = document.createElement("button");
-        b.className = "lang-option" + (on ? " on" : "");
-        b.type = "button";
-        b.dataset.lang = code;
-        b.setAttribute("aria-pressed", on ? "true" : "false");
+          const name = document.createElement("span");
+          name.className = "lang-name";
+          name.setAttribute("lang", meta.lang);
+          name.setAttribute("dir", meta.dir);
+          name.textContent = meta.label;
 
-        const name = document.createElement("span");
-        name.className = "lang-name";
-        name.setAttribute("lang", meta.lang);
-        name.setAttribute("dir", meta.dir);
-        name.textContent = meta.label;
+          const check = document.createElement("span");
+          check.className = "lang-check";
+          check.setAttribute("aria-hidden", "true");
+          check.textContent = "✓";
 
-        const check = document.createElement("span");
-        check.className = "lang-check";
-        check.setAttribute("aria-hidden", "true");
-        check.textContent = "✓";
-
-        b.appendChild(name);
-        b.appendChild(check);
-        row.appendChild(b);
+          b.appendChild(name);
+          b.appendChild(check);
+          row.appendChild(b);
+        });
       });
     }
 
@@ -146,6 +189,9 @@ document.addEventListener("DOMContentLoaded", () => {
       renderTools();
       renderCurrentView();
       updateHeaderInfo();
+      if ($("bookingCenterSheet") && $("bookingCenterSheet").classList.contains("open")) renderBookingCenter();
+      if ($("moneySheet") && $("moneySheet").classList.contains("open")) renderMoneyHub();
+      if ($("documentsSheet") && $("documentsSheet").classList.contains("open")) renderDocumentsHub();
       showToast(t("toast_language_changed"));
     }
 
@@ -207,6 +253,11 @@ document.addEventListener("DOMContentLoaded", () => {
     let todayPreviewMode = false;
     let _lastTodayModel = null;
     const _todayNotified = new Set();
+
+    // RC4-AI-LIFECYCLE-001: one read-only request can survive an Android
+    // background/foreground cycle. A resume retry is bounded to one attempt.
+    let _activeAIRequest = null;
+    let _aiRequestSeq = 0;
 
     /* ══════════════════════════════════════════════════════════════════
        STORE-001 (v1040 / A7): one guarded persistence path
@@ -275,6 +326,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const v = item && item.endTime;
       return (typeof v === "string" && DayIntel.parseTime(v) !== null) ? v : "";
     }
+    function itemEndsNextDay(item) { return !!(item && item.endNextDay === true && itemEndTime(item)); }
     function itemReminderMin(item) {
       const raw = item && item.reminderMin;
       let n = null;
@@ -312,6 +364,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (info.mode) parts.push(travelDayModeLabel(info.mode));
       if (info.origin || info.destination) parts.push((info.origin || t("overview_fact_unset")) + " → " + (info.destination || t("overview_fact_unset")));
       if (info.departureTime || info.arrivalTime) parts.push((info.departureTime || "…") + " → " + (info.arrivalTime || "…"));
+      if (info.arrivalDate) parts.push(t("travel_day_arrival_date_short") + ": " + info.arrivalDate);
       if (info.reference) parts.push(info.reference);
       return parts;
     }
@@ -347,6 +400,8 @@ document.addEventListener("DOMContentLoaded", () => {
     function itemPaymentStatus(item) { return Finance.paymentStatus(item && item.booking && item.booking.paymentStatus); }
     function tripExpenses(trip) { return Finance.tripExpenses(trip); }
     function tripDocuments(trip) { return Finance.tripDocuments(trip); }
+    function tripTasks(trip) { return Operations.tripTasks(trip); }
+    function tripTaskStats(trip) { return Operations.taskStats(trip, todayISO()); }
     function paymentStatusLabel(status) {
       const map={ unpaid:"payment_status_unpaid", partial:"payment_status_partial", paid:"payment_status_paid", later:"payment_status_later" };
       return map[status] ? t(map[status]) : t("payment_status_not_tracked");
@@ -365,6 +420,38 @@ document.addEventListener("DOMContentLoaded", () => {
       try { number = new Intl.NumberFormat(currentLang || undefined, { maximumFractionDigits:2 }).format(amount); }
       catch (err) { number = String(Math.round((amount + Number.EPSILON) * 100) / 100); }
       return number + " " + currency;
+    }
+    const COMMON_CURRENCIES = Object.freeze([
+      "ILS","EUR","USD","GBP","CHF","CAD","AUD","NZD","JPY","CNY","KRW","HKD","SGD","INR",
+      "AED","TRY","PLN","CZK","HUF","RON","BGN","SEK","NOK","DKK","ISK","THB","ZAR","BRL","MXN","ARS","CLP","COP"
+    ]);
+    function currencyDisplayName(code) {
+      const c = Finance.currencyCode(code); if (!c) return "";
+      const meta = LANG_META[currentLang] || LANG_META[DEFAULT_LANG];
+      let name = c, symbol = "";
+      try {
+        if (typeof Intl.DisplayNames === "function") name = new Intl.DisplayNames([meta.lang], { type:"currency" }).of(c) || c;
+      } catch (_) {}
+      try {
+        const part = new Intl.NumberFormat(meta.lang, { style:"currency", currency:c, currencyDisplay:"narrowSymbol", maximumFractionDigits:0 }).formatToParts(0).find(x => x.type === "currency");
+        symbol = part && part.value && part.value !== c ? part.value : "";
+      } catch (_) {}
+      return (symbol ? symbol + " · " : "") + name + " (" + c + ")";
+    }
+    function tripCurrencyCodes(trip) {
+      const out = new Set(COMMON_CURRENCIES);
+      const b = Finance.budgetInfo(trip); if (b.currency) out.add(b.currency);
+      Finance.totalsByCurrency(trip).forEach(x => { if (x.currency) out.add(x.currency); });
+      return Array.from(out);
+    }
+    function populateCurrencySelect(select, selected, trip) {
+      if (!select) return;
+      const current = Finance.currencyCode(selected);
+      const codes = tripCurrencyCodes(trip); if (current && codes.indexOf(current) === -1) codes.unshift(current);
+      select.innerHTML = "";
+      const blank = document.createElement("option"); blank.value = ""; blank.textContent = t("currency_choose"); select.appendChild(blank);
+      codes.forEach(code => { const opt=document.createElement("option");opt.value=code;opt.textContent=currencyDisplayName(code);select.appendChild(opt); });
+      select.value = current || "";
     }
     function financeId(prefix) { return prefix + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,8); }
     function logisticsTrackingActive(trip) { return tripStays(trip).length > 0 || tripJourneys(trip).length > 0; }
@@ -481,6 +568,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const paymentAttention = bookingRows.filter(row => row.bookingStatus !== "cancelled" && (row.paymentStatus === "unpaid" || row.paymentStatus === "partial")).length;
       const documentNeeds = Finance.documentNeedsAttention(trip).length;
       const budgetSummary = Finance.budgetSummary(trip);
+      const taskSummary = tripTaskStats(trip);
 
       return {
         conflicts, invalidTimes, travelUnknown, insufficientTravel,
@@ -508,33 +596,70 @@ document.addEventListener("DOMContentLoaded", () => {
         budgetExceeded: budgetSummary.active && budgetSummary.exceeded,
         bookingCount: bookingRows.length,
         expenseCount: tripExpenses(trip).length,
-        documentCount: tripDocuments(trip).length
+        documentCount: tripDocuments(trip).length,
+        taskCount: taskSummary.total,
+        taskOpen: taskSummary.open,
+        taskDone: taskSummary.done,
+        taskOverdue: taskSummary.overdue || 0,
+        taskDueToday: taskSummary.dueToday || 0,
+        taskOtherOpen: Math.max(0,(taskSummary.open||0)-(taskSummary.overdue||0)-(taskSummary.dueToday||0))
       };
     }
 
     function readinessEntries(trip) {
       const st = tripPlanningStats(trip);
       const rows = [];
-      const add = (level, text) => rows.push({ level, text });
-      if (st.conflicts) add("issue", tf("day_health_conflicts", { n: st.conflicts }));
-      if (st.invalidTimes) add("issue", tf("day_health_invalid_time", { n: st.invalidTimes }));
-      if (st.insufficientTravel) add("issue", tf("overview_travel_insufficient", { n: st.insufficientTravel }));
-      if (st.stayOverlaps) add("issue", tf("readiness_stay_overlap", { n: st.stayOverlaps }));
-      if (st.stayDateProblems) add("issue", tf("readiness_stay_date_problem", { n: st.stayDateProblems }));
-      if (st.accessIssues) add("issue", tf("overview_access_issues", { n: st.accessIssues }));
-      if (st.travelUnknown) add("check", tf("overview_travel_unknown", { n: st.travelUnknown }));
-      if (st.stayGapDates) add("check", tf("readiness_stay_gaps", { n: st.stayGapDates }));
-      if (st.plannedStays) add("check", tf("readiness_planned_stays", { n: st.plannedStays }));
-      if (st.plannedJourneys) add("check", tf("readiness_planned_journeys", { n: st.plannedJourneys }));
-      if (st.plannedActivityBookings) add("check", tf("readiness_planned_activity_bookings", { n: st.plannedActivityBookings }));
-      if (st.paymentAttention) add("check", tf("readiness_payment_attention", { n: st.paymentAttention }));
-      if (st.documentNeeds) add("check", tf("readiness_documents_needed", { n: st.documentNeeds }));
-      if (st.budgetExceeded) add("check", t("readiness_budget_exceeded"));
-      if (st.accessNeedsCheck) add("check", tf("overview_access_to_check", { n: st.accessNeedsCheck }));
-      if (st.missingDestination) add("check", t("overview_missing_destination"));
-      if (st.missingTimezone) add("check", t("overview_missing_timezone"));
-      if (st.missingBase) add("check", t("overview_missing_base"));
+      const add = (level, text, area) => rows.push({ level, text, area: area || "setup" });
+      if (st.conflicts) add("issue", tf("day_health_conflicts", { n: st.conflicts }), "schedule");
+      if (st.invalidTimes) add("issue", tf("day_health_invalid_time", { n: st.invalidTimes }), "schedule");
+      if (st.insufficientTravel) add("issue", tf("overview_travel_insufficient", { n: st.insufficientTravel }), "schedule");
+      if (st.stayOverlaps) add("issue", tf("readiness_stay_overlap", { n: st.stayOverlaps }), "logistics");
+      if (st.stayDateProblems) add("issue", tf("readiness_stay_date_problem", { n: st.stayDateProblems }), "logistics");
+      if (st.accessIssues) add("issue", tf("overview_access_issues", { n: st.accessIssues }), "access");
+      if (st.travelUnknown) add("check", tf("overview_travel_unknown", { n: st.travelUnknown }), "schedule");
+      if (st.stayGapDates) add("check", tf("readiness_stay_gaps", { n: st.stayGapDates }), "logistics");
+      if (st.plannedStays) add("check", tf("readiness_planned_stays", { n: st.plannedStays }), "logistics");
+      if (st.plannedJourneys) add("check", tf("readiness_planned_journeys", { n: st.plannedJourneys }), "logistics");
+      if (st.plannedActivityBookings) add("check", tf("readiness_planned_activity_bookings", { n: st.plannedActivityBookings }), "bookings");
+      if (st.paymentAttention) add("check", tf("readiness_payment_attention", { n: st.paymentAttention }), "bookings");
+      if (st.documentNeeds) add("check", tf("readiness_documents_needed", { n: st.documentNeeds }), "documents");
+      if (st.budgetExceeded) add("check", t("readiness_budget_exceeded"), "money");
+      if (st.taskOverdue) add("issue", tf("readiness_overdue_tasks", { n: st.taskOverdue }), "tasks");
+      if (st.taskDueToday) add("check", tf("readiness_tasks_due_today", { n: st.taskDueToday }), "tasks");
+      if (st.taskOtherOpen) add("check", tf("readiness_open_tasks", { n: st.taskOtherOpen }), "tasks");
+      if (st.accessNeedsCheck) add("check", tf("overview_access_to_check", { n: st.accessNeedsCheck }), "access");
+      if (st.missingDestination) add("check", t("overview_missing_destination"), "setup");
+      if (st.missingTimezone) add("check", t("overview_missing_timezone"), "setup");
+      if (st.missingBase) add("check", t("overview_missing_base"), "logistics");
       return rows;
+    }
+
+    function readinessAreaLabel(area) {
+      const key = {
+        schedule:"readiness_area_schedule", logistics:"readiness_area_logistics",
+        bookings:"readiness_area_bookings", money:"readiness_area_money",
+        documents:"readiness_area_documents", tasks:"readiness_area_tasks", access:"readiness_area_access",
+        setup:"readiness_area_setup"
+      }[area] || "readiness_area_setup";
+      return t(key);
+    }
+
+    function openReadinessArea(area, trip) {
+      if (!trip) return;
+      if (area === "schedule") { closeOverviewSheet(); continuePlanning(trip.id); return; }
+      if (area === "logistics") { openLogisticsSheet(trip.id); return; }
+      if (area === "bookings") { openBookingCenterSheet(trip.id); return; }
+      if (area === "money") { openMoneySheet(trip.id); return; }
+      if (area === "documents") { openDocumentsSheet(trip.id); return; }
+      if (area === "tasks") { openTripBoardSheet(trip.id, "tasks"); return; }
+      if (area === "access") {
+        openMenuSheet();
+        const head = $("accessHead");
+        if (head && head.getAttribute("aria-expanded") !== "true") head.click();
+        window.setTimeout(() => { try { if (head) head.scrollIntoView({ block:"start", behavior:"smooth" }); } catch (_) {} }, 90);
+        return;
+      }
+      openTripDetailsSheet(trip.id);
     }
 
     function tripReadiness(trip) {
@@ -860,6 +985,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const keyField = $("global-apikey");
         if (keyField) keyField.value = "";
       }
+      resetAIForTripContextChange();
       renderCurrentView();
       updateHeaderInfo();
       if ($("logisticsSheet") && $("logisticsSheet").classList.contains("open")) renderLogisticsHub();
@@ -867,7 +993,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if ($("moneySheet") && $("moneySheet").classList.contains("open")) renderMoneyHub();
       if ($("documentsSheet") && $("documentsSheet").classList.contains("open")) renderDocumentsHub();
       const undoTrip = logisticsTrip();
-      if (undoTrip && $("tripDetailsSheet") && $("tripDetailsSheet").classList.contains("open")) updateTripLogisticsSummary(undoTrip);
       showToast(t("toast_undone"));
     }
 
@@ -897,6 +1022,53 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       return writeAll([[KEY_SAFETY_SNAPSHOT, payload]]);
     }
+
+    function readSafetySnapshot() {
+      let raw=null;
+      try { raw=localStorage.getItem(KEY_SAFETY_SNAPSHOT); } catch (_) { return null; }
+      if(!raw) return null;
+      try {
+        const snap=JSON.parse(raw);
+        if(!snap||snap.app!=="TripMaster"||!Array.isArray(snap.trips))return null;
+        return snap;
+      } catch (_) { return null; }
+    }
+    function safetyReasonLabel(reason) {
+      const key={reset:"safety_reason_reset",restore:"safety_reason_restore","trip-delete":"safety_reason_trip_delete",manual:"safety_reason_manual"}[reason]||"safety_reason_other";
+      return t(key);
+    }
+    function storageWritableCheck(){
+      const key="__tm_probe__"+Date.now();
+      try{localStorage.setItem(key,"1");localStorage.removeItem(key);return true;}catch(_){try{localStorage.removeItem(key);}catch(e){}return false;}
+    }
+    function safetyHealthRow(label,value,tone){
+      const row=document.createElement("div");row.className="safety-health-row "+(tone||"");
+      const l=document.createElement("span");l.textContent=label;const v=document.createElement("strong");v.textContent=value;row.appendChild(l);row.appendChild(v);return row;
+    }
+    async function renderSafetyCenter(){
+      const grid=$("safetyHealthGrid"),meta=$("safetySnapshotMeta"),restoreBtn=$("safetySnapshotRestoreBtn");if(!grid||!meta)return;
+      grid.innerHTML="";
+      grid.appendChild(safetyHealthRow(t("safety_health_version"),APP_VERSION,"ok"));
+      grid.appendChild(safetyHealthRow(t("safety_health_network"),navigator.onLine?t("safety_online"):t("safety_offline"),navigator.onLine?"ok":"warn"));
+      grid.appendChild(safetyHealthRow(t("safety_health_storage"),storageWritableCheck()?t("safety_storage_ok"):t("safety_storage_problem"),storageWritableCheck()?"ok":"issue"));
+      const swControlled=!!(navigator.serviceWorker&&navigator.serviceWorker.controller);
+      grid.appendChild(safetyHealthRow(t("safety_health_offline"),swControlled?t("safety_offline_ready"):t("safety_offline_not_controlled"),swControlled?"ok":"warn"));
+      grid.appendChild(safetyHealthRow(t("safety_health_trips"),String(trips.length),""));
+      const active=getActiveTrip();grid.appendChild(safetyHealthRow(t("safety_health_active"),active?(active.name||t("menu_new_trip")):t("safety_none"),""));
+      const snap=readSafetySnapshot();
+      if(snap){
+        let when=snap.createdAt||"";try{when=new Date(when).toLocaleString(dateLocale());}catch(_){}
+        meta.textContent=tf("safety_snapshot_available",{date:when||"—",reason:safetyReasonLabel(snap.reason),trips:Array.isArray(snap.trips)?snap.trips.length:0});
+        if(restoreBtn)restoreBtn.disabled=false;
+      }else{meta.textContent=t("safety_snapshot_none");if(restoreBtn)restoreBtn.disabled=true;}
+      if(navigator.storage&&typeof navigator.storage.estimate==="function"){
+        try{const est=await navigator.storage.estimate();if(est&&Number.isFinite(est.usage)&&Number.isFinite(est.quota)&&est.quota>0){const pct=Math.round(est.usage/est.quota*100);grid.appendChild(safetyHealthRow(t("safety_health_usage"),tf("safety_usage_value",{pct}),pct>85?"warn":""));}}catch(_){}
+      }
+    }
+    function openSafetyCenter(){renderSafetyCenter();openSheetEl("safetyCenterSheet");}
+    function closeSafetyCenter(){closeSheetEl("safetyCenterSheet");}
+    function createManualSafetySnapshot(){if(!writeSafetySnapshot("manual")){showToast(t("toast_snapshot_failed"));return;}renderSafetyCenter();showToast(t("safety_snapshot_created"));}
+    function restoreLocalSafetySnapshot(){const snap=readSafetySnapshot();if(!snap){showToast(t("safety_snapshot_none"));return;}confirmRestore(()=>{closeSafetyCenter();doRestore(snap);});}
 
     /* ══════════════════════════════════════════════════════════════════
        CAL-TIME-001 (v1040 / B5): one canonical calendar time pipeline
@@ -1004,7 +1176,7 @@ document.addEventListener("DOMContentLoaded", () => {
     /* THE canonical conversion. Both calendar exports use this and nothing
        else. `endTimeStr` is optional: with no end time the activity keeps
        the pre-v1040 duration of exactly one hour (B4). */
-    function activityTimeSpec(dateStr, timeStr, endTimeStr, tz) {
+    function activityTimeSpec(dateStr, timeStr, endTimeStr, tz, endNextDay) {
       const date = parseDateOnly(String(dateStr || ""));
       if (!date) return null;
       const startMin = DayIntel.parseTime(String(timeStr || ""));
@@ -1021,9 +1193,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (endMin === null) return null;
         const eh = Math.floor(endMin / 60), em = endMin % 60;
         end = { y: start.y, mo: start.mo, d: start.d, h: eh, mi: em };
-        // An end at or before the start means the activity runs past
-        // midnight, which is a real thing on a trip (a 23:00 concert).
-        if (endMin <= startMin) end = addWallMinutes(end, 24 * 60);
+        if (endNextDay === true) end = addWallMinutes(end, 24 * 60);
       } else {
         end = addWallMinutes(start, 60);
       }
@@ -1058,13 +1228,21 @@ document.addEventListener("DOMContentLoaded", () => {
       };
     }
 
-    /* UID-001 (v1040 / B6): assigned once and then stored, so re-exporting
-       the same activity updates the same calendar entry instead of creating
-       a second one. Generated lazily at export time — boot stays read-only. */
+    /* UID-001 / RC4-FIX1-AI-003: activities now receive a stable opaque UID
+       when created. Legacy activities still get one lazily on their next safe
+       user write/export/link action, so opening an old backup remains read-only. */
+    function newActivityUid() {
+      let token = "";
+      try {
+        if (window.crypto && typeof window.crypto.randomUUID === "function") token = window.crypto.randomUUID();
+      } catch (_) {}
+      if (!token) token = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+      return "tm-" + token + "@tripmaster.app";
+    }
+
     function ensureActivityUid(item) {
       if (item && typeof item.uid === "string" && item.uid) return item.uid;
-      const uid = "tm-" + Date.now().toString(36) + "-"
-                + Math.random().toString(36).slice(2, 10) + "@tripmaster.app";
+      const uid = newActivityUid();
       if (item) {
         item.uid = uid;
         // Best effort: a failed write only costs UID stability, never data,
@@ -1080,6 +1258,27 @@ document.addEventListener("DOMContentLoaded", () => {
        id so stacked sheets (a confirmation over the menu) unwind correctly. */
     let _focusReturn = [];
     const _sheetFocusTimers = new Map();
+    let _pendingUpdateReady = false;
+
+    /* v1100 NAV-BACK-001: installed/mobile browser Back integration.
+       TripMaster is still a local single-page app, so we keep one lightweight
+       same-document guard entry rather than introducing a router. Hardware /
+       browser Back now unwinds in product order: top sheet -> Today -> Planner
+       -> Home -> leave the app/page. Close buttons keep their existing direct
+       behavior, so this cannot create duplicate modal history entries. */
+    let _backGuardArmed = false;
+    function armBackGuard() {
+      if (!window.history || typeof history.pushState !== "function") return;
+      try {
+        history.replaceState({ tripmasterRoot: 1 }, "");
+        history.pushState({ tripmasterGuard: 1 }, "");
+        _backGuardArmed = true;
+      } catch (_) { _backGuardArmed = false; }
+    }
+    function rearmBackGuard() {
+      if (!_backGuardArmed || !window.history || typeof history.pushState !== "function") return;
+      try { history.pushState({ tripmasterGuard: 1 }, ""); } catch (_) {}
+    }
 
     function openSheetEl(id) {
       const el = $(id);
@@ -1133,6 +1332,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (wasOpen && rec.trigger && document.contains(rec.trigger)) {
         try { rec.trigger.focus(); } catch (err) {}
       }
+      if (_pendingUpdateReady && !topOpenSheet()) { _pendingUpdateReady=false; const banner=$("updateBanner"); if(banner)banner.hidden=false; }
     }
 
     function getActiveTrip() {
@@ -1140,13 +1340,20 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     /* ── Trip management ── */
+    function newTripId(prefix) {
+      let token="";
+      try { if (window.crypto && typeof window.crypto.randomUUID === "function") token=window.crypto.randomUUID(); } catch (_) {}
+      if (!token) token=Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,12);
+      return (prefix || "trip") + "_" + token;
+    }
+
     /* STORE-001 (v1040 / A7): returns null when the trip could not be
        persisted, so the caller cannot render and toast a trip that would
        vanish on the next reload. The name fallback is localized rather than
        a Hebrew literal (E-family); in practice the caller already rejects an
        empty name, so it is a safety net, not a normal path. */
     function createTrip(name) {
-      const newTrip = { id: "trip_" + Date.now(), name: name || t("menu_new_trip"), days: [] };
+      const newTrip = { id: newTripId("trip"), name: name || t("menu_new_trip"), days: [] };
       const previousTrips = trips.slice();
       const previousActive = activeTripId;
       trips.push(newTrip);
@@ -1160,7 +1367,31 @@ document.addEventListener("DOMContentLoaded", () => {
         return null;
       }
       days = newTrip.days;
+      resetAIForTripContextChange();
       return newTrip;
+    }
+
+    function duplicateTrip(sourceTrip) {
+      if (!sourceTrip) return null;
+      const copy = JSON.parse(JSON.stringify(sourceTrip));
+      const oldTripId = copy.id;
+      copy.id = newTripId("trip");
+      copy.name = tf("trip_copy_name", { name: sourceTrip.name || t("menu_new_trip") });
+      delete copy.migrationSource; delete copy.legacyHomeSignature; delete copy.archived; delete copy.archivedAt;
+      const idMap = new Map(); idMap.set(oldTripId, copy.id);
+      (copy.days || []).forEach(day => (day.items || []).forEach(item => {
+        const old = item && item.uid; const fresh = newActivityUid();
+        if (old) idMap.set(old, fresh); if (item) item.uid = fresh;
+      }));
+      const remapCollection = (rows, prefix) => (Array.isArray(rows) ? rows : []).forEach(row => {
+        if (!row || typeof row !== "object") return; const old=row.id; const fresh=newTripId(prefix); if(old)idMap.set(old,fresh); row.id=fresh;
+      });
+      remapCollection(copy.stays,"stay"); remapCollection(copy.journeys,"journey"); remapCollection(copy.expenses,"expense"); remapCollection(copy.documents,"doc"); remapCollection(copy.tasks,"task");
+      const remapLink = row => { if(!row||typeof row!=="object"||!row.linkedId)return; if(idMap.has(row.linkedId))row.linkedId=idMap.get(row.linkedId); };
+      (copy.expenses||[]).forEach(remapLink); (copy.documents||[]).forEach(remapLink);
+      const previous=snapshotState(); trips.push(copy); activeTripId=copy.id; days=copy.days||[]; currentDayIndex=0; currentView="home";
+      if(!saveTrips()){restoreStateFrom(previous);reportStorageFailure();return null;}
+      resetAIForTripContextChange(); renderCurrentView(); updateHeaderInfo(); showToast(t("toast_trip_duplicated")); return copy;
     }
 
     function switchTrip(tripId, options) {
@@ -1173,13 +1404,15 @@ document.addEventListener("DOMContentLoaded", () => {
       currentDayIndex = 0;
       currentView = opts.stayHome ? "home" : "planner";
       if (!saveTrips()) { restoreStateFrom(previous); reportStorageFailure(); return false; }
+      resetAIForTripContextChange();
       renderCurrentView();
       updateHeaderInfo();
       if (!opts.silent) showToast(tf("toast_switched_trip", { name: activeTrip.name }));
       return true;
     }
 
-    function goHome() {
+    function goHome(options) {
+      const opts = options || {};
       // HOME-STATE-001: dashboard navigation never clears the selected trip.
       // activeTripId remains the user's working-trip selection.
       currentView = "home";
@@ -1188,7 +1421,7 @@ document.addEventListener("DOMContentLoaded", () => {
       currentDayIndex = 0;
       renderCurrentView();
       updateHeaderInfo();
-      showToast(t("toast_home"));
+      if (!opts.silent) showToast(t("toast_home"));
     }
 
     function continuePlanning(tripId) {
@@ -1247,7 +1480,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const migratedTrip = {
-        id: "trip_home_" + Date.now(),
+        id: newTripId("trip_home"),
         name: t("legacy_home_trip_name"),
         days: JSON.parse(JSON.stringify(legacy)),
         migrationSource: "legacy-home",
@@ -1284,7 +1517,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function upcomingTrip() {
       const today = todayISO();
       const candidates = trips.map(trip => ({ trip, range: tripDateRange(trip) }))
-        .filter(x => x.range && x.range.last >= today)
+        .filter(x => x.range && x.range.last >= today && !Operations.isArchivedTrip(x.trip))
         .sort((a,b) => a.range.first.localeCompare(b.range.first));
       return candidates.length ? candidates[0] : null;
     }
@@ -1375,6 +1608,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const overview = document.createElement("button");
       overview.type = "button"; overview.className = "btn btn-muted"; overview.textContent = t("menu_overview");
       overview.addEventListener("click", () => { if (trip.id !== activeTripId) switchTrip(trip.id, {stayHome:true, silent:true}); openOverviewSheet(); });
+      const board = document.createElement("button");
+      board.type = "button"; board.className = "btn btn-muted"; board.textContent = t("trip_board_title");
+      board.addEventListener("click", () => { if (trip.id !== activeTripId) switchTrip(trip.id, {stayHome:true, silent:true}); openTripBoardSheet(trip.id,"agenda"); });
       /* HOMEHUB-001 (v1050-RC2): trip deletion used to exist ONLY inside the
          removed switch-trip sheet. It moves here rather than disappearing.
          Still behind confirmDeleteTrip() and still undoable. */
@@ -1383,9 +1619,28 @@ document.addEventListener("DOMContentLoaded", () => {
       del.title = t("btn_delete_trip");
       del.setAttribute("aria-label", t("btn_delete_trip") + " — " + (trip.name || ""));
       del.addEventListener("click", () => deleteTrip(trip.id));
-      actions.appendChild(todayAction); actions.appendChild(cont); actions.appendChild(details); actions.appendChild(overview); actions.appendChild(del);
+      actions.appendChild(todayAction); actions.appendChild(cont); actions.appendChild(details); actions.appendChild(overview); actions.appendChild(board); actions.appendChild(del);
       card.appendChild(actions);
       return card;
+    }
+
+    function appendHomeTripList(body, labelKey, rows, options) {
+      if (!body || !rows.length) return;
+      const opts=options||{};
+      const label=document.createElement("div");label.className="home-section-label";label.textContent=t(labelKey);body.appendChild(label);
+      const list=document.createElement("div");list.className="home-other-list"+(opts.past?" home-past-list":"");
+      rows.forEach(trip=>{
+        const row=document.createElement("div");row.className="home-other-row";
+        const pick=document.createElement("button");pick.type="button";pick.className="home-other-pick";
+        const range=tripDateRange(trip);pick.innerHTML=`<span>${escapeHtml(trip.name||t("menu_new_trip"))}</span><small>${escapeHtml(tripDestination(trip)||(range?((formatDateOnly(range.first,{day:"numeric",month:"short",year:opts.past?"numeric":undefined})||range.first)):t("home_no_dates")))}</small>`;
+        pick.addEventListener("click",()=>{if(opts.archived)openTripDetailsSheet(trip.id);else switchTrip(trip.id,{stayHome:true});});
+        const actions=document.createElement("div");actions.className="home-other-actions";
+        if(!opts.archived){const board=document.createElement("button");board.type="button";board.className="trip-card-btn";board.textContent="🧭";board.title=t("trip_board_title");board.setAttribute("aria-label",t("trip_board_title")+" — "+(trip.name||""));board.addEventListener("click",()=>{if(trip.id!==activeTripId)switchTrip(trip.id,{stayHome:true,silent:true});openTripBoardSheet(trip.id,"agenda");});actions.appendChild(board);}
+        const edit=document.createElement("button");edit.type="button";edit.className="trip-card-btn";edit.textContent="✏️";edit.title=t("trip_edit_title");edit.setAttribute("aria-label",t("trip_edit_title")+" — "+(trip.name||""));edit.addEventListener("click",()=>openTripDetailsSheet(trip.id));
+        if(opts.archived){const restore=document.createElement("button");restore.type="button";restore.className="trip-card-btn";restore.textContent="📤";restore.title=t("trip_unarchive_btn");restore.setAttribute("aria-label",t("trip_unarchive_btn")+" — "+(trip.name||""));restore.addEventListener("click",()=>setTripArchived(trip,false));actions.appendChild(restore);}
+        const del=document.createElement("button");del.type="button";del.className="trip-card-btn trip-card-btn-danger";del.textContent="🗑";del.title=t("btn_delete_trip");del.setAttribute("aria-label",t("btn_delete_trip")+" — "+(trip.name||""));del.addEventListener("click",()=>deleteTrip(trip.id));
+        actions.appendChild(edit);actions.appendChild(del);row.appendChild(pick);row.appendChild(actions);list.appendChild(row);
+      }); body.appendChild(list);
     }
 
     function renderHomeDashboard() {
@@ -1419,34 +1674,14 @@ document.addEventListener("DOMContentLoaded", () => {
         body.appendChild(label); body.appendChild(dashboardTripCard(upcoming.trip, "upcoming"));
       }
 
-      const others = trips.filter(trip => (!active || trip.id !== active.id) && (!upcoming || trip.id !== upcoming.trip.id));
-      if (others.length) {
-        const label = document.createElement("div"); label.className = "home-section-label"; label.textContent = t("home_other_trips"); body.appendChild(label);
-        const list = document.createElement("div"); list.className = "home-other-list";
-        others.forEach(trip => {
-          /* The row used to be one <button>. It now holds a select button
-             plus per-trip edit/delete, so it must be a container: a button
-             inside a button is invalid HTML and breaks keyboard order. */
-          const row = document.createElement("div"); row.className = "home-other-row";
-          const pick = document.createElement("button"); pick.type = "button"; pick.className = "home-other-pick";
-          const range = tripDateRange(trip);
-          pick.innerHTML = `<span>${escapeHtml(trip.name || t("menu_new_trip"))}</span><small>${escapeHtml(tripDestination(trip) || (range ? (formatDateOnly(range.first,{day:"numeric",month:"short"}) || range.first) : t("home_no_dates")))}</small>`;
-          pick.addEventListener("click", () => switchTrip(trip.id, {stayHome:true}));
-          const rowActions = document.createElement("div"); rowActions.className = "home-other-actions";
-          const edit = document.createElement("button"); edit.type = "button"; edit.className = "trip-card-btn";
-          edit.textContent = "✏️"; edit.title = t("trip_edit_title");
-          edit.setAttribute("aria-label", t("trip_edit_title") + " — " + (trip.name || ""));
-          edit.addEventListener("click", () => openTripDetailsSheet(trip.id));
-          const del = document.createElement("button"); del.type = "button"; del.className = "trip-card-btn trip-card-btn-danger";
-          del.textContent = "🗑"; del.title = t("btn_delete_trip");
-          del.setAttribute("aria-label", t("btn_delete_trip") + " — " + (trip.name || ""));
-          del.addEventListener("click", () => deleteTrip(trip.id));
-          rowActions.appendChild(edit); rowActions.appendChild(del);
-          row.appendChild(pick); row.appendChild(rowActions);
-          list.appendChild(row);
-        });
-        body.appendChild(list);
-      }
+      const archived=trips.filter(trip=>Operations.isArchivedTrip(trip));
+      const others = trips.filter(trip => !Operations.isArchivedTrip(trip) && (!active || trip.id !== active.id) && (!upcoming || trip.id !== upcoming.trip.id));
+      const today=todayISO();
+      const past=others.filter(trip=>{const r=tripDateRange(trip);return !!(r&&r.last<today);});
+      const currentOthers=others.filter(trip=>past.indexOf(trip)===-1);
+      appendHomeTripList(body,"home_other_trips",currentOthers);
+      appendHomeTripList(body,"home_past_trips",past,{past:true});
+      appendHomeTripList(body,"home_archived_trips",archived,{past:true,archived:true});
     }
 
     /* ══════════════════════════════════════════════════════════════════
@@ -1519,9 +1754,32 @@ document.addEventListener("DOMContentLoaded", () => {
       setOperationsTrip(trip.id);
       openBookingSource({kind:event.source.kind,sourceIndex:event.source.index,dayIndex:event.source.dayIndex,itemIndex:event.source.itemIndex});
     }
+    function toggleTodayActivityCompleted(event, trip) {
+      if(!event||!event.source||event.source.kind!=="activity"||!trip)return;
+      const day=trip.days&&trip.days[event.source.dayIndex],item=day&&day.items&&day.items[event.source.itemIndex];
+      if(!item)return;
+      if(!commitState(()=>{item.completed=item.completed!==true;}))return;
+      renderTodayView();
+      showToast(item.completed?t("toast_done"):t("toast_undone_status"));
+    }
+    function renderTodayProgress(model) {
+      const activities=model.events.filter(e=>e.kind==="activity");
+      if(!activities.length)return null;
+      const done=activities.filter(e=>e.completed===true).length,total=activities.length,pct=Math.round(done/total*100);
+      const section=document.createElement("section");section.className="today-progress-card";
+      const head=document.createElement("div");head.className="today-progress-head";
+      const title=document.createElement("strong");title.textContent=t("today_progress_title");
+      const meta=document.createElement("span");meta.textContent=tf("today_progress_meta",{done,total});
+      head.appendChild(title);head.appendChild(meta);
+      const track=document.createElement("div");track.className="today-progress-track";track.setAttribute("aria-label",tf("today_progress_meta",{done,total}));
+      const fill=document.createElement("span");fill.style.width=pct+"%";track.appendChild(fill);
+      section.appendChild(head);section.appendChild(track);return section;
+    }
+
     function todayQuickActions(event, trip, accessActive) {
       const wrap=document.createElement("div"); wrap.className="today-quick-actions";
       const add=(label,fn)=>{const b=document.createElement("button");b.type="button";b.className="today-action";b.textContent=label;b.addEventListener("click",fn);wrap.appendChild(b);};
+      if(event&&event.kind==="activity"&&event.source)add(event.completed?t("today_mark_open"):t("today_mark_done"),()=>toggleTodayActivityCompleted(event,trip));
       if (event && event.source) add(event.kind==="travel"?t("today_edit_travel"):t("today_details"),()=>todayOpenDetails(event,trip));
       if (event && event.location) add(t("today_maps"),()=>window.open(mapsUrl({location:event.location,title:event.title}),"_blank"));
       if (event && event.hasBooking && event.source && ["activity","stay","journey"].includes(event.source.kind)) add(t("today_booking_details"),()=>todayOpenBooking(event,trip));
@@ -1558,6 +1816,16 @@ document.addEventListener("DOMContentLoaded", () => {
       const section=document.createElement("section");section.className="today-section";section.innerHTML=`<div class="today-section-title">${escapeHtml(t("today_attention"))}</div>`;
       model.attention.forEach(a=>{const row=document.createElement("div");row.className="today-attention-row "+a.level;row.innerHTML=`<span class="today-attention-level">${escapeHtml(a.level==="issue"?t("today_level_issue"):a.level==="check"?t("today_level_check"):t("today_level_info"))}</span><span>${escapeHtml(todayAttentionText(a.code))}</span>`;section.appendChild(row);});return section;
     }
+    function renderTodayTasks(trip, model) {
+      if(!trip||!model||!model.date)return null;
+      const all=Operations.sortedTasks(trip,model.date).filter(x=>!x.info.done);
+      const rows=all.filter(x=>model.isLive?(x.info.date&&x.info.date<=model.date):(x.info.date===model.date)).slice(0,5);
+      if(!rows.length)return null;
+      const section=document.createElement("section");section.className="today-section today-task-section";section.innerHTML=`<div class="today-section-title">${escapeHtml(t("today_tasks_title"))}</div>`;
+      rows.forEach(({raw,info})=>{const state=Operations.taskDueState(info,model.date);const row=document.createElement("div");row.className="today-task-row"+(state==="overdue"?" overdue":"");const toggle=document.createElement("button");toggle.type="button";toggle.className="trip-task-toggle";toggle.textContent="○";toggle.setAttribute("aria-label",t("trip_task_mark_done"));const copy=document.createElement("div");copy.className="today-task-copy";const title=document.createElement("strong");title.textContent=info.title;copy.appendChild(title);const meta=document.createElement("small");meta.textContent=state==="overdue"?t("today_tasks_overdue"):t("today_tasks_due");copy.appendChild(meta);toggle.addEventListener("click",()=>{if(!commitState(()=>{raw.done=true;}))return;renderTodayView();renderCurrentView();showToast(t("today_mark_done"));});row.appendChild(toggle);row.appendChild(copy);section.appendChild(row);});
+      const btn=document.createElement("button");btn.type="button";btn.className="btn btn-muted compact-btn today-task-board-btn";btn.textContent=t("today_tasks_open_board");btn.addEventListener("click",()=>openTripBoardSheet(trip.id,"tasks"));section.appendChild(btn);return section;
+    }
+
     function renderTodayReminders(model) {
       const rows=model.reminders.filter(r=>model.preview?r.state==="scheduled":r.state!=="passed").slice(0,3);if(!rows.length)return null;
       const section=document.createElement("section");section.className="today-section";section.innerHTML=`<div class="today-section-title">${escapeHtml(t("today_reminders"))}</div>`;
@@ -1600,6 +1868,19 @@ document.addEventListener("DOMContentLoaded", () => {
       if(!model||!model.isLive||typeof Notification==="undefined"||Notification.permission!=="granted")return;
       model.reminders.filter(r=>r.state==="due").forEach(r=>{const key=[trip.id,model.date,r.dayIndex,r.itemIndex,r.dueMin].join("|");if(_todayNotified.has(key))return;_todayNotified.add(key);try{new Notification(t("today_reminder_due"),{body:r.title+(r.time?" · "+r.time:"")});}catch(err){console.warn("TripMaster: foreground notification failed",err);}});
     }
+    function updateTodayAlertsButton() {
+      const btn=$("todayAlertsBtn"); if(!btn)return;
+      if(typeof Notification==="undefined"){btn.hidden=true;return;}
+      btn.hidden=false;btn.disabled=false;btn.removeAttribute("aria-pressed");
+      if(Notification.permission==="granted"){btn.textContent=t("today_alerts_enabled");btn.disabled=true;btn.setAttribute("aria-pressed","true");}
+      else if(Notification.permission==="denied"){btn.textContent=t("today_alerts_blocked");btn.disabled=true;}
+      else btn.textContent=t("today_alerts_enable");
+    }
+    async function requestTodayAlerts() {
+      if(typeof Notification==="undefined"){showToast(t("today_alerts_unsupported"));return;}
+      try { const result=await Notification.requestPermission(); updateTodayAlertsButton(); showToast(result==="granted"?t("today_alerts_granted"):t("today_alerts_not_granted")); }
+      catch(err){console.warn("TripMaster: notification permission failed",err);showToast(t("today_alerts_not_granted"));}
+    }
     function renderTodayView() {
       const body=$("todayBody"),trip=getActiveTrip();if(!body)return;body.innerHTML="";
       if(!trip){body.textContent=t("toast_no_active_trip");return;}
@@ -1616,9 +1897,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if(model.preview){const note=document.createElement("div");note.className="today-preview-banner";note.textContent=t("today_preview_notice");body.appendChild(note);}
       if(!model.date){const empty=document.createElement("section");empty.className="today-section";empty.textContent=t("today_preview_empty");body.appendChild(empty);return;}
       if(model.dayType!=="normal"){
-        const travel=document.createElement("section");travel.className="today-section";const parts=[];if(model.travelDay){if(model.travelDay.origin||model.travelDay.destination)parts.push((model.travelDay.origin||"…")+" → "+(model.travelDay.destination||"…"));if(model.travelDay.departureTime||model.travelDay.arrivalTime)parts.push((model.travelDay.departureTime||"…")+" → "+(model.travelDay.arrivalTime||"…"));}
+        const travel=document.createElement("section");travel.className="today-section";const parts=[];if(model.travelDay){if(model.travelDay.origin||model.travelDay.destination)parts.push((model.travelDay.origin||"…")+" → "+(model.travelDay.destination||"…"));if(model.travelDay.departureTime||model.travelDay.arrivalTime)parts.push((model.travelDay.departureTime||"…")+" → "+(model.travelDay.arrivalTime||"…"));if(model.travelDay.arrivalDate)parts.push(t("travel_day_arrival_date_short")+": "+model.travelDay.arrivalDate);}
         travel.innerHTML=`<div class="today-section-title">${escapeHtml(dayTypeIcon(model.dayType)+" "+dayTypeLabel(model.dayType))}</div>${parts.length?`<div class="today-section-note">${escapeHtml(parts.join(" · "))}</div>`:""}`;body.appendChild(travel);
       }
+      const progress=renderTodayProgress(model);if(progress)body.appendChild(progress);
       const heroes=document.createElement("div");heroes.className="today-hero-grid";
       if(model.now)heroes.appendChild(renderTodayHeroEvent(t("today_now"),model.now,trip,hasAccessPlanningNeeds()));
       if(model.next)heroes.appendChild(renderTodayHeroEvent(model.preview?t("today_preview_first"):t("today_next"),model.next,trip,hasAccessPlanningNeeds()));
@@ -1626,8 +1908,17 @@ document.addEventListener("DOMContentLoaded", () => {
       else if(model.isLive&&model.noMore){const done=document.createElement("section");done.className="today-section today-empty-done";done.innerHTML=`<strong>${escapeHtml(t("today_done"))}</strong><span>${escapeHtml(t("today_no_more"))}</span>`;body.appendChild(done);}
       else if(model.isLive&&model.events.length){const uncertain=document.createElement("section");uncertain.className="today-section";uncertain.textContent=t("today_no_current");body.appendChild(uncertain);}
       else if(!model.events.length){const empty=document.createElement("section");empty.className="today-section";empty.textContent=t("today_no_plans");body.appendChild(empty);}
-      [renderTodayTimeline(model,trip,hasAccessPlanningNeeds()),renderTodayAttention(model),renderTodayReminders(model),renderTodayMobility(),renderTodayStay(model,trip),renderTomorrow(model,trip,hasAccessPlanningNeeds())].filter(Boolean).forEach(el=>body.appendChild(el));
+      [renderTodayTimeline(model,trip,hasAccessPlanningNeeds()),renderTodayAttention(model),renderTodayTasks(trip,model),renderTodayReminders(model),renderTodayMobility(),renderTodayStay(model,trip),renderTomorrow(model,trip,hasAccessPlanningNeeds())].filter(Boolean).forEach(el=>body.appendChild(el));
       processTodayNotifications(model,trip);
+      updateTodayAlertsButton();
+      const live = $("todayLiveStatus");
+      if (live) {
+        const signature=[model.date,model.now&&model.now.title,model.next&&model.next.title,model.attention.length].join("|");
+        if (live.dataset.signature !== signature) {
+          live.dataset.signature=signature;
+          live.textContent = model.now ? tf("today_live_announce_now",{title:model.now.title||t("today_activity")}) : model.next ? tf("today_live_announce_next",{title:model.next.title||t("today_activity")}) : "";
+        }
+      }
     }
     function openTodayForTrip(tripId,options) {
       const opts=options||{};if(tripId&&tripId!==activeTripId){if(!switchTrip(tripId,{stayHome:true,silent:true}))return false;}
@@ -1642,6 +1933,37 @@ document.addEventListener("DOMContentLoaded", () => {
        excludes confirmations, document references and detailed finance. */
     window.TripMasterTodaySanitizedContext=function(){return _lastTodayModel?Today.sanitizedContext(_lastTodayModel):null;};
     window.TripMasterTodayPartnerContext=function(){return _lastTodayModel?Today.partnerContext(_lastTodayModel):Object.freeze({version:1,active:false,slots:[]});};
+
+    function renderPlannerOpsHub() {
+      const trip = getActiveTrip();
+      const hub = $("plannerOpsHub");
+      if (!hub || !trip) return;
+      const clock = Today.clock(null, tripTimezone(trip));
+      const activeNow = Today.isTripActive(trip, clock);
+      const todayMeta = $("plannerTodayQuickMeta");
+      if (todayMeta) todayMeta.textContent = activeNow ? t("ops_today_live") : t("ops_today_preview");
+      const stays = tripStays(trip).length;
+      const journeys = tripJourneys(trip).length;
+      const logisticsMeta = $("plannerLogisticsQuickMeta");
+      if (logisticsMeta) logisticsMeta.textContent = tf("ops_logistics_meta", { stays, journeys });
+      const bookingRows = Finance.bookingEntries(trip, Logistics);
+      const attention = Finance.bookingAttentionEntries(trip, Logistics).length;
+      const bookingsMeta = $("plannerBookingsQuickMeta");
+      if (bookingsMeta) bookingsMeta.textContent = tf("ops_bookings_meta", { n:bookingRows.length, attention });
+      const expenses=tripExpenses(trip).length, budget=Finance.budgetInfo(trip);
+      const moneyMeta=$("plannerMoneyQuickMeta");
+      if(moneyMeta) moneyMeta.textContent=tf("ops_money_meta",{n:expenses,budget:budget.amount!=null&&budget.currency?formatMoneyAmount(budget.amount,budget.currency):t("overview_fact_unset")});
+      const documents=tripDocuments(trip).length + Finance.derivedConfirmationDocuments(trip,Logistics).length;
+      const documentsMeta=$("plannerDocumentsQuickMeta");
+      if(documentsMeta) documentsMeta.textContent=tf("ops_documents_meta",{n:documents});
+      const boardMeta=$("plannerBoardQuickMeta"), taskSummary=tripTaskStats(trip);
+      if(boardMeta) boardMeta.textContent=tf("trip_board_meta",{days:(trip.days||[]).length,tasks:taskSummary.open});
+      const readiness=tripReadiness(trip),readinessBtn=$("plannerReadinessBtn"),readinessMeta=$("plannerReadinessMeta"),readinessTitle=$("plannerReadinessTitle"),readinessIcon=$("plannerReadinessIcon");
+      if(readinessBtn){readinessBtn.classList.remove("is-ready","is-check","is-issue");readinessBtn.classList.add("is-"+readiness.level);}
+      if(readinessTitle)readinessTitle.textContent=t("planner_readiness_title")+" · "+readinessLabel(readiness.level);
+      if(readinessMeta)readinessMeta.textContent=readiness.rows.length?tf("planner_readiness_meta",{issues:readiness.issues,checks:readiness.checks}):t("planner_readiness_clear");
+      if(readinessIcon)readinessIcon.textContent=readiness.level==="issue"?"!":readiness.level==="check"?"?":"✓";
+    }
 
     function renderCurrentView() {
       const home = $("homeDashboard");
@@ -1661,6 +1983,7 @@ document.addEventListener("DOMContentLoaded", () => {
         days = active.days || [];
         renderDays();
         renderActivities(currentDayIndex);
+        renderPlannerOpsHub();
       }
       renderAccessProfile();
     }
@@ -1739,6 +2062,7 @@ document.addEventListener("DOMContentLoaded", () => {
            meant to stop relying on. commitState() persists both keys inside
            the same transaction, or rolls the deletion back entirely. */
         const wasActive = activeTripId === tripId;
+        if (!writeSafetySnapshot("trip-delete")) { showToast(t("toast_snapshot_failed")); return; }
         const ok = commitState(() => {
           trips = trips.filter(x => x.id !== tripId);
           if (wasActive) {
@@ -1749,6 +2073,7 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         }, {});
         if (!ok) return;
+        if (wasActive) resetAIForTripContextChange();
         renderCurrentView();
         updateHeaderInfo();
         showUndoToast(tf("toast_trip_deleted", { name: trip.name }));
@@ -1822,9 +2147,14 @@ document.addEventListener("DOMContentLoaded", () => {
       return out;
     }
 
-    let settings = normalizeSettings(safeParseJSON(KEY_SETTINGS, DEFAULT_SETTINGS));
-    // I18N-001 (v1030): adopt the stored language as soon as settings exist,
-    // before any render runs. normalizeSettings() has already validated it.
+    const _hadStoredSettingsAtBoot = localStorage.getItem(KEY_SETTINGS) !== null;
+    const _storedSettingsAtBoot = safeParseJSON(KEY_SETTINGS, null);
+    let settings = normalizeSettings(_storedSettingsAtBoot);
+    const _shouldPersistFirstRunLanguage = !_hadStoredSettingsAtBoot;
+    if (_shouldPersistFirstRunLanguage) settings.language = detectFirstRunLanguage();
+    // I18N-001 / I18N-FIRST-RUN-001: adopt the stored language immediately;
+    // on a true first run this is the supported device language, or English
+    // when the device language is not currently supported.
     currentLang = settings.language;
 
     /* ── AI-SECRET-001 (v1040 / E8) ──
@@ -1844,6 +2174,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function saveSettings() {
       return writeAll([[KEY_SETTINGS, JSON.stringify(settingsForStorage())]]);
+    }
+
+    // Lock in the automatically selected first-run language so a later device
+    // locale change does not unexpectedly switch an established TripMaster UI.
+    if (_shouldPersistFirstRunLanguage && !saveSettings()) {
+      console.warn("TripMaster: could not persist first-run language preference");
     }
 
     function commitSettings(mutate) {
@@ -2312,6 +2648,7 @@ document.addEventListener("DOMContentLoaded", () => {
       $("travelDayMode").value = info.mode;
       $("travelDayDepartureTime").value = info.departureTime;
       $("travelDayArrivalTime").value = info.arrivalTime;
+      $("travelDayArrivalDate").value = info.arrivalDate || "";
       $("travelDayReference").value = info.reference;
       $("dayStartsAtBase").checked = flow.startsAtBase;
       $("dayReturnsToBase").checked = flow.returnsToBase;
@@ -2330,6 +2667,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const type = Travel.DAY_TYPES.indexOf($("dayTypeSelect").value) !== -1 ? $("dayTypeSelect").value : "normal";
       const base = tripBase(getActiveTrip());
       const hasBase = !!(base.name || base.location);
+      if (type !== "normal") {
+        const departureTime = $("travelDayDepartureTime").value;
+        const arrivalTime = $("travelDayArrivalTime").value;
+        const arrivalDate = $("travelDayArrivalDate").value;
+        if (arrivalDate && arrivalDate < day.date) { showToast(t("toast_travel_day_arrival_date_invalid")); return; }
+        const dep=DayIntel.parseTime(departureTime), arr=DayIntel.parseTime(arrivalTime);
+        if (dep !== null && arr !== null && arr <= dep && !arrivalDate) { showToast(t("toast_travel_day_arrival_date_required")); return; }
+        if (arrivalDate === day.date && dep !== null && arr !== null && arr <= dep) { showToast(t("toast_travel_day_time_range")); return; }
+      }
       const ok = commitState(() => {
         if (type === "normal") delete day.dayType;
         else day.dayType = type;
@@ -2343,12 +2689,14 @@ document.addEventListener("DOMContentLoaded", () => {
           const mode = $("travelDayMode").value;
           const departureTime = $("travelDayDepartureTime").value;
           const arrivalTime = $("travelDayArrivalTime").value;
+          const arrivalDate = $("travelDayArrivalDate").value;
           const reference = $("travelDayReference").value.trim();
           if (origin) travel.origin = origin; else delete travel.origin;
           if (destination) travel.destination = destination; else delete travel.destination;
           if (Travel.DAY_TRAVEL_MODES.indexOf(mode) !== -1) travel.mode = mode; else delete travel.mode;
           if (/^\d{2}:\d{2}$/.test(departureTime)) travel.departureTime = departureTime; else delete travel.departureTime;
           if (/^\d{2}:\d{2}$/.test(arrivalTime)) travel.arrivalTime = arrivalTime; else delete travel.arrivalTime;
+          if (/^\d{4}-\d{2}-\d{2}$/.test(arrivalDate) && arrivalDate >= day.date) travel.arrivalDate = arrivalDate; else delete travel.arrivalDate;
           if (reference) travel.reference = reference; else delete travel.reference;
           if (Object.keys(travel).length) day.travelDay = travel; else delete day.travelDay;
         }
@@ -2438,6 +2786,34 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         openFirstDaySheet();
       }
+    }
+
+    function duplicateCurrentDayPlan() {
+      const source=days[currentDayIndex];if(!source||!source.date)return;
+      let targetDate=addDaysToDateOnly(source.date,1),guard=0;
+      while(targetDate&&days.some(d=>d&&d.date===targetDate)&&guard<370){targetDate=addDaysToDateOnly(targetDate,1);guard++;}
+      if(!targetDate){showToast(t("toast_day_duplicate_failed"));return;}
+      const copy=JSON.parse(JSON.stringify(source));
+      const sourceDate=source.date;
+      copy.date=targetDate;
+      (copy.items||[]).forEach(item=>{
+        if(!item||typeof item!=="object")return;
+        item.uid=newActivityUid();
+        item.completed=false;
+        if(item.booking&&typeof item.booking==="object"){
+          const booking=Object.assign({},item.booking);
+          delete booking.reference;delete booking.paymentStatus;
+          if(booking.status==="booked"||booking.status==="confirmed"||booking.status==="cancelled")booking.status="planned";
+          if(Object.keys(booking).length)item.booking=booking;else delete item.booking;
+        }
+      });
+      if(copy.travelDay&&typeof copy.travelDay==="object"){
+        const td=Object.assign({},copy.travelDay);delete td.reference;
+        if(td.arrivalDate){const a=parseDateOnly(td.arrivalDate),b=parseDateOnly(sourceDate);if(a&&b){const diff=Math.round((a.getTime()-b.getTime())/86400000);td.arrivalDate=addDaysToDateOnly(targetDate,diff)||targetDate;}else delete td.arrivalDate;}
+        copy.travelDay=td;
+      }
+      const ok=commitState(()=>{days.push(copy);days.sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));currentDayIndex=days.indexOf(copy);});
+      if(!ok)return;closeDayDetailsSheet();renderDays();renderActivities(currentDayIndex);if(currentView==="today")renderTodayView();showToast(tf("toast_day_duplicated",{date:formatDateOnly(targetDate,{day:"numeric",month:"short"})||targetDate}));
     }
 
     /* ── Find now item ── */
@@ -2605,11 +2981,6 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="hero-thumb-placeholder">
               <span class="thumb-icon">${catIcon}</span>
             </div>
-            <button class="hero-map-btn" id="heroMapBtn" type="button" title="${escapeHtml(t("hero_nav_title"))}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="3 11 22 2 13 21 11 13 3 11"/>
-              </svg>
-            </button>
           </div>
         </div>
         ${untilHtml}
@@ -2634,10 +3005,6 @@ document.addEventListener("DOMContentLoaded", () => {
       inner.classList.toggle("completed", !!heroItem.completed);
 
       // hero card event listeners
-      document.getElementById("heroMapBtn").addEventListener("click", (e) => {
-        e.stopPropagation();
-        window.open(navUrl, "_blank");
-      });
       document.getElementById("heroNavBtn").addEventListener("click", () => {
         window.open(navUrl, "_blank");
       });
@@ -2670,6 +3037,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderActivities(index) {
       const list = $("activityList");
       list.innerHTML = "";
+      renderPlannerOpsHub();
 
       const day = days[index];
 
@@ -2731,7 +3099,7 @@ document.addEventListener("DOMContentLoaded", () => {
         div.innerHTML = `
           <div class="item-time-col">
             <div class="item-time">${escapeHtml(item.time || "--:--")}</div>
-            ${itemEndTime(item) ? `<div class="item-time-end">${escapeHtml(itemEndTime(item))}</div>` : ""}
+            ${itemEndTime(item) ? `<div class="item-time-end">${escapeHtml(itemEndTime(item))}${itemEndsNextDay(item) ? ` <span aria-label="${escapeHtml(t("field_end_next_day"))}">+1</span>` : ""}</div>` : ""}
             ${reminderSub ? `<div class="item-time-sub">${reminderSub}</div>` : ""}
           </div>
           <div class="item-line-col">
@@ -2739,7 +3107,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="item-dot"></div>
             <div class="item-line-bottom" style="${isLastItem(arrIdx) ? "flex:0 0 0" : ""}"></div>
           </div>
-          <div class="item-body">
+          <div class="item-body" role="button" tabindex="0" aria-label="${escapeHtml(t("sheet_edit_title") + ": " + (item.title || ""))}">
             ${isNow ? `<div class="now-badge-inline">${escapeHtml(t("item_now_badge"))}</div>` : ""}
             <div class="item-category-icon">${catIcon}</div>
             <div class="item-title">${escapeHtml(item.title)}</div>
@@ -2755,8 +3123,8 @@ document.addEventListener("DOMContentLoaded", () => {
             ${(itemBookingInfo(item).status || itemPaymentStatus(item)) ? `<div class="booking-note-line">🎟️ ${itemBookingInfo(item).status ? escapeHtml(bookingStatusLabel(itemBookingInfo(item).status)) : ""}${itemBookingInfo(item).status && itemPaymentStatus(item) ? " · " : ""}${itemPaymentStatus(item) ? escapeHtml(paymentStatusLabel(itemPaymentStatus(item))) : ""}${itemBookingInfo(item).reference ? " · " + escapeHtml(itemBookingInfo(item).reference) : ""}</div>` : ""}
           </div>
           <div class="item-actions">
-            <div class="done" title="${escapeHtml(t("item_done_title"))}">${item.completed ? "↩" : "✓"}</div>
-            <div class="delete" title="${escapeHtml(t("item_delete_title"))}">🗑</div>
+            <button type="button" class="done" aria-label="${escapeHtml(t("item_done_title"))}" title="${escapeHtml(t("item_done_title"))}">${item.completed ? "↩" : "✓"}</button>
+            <button type="button" class="delete" aria-label="${escapeHtml(t("item_delete_title"))}" title="${escapeHtml(t("item_delete_title"))}">🗑</button>
           </div>
         `;
 
@@ -2775,7 +3143,13 @@ document.addEventListener("DOMContentLoaded", () => {
           confirmDeleteActivity(() => deleteActivity(index, originalIndex));
         });
 
-        div.querySelector(".item-body").addEventListener("click", () => {
+        const itemBody = div.querySelector(".item-body");
+        itemBody.addEventListener("click", () => {
+          openEditSheet(index, originalIndex);
+        });
+        itemBody.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
           openEditSheet(index, originalIndex);
         });
 
@@ -2808,6 +3182,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // A reminder only counts as "set" when it differs from "no reminder".
       const rem = $("addReminder");
       if (rem && rem.value !== "" && parseInt(rem.value, 10) >= 0) n++;
+      if ($("addEndNextDay") && $("addEndNextDay").checked) n++;
       return n;
     }
 
@@ -2853,10 +3228,12 @@ document.addEventListener("DOMContentLoaded", () => {
     function activityFormTimesValid() {
       const startRaw = $("addTime").value;
       const endRaw = $("addEndTime").value;
-      if (!endRaw) return true;
+      const nextDay = !!($("addEndNextDay") && $("addEndNextDay").checked);
+      if (!endRaw) { if (nextDay) { showToast(t("toast_end_next_day_needs_time")); return false; } return true; }
       const start = DayIntel.parseTime(startRaw);
       const end = DayIntel.parseTime(endRaw);
-      if (start === null || end === null || end < start) { showToast(t("toast_invalid_time_range")); return false; }
+      if (start === null || end === null) { showToast(t("toast_invalid_time_range")); return false; }
+      if (!nextDay && end <= start) { showToast(t("toast_invalid_time_range")); return false; }
       return true;
     }
 
@@ -2874,6 +3251,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // fields survive edits because the existing object is extended, not rebuilt.
       if (loc) item.location = loc; else delete item.location;
       if (/^[0-9]{2}:[0-9]{2}$/.test(end || "")) item.endTime = end; else delete item.endTime;
+      if (item.endTime && $("addEndNextDay") && $("addEndNextDay").checked) item.endNextDay = true; else delete item.endNextDay;
       if (CATEGORY_ORDER.indexOf(cat) !== -1) item.category = cat; else delete item.category;
       if (st === "verified") item.accessStatus = item.accessStatus === "stepfree" ? "stepfree" : "verified";
       else if (st === "problem" || st === "needscheck") item.accessStatus = st;
@@ -2907,6 +3285,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!activityFormTimesValid()) return null;
 
       const item = {
+        uid: newActivityUid(),
         time: $("addTime").value || "12:00",
         title,
         note: $("addNote").value.trim(),
@@ -2951,6 +3330,7 @@ document.addEventListener("DOMContentLoaded", () => {
       let target = null;
 
       const ok = commitState(() => {
+        if (!(typeof item.uid === "string" && item.uid)) item.uid = newActivityUid();
         item.title = title;
         item.note  = $("addNote").value.trim();
         item.time  = $("addTime").value || "12:00";
@@ -2984,6 +3364,19 @@ document.addEventListener("DOMContentLoaded", () => {
       return { day: target, item: item };
     }
 
+    function duplicateEditingActivity() {
+      if(editingDayIndex===null||editingItemIndex===null)return;
+      const day=days[editingDayIndex],source=day&&day.items&&day.items[editingItemIndex];if(!source)return;
+      const copy=JSON.parse(JSON.stringify(source));copy.uid=newActivityUid();copy.completed=false;
+      if(copy.booking&&typeof copy.booking==="object"){
+        const booking=Object.assign({},copy.booking);delete booking.reference;delete booking.paymentStatus;
+        if(booking.status==="booked"||booking.status==="confirmed"||booking.status==="cancelled")booking.status="planned";
+        if(Object.keys(booking).length)copy.booking=booking;else delete copy.booking;
+      }
+      const ok=commitState(()=>{day.items.push(copy);day.items.sort((a,b)=>String(a.time||"").localeCompare(String(b.time||"")));});if(!ok)return;
+      const newIndex=day.items.indexOf(copy);renderDays();renderActivities(editingDayIndex);showToast(t("toast_activity_duplicated"));openEditSheet(editingDayIndex,newIndex,{expandMore:false});
+    }
+
     function openSheet() {
       isSavingActivity = false;
       $("addSaveBtn").disabled = false;
@@ -3005,6 +3398,7 @@ document.addEventListener("DOMContentLoaded", () => {
       $("addReminder").value = "-1";
       // v1040 additive fields, cleared for a new activity.
       $("addEndTime").value = "";
+      $("addEndNextDay").checked = false;
       $("addLocation").value = "";
       $("addCategory").value = "";
       $("addAccessStatus").value = "";
@@ -3018,6 +3412,7 @@ document.addEventListener("DOMContentLoaded", () => {
       $("addBookingProvider").value = "";
       $("addBookingNote").value = "";
       $("addDeleteBtn").style.display = "none";
+      $("addDuplicateBtn").style.display = "none";
       updateAccessQuickButton(null);
       // ADDUX-001: a new activity starts as the simple form.
       setMoreExpanded(false);
@@ -3047,6 +3442,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // v1040 additive fields. An activity saved before v1040 has none of
       // them, and every accessor returns "" for a missing field.
       $("addEndTime").value = itemEndTime(item);
+      $("addEndNextDay").checked = itemEndsNextDay(item);
       $("addLocation").value = itemLocation(item);
       $("addCategory").value = itemCategory(item);
       $("addAccessStatus").value = isAccessVerified(item) ? "verified" : itemAccessStatus(item);
@@ -3062,6 +3458,7 @@ document.addEventListener("DOMContentLoaded", () => {
       $("addBookingProvider").value = booking.provider || "";
       $("addBookingNote").value = booking.note || "";
       $("addDeleteBtn").style.display = "flex";
+      $("addDuplicateBtn").style.display = "flex";
       updateAccessQuickButton(item);
       // Collapsed by default here too, but the badge reports exactly how many
       // optional fields this activity already carries, so nothing the user
@@ -3133,7 +3530,7 @@ document.addEventListener("DOMContentLoaded", () => {
        every calendar in every language. The delivery block below (share
        sheet, download fallback) is unchanged from v1011 RC2. */
     function exportActivityToIcs(day, item) {
-      const spec = activityTimeSpec(day.date, item.time, itemEndTime(item), activeTripTimezone());
+      const spec = activityTimeSpec(day.date, item.time, itemEndTime(item), activeTripTimezone(), itemEndsNextDay(item));
       if (!spec) { showToast(t("toast_calendar_time_invalid")); return; }
       const title = item.title || "";
       const icsEscape = s => String(s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");
@@ -3295,8 +3692,22 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ── MENU-001 (v1020 fix) ──
        Uses the same open/closed convention as every other sheet, so the
        backdrop, animation and z-index behaviour are the proven ones. */
-    function openMenuSheet() { openSheetEl("menuSheet"); }
+    function openMenuSheet() {
+      const el = $("menuSheet");
+      if (el && !el.classList.contains("open")) el.scrollTop = 0;
+      openSheetEl("menuSheet");
+    }
     function closeMenuSheet() { closeSheetEl("menuSheet"); }
+
+    /* I18N-GLOBAL-001 / RC4-UX-002: the header globe is a one-tap language
+       entry point available from Home, Planner and Today. It opens a dedicated
+       language-only sheet; the hamburger remains the exclusive entry point to
+       the full product menu. */
+    function openLanguageSelector() {
+      renderLanguageOptions();
+      openSheetEl("languageSheet");
+    }
+    function closeLanguageSelector() { closeSheetEl("languageSheet"); }
 
     /* ── Collapsible sections ── */
     function wireSection(headId, secEl) {
@@ -3359,27 +3770,12 @@ document.addEventListener("DOMContentLoaded", () => {
       // MENU-002 (v1020 RC3): dataHead shipped with the menu rebuild but was
       // never passed to wireSection(), so the row rendered and did nothing.
       wireSection("dataHead",   $("dataHead")   && $("dataHead").parentElement);
-      // I18N-001 (v1030): same collapsible pattern as every other section.
-      wireSection("langHead",   $("langHead")   && $("langHead").parentElement);
-
-      // I18N-001 (v1030): delegated, so renderLanguageOptions() can rebuild
-      // the row on every language change without re-binding listeners.
-      const langRow = $("langOptions");
-      if (langRow) langRow.addEventListener("click", (e) => {
+      const quickLangRow = $("languageQuickOptions");
+      if (quickLangRow) quickLangRow.addEventListener("click", (e) => {
         const btn = e.target.closest(".lang-option");
         if (!btn || !btn.dataset.lang) return;
         setLanguage(btn.dataset.lang);
-        // I18N-003 (v1030 RC5): collapse after choosing, so the selector
-        // returns to its compact "🌐 <language> ▾" state. Uses exactly the
-        // same class + aria contract as wireSection(), so the two stay in
-        // sync. setLanguage() itself is untouched; the menu sheet is never
-        // closed, so the user stays where they were.
-        const head = $("langHead");
-        const sec = head && head.parentElement;
-        if (sec) {
-          sec.classList.remove("open");
-          head.setAttribute("aria-expanded", "false");
-        }
+        closeLanguageSelector();
       });
 
       // Single-select rows: tapping the active option clears it (all optional).
@@ -3468,7 +3864,7 @@ document.addEventListener("DOMContentLoaded", () => {
          London trip from Israel got two different instants out of the two
          buttons. Google's TEMPLATE format still has no reminder parameter —
          that limitation is disclosed next to the button, unchanged. */
-      const spec = activityTimeSpec(day.date, item.time, itemEndTime(item), activeTripTimezone());
+      const spec = activityTimeSpec(day.date, item.time, itemEndTime(item), activeTripTimezone(), itemEndsNextDay(item));
       if (!spec) { showToast(t("toast_calendar_time_invalid")); return; }
       ensureActivityUid(item);
       const description = calendarDescription(item);
@@ -3573,6 +3969,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       trips = nextTrips;
       activeTripId = nextActiveId;
+      resetAIForTripContextChange();
       days = getActiveTrip() ? getActiveTrip().days : [];
       currentView = activeTripId ? "planner" : "home";
       settings = nextSettings;
@@ -3607,7 +4004,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* ── AI ── */
     function openAISheet() {
-      if (!$("aiOutput").innerText.trim()) $("aiOutput").innerText = t("ai_output_empty");
+      // RC4-FIX1-AI-001: innerText is empty for a visibility:hidden sheet in
+      // Chromium. textContent preserves an already-rendered answer while the
+      // sheet is closed, so reopening no longer destroys the response.
+      if (!$("aiOutput").textContent.trim()) $("aiOutput").textContent = t("ai_output_empty");
       openSheetEl("aiSheet");
     }
     function closeAISheet() { closeSheetEl("aiSheet"); }
@@ -3621,20 +4021,69 @@ document.addEventListener("DOMContentLoaded", () => {
       return confidence === "known" ? t("ai_confidence_known") : t("ai_confidence_inferred");
     }
 
+    function humanizeAgentText(value) {
+      let text = String(value == null ? "" : value);
+      // RC4-AI-PRESENTATION-002: backend diagnostics are useful in evals, not
+      // in a traveller-facing answer. Preserve meaning while replacing schema,
+      // tool and counter language with ordinary product language.
+      text = text.replace(/\bUNKNOWN\b/g, t("ai_not_verified"));
+      text = text.replace(/\bget_[a-z0-9_]+\b/gi, t("ai_trip_data_label"));
+      text = text.replace(/\bstayCount\s*=\s*\d+\b/gi, t("ai_stay_record_state"));
+      text = text.replace(/\b(?:returned\s+)?count\s*=\s*0\b/gi, t("ai_no_matching_records"));
+      text = text.replace(/\bresolved entity\b/gi, t("ai_matched_trip_item"));
+      text = text.replace(/\btrip(?:\.[a-z0-9_]+)+\b/gi, t("ai_trip_data_label"));
+      text = text.replace(/\bmany_activities\b/gi, t("ai_busy_day_label"));
+      text = text.replace(/\bmissing_end_time\b/gi, t("ai_missing_end_time_label"));
+      text = text.replace(/\btoday context not supplied\b/gi, t("ai_today_context_missing"));
+      text = text.replace(/\bstays\s*\/\s*journeys\s*\/\s*activities\b/gi, t("ai_schema_entities"));
+      text = text.replace(/\bsnapshot\b/gi, t("ai_trip_snapshot_label"));
+      text = text.replace(/`/g, "");
+      text = text.replace(/\s{2,}/g, " ").trim();
+      return text;
+    }
+
+    function buildAgentTripContext(trip) {
+      const context = Finance.buildTripContext(trip, { includeSensitive:false });
+      const access = (settings && settings.access) || {};
+      const prefs = (settings && settings.prefs) || {};
+      context.access = {
+        active: hasAccessPlanningNeeds(),
+        stepFree: !!access.stepFree,
+        avoidStairs: !!access.avoidStairs,
+        elevatorNeeded: !!access.elevatorNeeded,
+        shortWalks: !!access.shortWalks,
+        companion: !!access.companion,
+        quietPreference: !!access.quietPreference,
+        wheelchair: ["none","manual","electric"].indexOf(access.wheelchair) !== -1 ? access.wheelchair : "none"
+      };
+      context.mobility = {
+        noSelfDrive: !!prefs.noSelfDrive,
+        transport: (Array.isArray(prefs.transport) ? prefs.transport : []).filter((x) => ["walk","public","taxi","train"].indexOf(x) !== -1).slice(0,4),
+        maxWalkKm: (typeof prefs.maxWalkKm === "number" && Number.isFinite(prefs.maxWalkKm) && prefs.maxWalkKm >= 0) ? prefs.maxWalkKm : null
+      };
+      try {
+        const model = Today.buildToday(trip, { preview:false, accessActive:hasAccessPlanningNeeds() });
+        context.today = Today.sanitizedContext(model);
+      } catch (_) {
+        context.today = null;
+      }
+      return context;
+    }
+
     function renderAgentResult(payload) {
       const out = $("aiOutput");
       const result = payload && payload.result && typeof payload.result === "object" ? payload.result : null;
       if (!result || typeof result.summary !== "string") throw new Error("invalid_agent_response");
       const lines = [];
-      lines.push(result.summary.trim());
+      lines.push(humanizeAgentText(result.summary));
       const items = Array.isArray(result.items) ? result.items : [];
       if (items.length) {
         lines.push("", t("ai_findings_heading"));
         items.forEach((item) => {
           if (!item || typeof item !== "object") return;
-          const title = String(item.title || "").trim();
-          const reason = String(item.reason || "").trim();
-          const action = item.proposedAction == null ? "" : String(item.proposedAction).trim();
+          const title = humanizeAgentText(item.title);
+          const reason = humanizeAgentText(item.reason);
+          const action = item.proposedAction == null ? "" : humanizeAgentText(item.proposedAction);
           if (!title && !reason) return;
           lines.push(`• ${aiTypeLabel(item.type)} · ${aiConfidenceLabel(item.confidence)}${title ? ` - ${title}` : ""}`);
           if (reason) lines.push(`  ${reason}`);
@@ -3646,8 +4095,8 @@ document.addEventListener("DOMContentLoaded", () => {
         lines.push("", t("ai_unknowns_heading"));
         unknowns.forEach((row) => {
           if (!row || typeof row !== "object") return;
-          const question = String(row.question || "").trim();
-          const reason = String(row.reason || "").trim();
+          const question = humanizeAgentText(row.question);
+          const reason = humanizeAgentText(row.reason);
           if (question) lines.push(`• ${question}`);
           if (reason) lines.push(`  ${reason}`);
         });
@@ -3671,48 +4120,180 @@ document.addEventListener("DOMContentLoaded", () => {
       return t("ai_error_network");
     }
 
-    async function runAI() {
-      const prompt = $("aiPromptInput").value.trim();
-      if (!prompt) { showToast(t("ai_prompt_required")); return; }
-      const trip = getActiveTrip();
-      if (!trip) { showToast(t("ai_no_trip")); return; }
+    function setAIRequestUi(busy, stateText) {
+      const send = $("aiSendBtn");
+      if (send) send.disabled = !!busy;
+      const clear = $("aiClearBtn");
+      if (clear) clear.disabled = !!busy;
+      document.querySelectorAll(".ai-quick-prompt").forEach((btn) => { btn.disabled = !!busy; });
+      const state = $("aiRequestState");
+      if (state) {
+        state.textContent = stateText || "";
+        state.classList.toggle("is-working", !!stateText);
+      }
+    }
+
+    function aiRequestIsCurrent(req) { return !!req && _activeAIRequest === req && !req.settled; }
+    function aiRequestMatchesActiveTrip(req) {
+      const active = getActiveTrip();
+      return !!(req && active && active.id === req.tripId);
+    }
+    function resetAIForTripContextChange() {
+      const req = _activeAIRequest;
+      if (aiRequestIsCurrent(req)) {
+        req.abortReason = "context_change";
+        req.settled = true;
+        if (req.timeoutId) { window.clearTimeout(req.timeoutId); req.timeoutId = null; }
+        try { if (req.controller) req.controller.abort(); } catch (_) {}
+        _activeAIRequest = null;
+      }
+      setAIRequestUi(false, "");
+      const input = $("aiPromptInput");
+      if (input) input.value = "";
       const out = $("aiOutput");
-      out.classList.add("loading");
-      out.style.fontStyle = "italic";
-      out.innerText = t("ai_thinking");
-      $("aiImportBtn").style.display = "none";
-      if (!navigator.onLine) {
+      if (out) {
         out.classList.remove("loading");
-        out.innerText = t("ai_error_offline");
+        out.style.fontStyle = "normal";
+        out.textContent = t("ai_output_empty");
+      }
+    }
+
+    async function executeAIRequest(req, isRetry) {
+      if (!aiRequestIsCurrent(req)) return;
+      const trip = getActiveTrip();
+      if (!trip || trip.id !== req.tripId) {
+        req.settled = true; _activeAIRequest = null; setAIRequestUi(false, "");
+        $("aiOutput").innerText = t("ai_no_trip");
         return;
       }
-      const tripContext = Finance.buildTripContext(trip, { includeSensitive:false });
-      const requestId = "tm-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,10);
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 30000);
+      const out = $("aiOutput");
+      req.attempt += 1;
+      req.backgrounded = document.hidden;
+      req.resumeRetryScheduled = false;
+      req.controller = new AbortController();
+      req.inFlight = true;
+      const attemptNumber = req.attempt;
+      const requestId = req.baseRequestId + "-a" + req.attempt;
+      const tripContext = buildAgentTripContext(trip);
+      setAIRequestUi(true, isRetry ? t("ai_state_retrying") : t("ai_state_working"));
+
+      // The visible-page budget is intentionally longer than RC3. When the
+      // app goes to background, the timer is cleared; Android may suspend JS
+      // and networking, so wall-clock time while hidden must not count as a
+      // failed Agent request.
+      const armTimeout = () => {
+        if (!aiRequestIsCurrent(req) || document.hidden) return;
+        if (req.timeoutId) window.clearTimeout(req.timeoutId);
+        req.timeoutId = window.setTimeout(() => {
+          req.abortReason = "timeout";
+          try { req.controller.abort(); } catch (_) {}
+        }, 60000);
+      };
+      req.armTimeout = armTimeout;
+      armTimeout();
       let status = 0, data = null;
       try {
         const res = await fetch(AGENT_QUERY_URL, {
-          method: "POST",
-          mode: "cors",
-          cache: "no-store",
-          credentials: "omit",
-          headers: { "Content-Type":"application/json", "X-Request-ID":requestId },
-          body: JSON.stringify({ tripContext, request:prompt, mode:"planner" }),
-          signal: controller.signal
+          method: "POST", mode: "cors", cache: "no-store", credentials: "omit",
+          headers: {
+            "Content-Type":"application/json",
+            "X-Request-ID":requestId,
+            // Standard CORS-safelisted locale signal; no backend schema change.
+            "Accept-Language": ((LANG_META[currentLang] || LANG_META.en || {}).lang || currentLang || "en")
+          },
+          body: JSON.stringify({ tripContext, request:req.prompt, mode:"auto" }),
+          signal: req.controller.signal
         });
         status = res.status;
         try { data = await res.json(); } catch (_) { data = null; }
         if (!res.ok) throw new Error("agent_http_" + res.status);
+        if (!aiRequestIsCurrent(req)) return;
+        // RC4-FIX1-AI-002: never render a response for a trip that is no
+        // longer active. This also protects against a trip switch from
+        // another tab that is picked up on wake.
+        if (!aiRequestMatchesActiveTrip(req)) {
+          resetAIForTripContextChange();
+          return;
+        }
+        req.settled = true;
         renderAgentResult(data);
+        setAIRequestUi(false, "");
+        _activeAIRequest = null;
       } catch (err) {
-        out.classList.remove("loading");
-        out.style.fontStyle = "normal";
+        if (!aiRequestIsCurrent(req)) return;
+        if (!aiRequestMatchesActiveTrip(req)) {
+          resetAIForTripContextChange();
+          return;
+        }
+        const resumeAbort = req.abortReason === "resume_retry";
+        const hiddenFailure = document.hidden || req.backgrounded;
+        const retryableNetwork = !status && (err && (err.name === "TypeError" || err.name === "AbortError"));
+        if (req.attempt < 2 && (resumeAbort || hiddenFailure || retryableNetwork)) {
+          req.abortReason = "";
+          if (document.hidden) {
+            setAIRequestUi(true, t("ai_state_background"));
+            return;
+          }
+          if (req.timeoutId) { window.clearTimeout(req.timeoutId); req.timeoutId = null; }
+          window.setTimeout(() => { if (aiRequestIsCurrent(req)) executeAIRequest(req, true); }, 0);
+          return;
+        }
+        req.settled = true; _activeAIRequest = null; setAIRequestUi(false, "");
+        out.classList.remove("loading"); out.style.fontStyle = "normal";
         out.innerText = aiErrorText(status, data, err);
-        console.warn("TripMaster Planner Agent request failed", { status, code:data && data.error && data.error.code || "", error:err && err.name || "Error" });
+        console.warn("TripMaster Agent request failed", { status, code:data && data.error && data.error.code || "", error:err && err.name || "Error" });
       } finally {
-        window.clearTimeout(timeoutId);
+        if (req.attempt === attemptNumber) req.inFlight = false;
+        if (req.timeoutId) { window.clearTimeout(req.timeoutId); req.timeoutId = null; }
       }
+    }
+
+    function resumeAIRequestAfterWake() {
+      const req = _activeAIRequest;
+      if (!aiRequestIsCurrent(req)) return;
+      req.backgrounded = false;
+      if (req.resumeRetryScheduled) return;
+      req.resumeRetryScheduled = true;
+      setAIRequestUi(true, t("ai_state_working"));
+      if (!req.inFlight && req.attempt < 2) {
+        req.resumeRetryScheduled = false;
+        executeAIRequest(req, true);
+        return;
+      }
+      // Give a response that completed while backgrounded a short chance to
+      // settle before replacing the suspended connection with one safe retry.
+      window.setTimeout(() => {
+        if (!aiRequestIsCurrent(req)) return;
+        req.resumeRetryScheduled = false;
+        if (!req.inFlight) {
+          if (req.attempt < 2) executeAIRequest(req, true);
+          else if (req.armTimeout) req.armTimeout();
+          return;
+        }
+        if (req.attempt >= 2) { if (req.armTimeout) req.armTimeout(); return; }
+        req.abortReason = "resume_retry";
+        try { req.controller.abort(); } catch (_) {}
+      }, 900);
+    }
+
+    function runAI(promptOverride) {
+      const prompt = String(promptOverride || $("aiPromptInput").value || "").trim();
+      if (!prompt) { showToast(t("ai_prompt_required")); return; }
+      const trip = getActiveTrip();
+      if (!trip) { showToast(t("ai_no_trip")); return; }
+      if (_activeAIRequest && !_activeAIRequest.settled) return;
+      $("aiPromptInput").value = prompt;
+      const out = $("aiOutput");
+      out.classList.add("loading"); out.style.fontStyle = "italic"; out.innerText = t("ai_thinking");
+      $("aiImportBtn").style.display = "none";
+      if (!navigator.onLine) { out.classList.remove("loading"); out.innerText = t("ai_error_offline"); return; }
+      const req = {
+        seq: ++_aiRequestSeq, tripId:trip.id, prompt, attempt:0, settled:false,
+        backgrounded:false, resumeRetryScheduled:false, timeoutId:null, controller:null, abortReason:"", inFlight:false,
+        baseRequestId:"tm-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,10)
+      };
+      _activeAIRequest = req;
+      executeAIRequest(req, false);
     }
 
     /* ══════════════════════════════════════════════════════════════════
@@ -3773,8 +4354,8 @@ document.addEventListener("DOMContentLoaded", () => {
       $("tripBaseNameInput").value = base.name;
       $("tripBaseLocationInput").value = base.location;
       $("tripBaseNoteInput").value = base.note;
-      updateTripLogisticsSummary(trip);
       renderPlanningSummary($("tripDetailsPlanningSummary"), trip);
+      const archiveBtn=$("tripArchiveBtn");if(archiveBtn){archiveBtn.textContent=Operations.isArchivedTrip(trip)?t("trip_unarchive_btn"):t("trip_archive_btn");archiveBtn.classList.toggle("is-archived",Operations.isArchivedTrip(trip));}
       openSheetEl("tripDetailsSheet");
     }
 
@@ -3812,6 +4393,20 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast(t("toast_trip_updated"));
     }
 
+    function setTripArchived(trip, archived) {
+      if (!trip) return false;
+      const makeArchived=archived===true;
+      const wasActive=activeTripId===trip.id;
+      const ok=commitState(()=>{
+        if(makeArchived){trip.archived=true;trip.archivedAt=new Date().toISOString();}
+        else {delete trip.archived;delete trip.archivedAt;}
+        if(makeArchived&&wasActive){activeTripId=null;days=[];currentDayIndex=0;currentView="home";}
+      });
+      if(!ok)return false;
+      if(makeArchived&&wasActive)resetAIForTripContextChange();
+      closeTripDetailsSheet();renderCurrentView();updateHeaderInfo();showToast(makeArchived?t("toast_trip_archived"):t("toast_trip_unarchived"));return true;
+    }
+
     /* ══════════════════════════════════════════════════════════════════
        LOGISTICS-001 (v1070): stays + intercity journeys
        Additive trip-owned data. Legacy trip.base remains untouched and is
@@ -3825,14 +4420,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return trips.find((x) => x.id === _logisticsTripId) || null;
     }
 
-    function updateTripLogisticsSummary(trip) {
-      const el = $("tripLogisticsSummary");
-      if (!el || !trip) return;
-      const stays = tripStays(trip).length, journeys = tripJourneys(trip).length;
-      if (stays || journeys) el.textContent = tf("logistics_summary", { s: stays, j: journeys });
-      else if (tripBase(trip).name || tripBase(trip).location) el.textContent = t("logistics_legacy_summary");
-      else el.textContent = t("logistics_manage_note");
-    }
 
     function renderLogisticsHub() {
       const trip = logisticsTrip();
@@ -3876,7 +4463,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const title=document.createElement("div"); title.className="logistics-row-title";
             title.textContent="🚆 " + ((info.origin || "…") + " → " + (info.destination || "…"));
             const meta=document.createElement("div"); meta.className="logistics-row-meta";
-            const bits=[]; if (info.date) bits.push(info.date); if (info.mode) bits.push(journeyModeLabel(info.mode));
+            const bits=[]; if (info.date) bits.push(info.arrivalDate&&info.arrivalDate!==info.date ? info.date+" → "+info.arrivalDate : info.date); if (info.mode) bits.push(journeyModeLabel(info.mode));
             if (info.departureTime || info.arrivalTime) bits.push((info.departureTime||"…")+" → "+(info.arrivalTime||"…"));
             if (info.status) bits.push(bookingStatusLabel(info.status));
             const pay=Finance.paymentStatus(trip.journeys && trip.journeys[index] && trip.journeys[index].paymentStatus); if(pay) bits.push(paymentStatusLabel(pay));
@@ -3937,7 +4524,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function refreshAfterLogisticsChange(trip) {
       renderLogisticsHub();
-      updateTripLogisticsSummary(trip);
       renderPlanningSummary($("tripDetailsPlanningSummary"), trip);
       renderCurrentView();
       if ($("overviewSheet").classList.contains("open") && trip.id===activeTripId) renderOverview();
@@ -3971,12 +4557,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const info=journeyInfo(raw);
       $("journeySheetHead").textContent = _editingJourneyIndex===null ? t("journey_add_title") : t("journey_edit_title");
       $("journeyDate").value=info.date; $("journeyMode").value=info.mode; $("journeyOrigin").value=info.origin; $("journeyDestination").value=info.destination;
-      $("journeyDepartureTime").value=info.departureTime; $("journeyArrivalTime").value=info.arrivalTime;
+      $("journeyDepartureTime").value=info.departureTime; $("journeyArrivalTime").value=info.arrivalTime; $("journeyArrivalDate").value=info.arrivalDate||"";
       $("journeyProvider").value=info.provider; $("journeyServiceNumber").value=info.serviceNumber;
       $("journeyStatus").value=info.status; $("journeyPaymentStatus").value=Finance.paymentStatus(raw && raw.paymentStatus); $("journeyConfirmation").value=info.confirmation; $("journeyNote").value=info.note;
       $("journeyDeleteBtn").hidden = _editingJourneyIndex===null;
       const more=$("journeySheet").querySelector("details.logistics-more");
-      if (more) more.open=!!(info.departureTime||info.arrivalTime||info.provider||info.serviceNumber||info.status||Finance.paymentStatus(raw && raw.paymentStatus)||info.confirmation||info.note);
+      if (more) more.open=!!(info.departureTime||info.arrivalTime||info.arrivalDate||info.provider||info.serviceNumber||info.status||Finance.paymentStatus(raw && raw.paymentStatus)||info.confirmation||info.note);
       openSheetEl("journeySheet");
     }
     function closeJourneySheet() { _editingJourneyIndex=null; closeSheetEl("journeySheet"); }
@@ -3989,9 +4575,13 @@ document.addEventListener("DOMContentLoaded", () => {
       next.date=date;
       const mode=$("journeyMode").value; if (Logistics.JOURNEY_MODES.indexOf(mode)!==-1) next.mode=mode; else delete next.mode;
       if (origin) next.origin=origin; else delete next.origin; if (destination) next.destination=destination; else delete next.destination;
-      const depart=$("journeyDepartureTime").value, arrive=$("journeyArrivalTime").value;
+      const depart=$("journeyDepartureTime").value, arrive=$("journeyArrivalTime").value, arrivalDate=$("journeyArrivalDate").value;
+      if (arrivalDate && (!Logistics.validDate(arrivalDate) || arrivalDate < date)) { showToast(t("toast_journey_arrival_date_invalid")); return null; }
+      if (Logistics.validTime(depart) && Logistics.validTime(arrive) && arrive < depart && !arrivalDate) { showToast(t("toast_journey_arrival_date_required")); return null; }
+      if (arrivalDate===date && Logistics.validTime(depart) && Logistics.validTime(arrive) && arrive < depart) { showToast(t("toast_journey_time_range")); return null; }
       if (Logistics.validTime(depart)) next.departureTime=depart; else delete next.departureTime;
       if (Logistics.validTime(arrive)) next.arrivalTime=arrive; else delete next.arrivalTime;
+      if (Logistics.validDate(arrivalDate) && arrivalDate!==date) next.arrivalDate=arrivalDate; else delete next.arrivalDate;
       const provider=$("journeyProvider").value.trim(), service=$("journeyServiceNumber").value.trim(), status=$("journeyStatus").value, paymentStatus=$("journeyPaymentStatus").value;
       const confirmation=$("journeyConfirmation").value.trim(), note=$("journeyNote").value.trim();
       if (provider) next.provider=provider; else delete next.provider;
@@ -4029,6 +4619,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let _operationsTripId = null;
     let _editingExpenseIndex = null;
     let _editingDocumentIndex = null;
+    let _bookingCenterFilter = "all";
+    let _documentsFilter = "all";
+    let _moneyFilter = "all";
 
     function operationsTrip() {
       return (_operationsTripId && trips.find((x) => x.id === _operationsTripId)) || getActiveTrip();
@@ -4087,7 +4680,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const item=day && Array.isArray(day.items) ? day.items[linkSpec.activityPos.itemIndex] : null;
         if (!item) { delete next.linkedType; delete next.linkedId; return; }
         if (!(typeof item.uid === "string" && item.uid)) {
-          item.uid="tm-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,10)+"@tripmaster.app";
+          item.uid = newActivityUid();
         }
         id=item.uid;
       }
@@ -4095,8 +4688,18 @@ document.addEventListener("DOMContentLoaded", () => {
       else { delete next.linkedType; delete next.linkedId; }
     }
 
+    function setFilterButtonState(container, attr, value) {
+      if (!container) return;
+      container.querySelectorAll("["+attr+"]").forEach((btn) => {
+        const on = btn.getAttribute(attr) === value;
+        btn.classList.toggle("on", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+
     function openBookingCenterSheet(tripId) {
       const trip=setOperationsTrip(tripId); if(!trip)return;
+      _bookingCenterFilter = "all";
       renderBookingCenter(); openSheetEl("bookingCenterSheet");
     }
     function closeBookingCenterSheet() { closeSheetEl("bookingCenterSheet"); }
@@ -4116,19 +4719,29 @@ document.addEventListener("DOMContentLoaded", () => {
       const body=$("bookingCenterBody"), trip=operationsTrip(); if(!body)return;
       body.innerHTML=""; if(!trip)return;
       const rows=Finance.bookingEntries(trip,Logistics);
-      if(!rows.length){ const e=document.createElement("div");e.className="overview-empty";e.textContent=t("booking_center_empty");body.appendChild(e);return; }
+      const attention=rows.filter(row => Finance.bookingEntryNeedsAttention(row));
+      const paid=rows.filter(row => row.paymentStatus === "paid").length;
+      const summary=$("bookingCenterSummary");
+      if(summary) summary.textContent=tf("booking_summary",{total:rows.length,attention:attention.length,paid});
+      setFilterButtonState($("bookingCenterFilters"),"data-booking-filter",_bookingCenterFilter);
+      const filtered=_bookingCenterFilter==="attention"?attention:rows;
+      if(!filtered.length){ const e=document.createElement("div");e.className="overview-empty";e.textContent=_bookingCenterFilter==="attention"?t("booking_center_no_attention"):t("booking_center_empty");body.appendChild(e);return; }
       const groups=[["stay",t("booking_group_stays")],["journey",t("booking_group_journeys")],["activity",t("booking_group_activities")]];
       groups.forEach(([kind,label])=>{
-        const list=rows.filter(r=>r.kind===kind); if(!list.length)return;
+        const list=filtered.filter(r=>r.kind===kind); if(!list.length)return;
         const section=document.createElement("section");section.className="logistics-section";
-        const h=document.createElement("div");h.className="trip-base-heading";h.textContent=label;section.appendChild(h);
+        const h=document.createElement("div");h.className="trip-base-heading";h.textContent=label;
+        const count=document.createElement("span");count.className="section-count";count.textContent="("+list.length+")";h.appendChild(count);section.appendChild(h);
         list.sort((a,b)=>(a.date||"9999").localeCompare(b.date||"9999")).forEach(row=>{
-          const btn=document.createElement("button");btn.type="button";btn.className="logistics-item booking-center-row";
+          const needs=Finance.bookingEntryNeedsAttention(row);
+          const btn=document.createElement("button");btn.type="button";btn.className="logistics-item booking-center-row"+(needs?" booking-attention-row":"");
           const main=document.createElement("div");main.className="logistics-item-main";
           const title=document.createElement("div");title.className="logistics-item-title";title.textContent=row.title||t("booking_unnamed");
           const meta=document.createElement("div");meta.className="logistics-item-meta";
-          const bits=[];if(row.date)bits.push(row.date);if(row.bookingStatus)bits.push(bookingStatusLabel(row.bookingStatus));if(row.paymentStatus)bits.push(paymentStatusLabel(row.paymentStatus));if(row.reference)bits.push(t("booking_reference_short")+": "+row.reference);
-          meta.textContent=bits.join(" · ")||t("overview_fact_unset"); main.appendChild(title);main.appendChild(meta);btn.appendChild(main);
+          const bits=[];if(row.date)bits.push(row.date);if(row.provider)bits.push(row.provider);if(row.bookingStatus)bits.push(bookingStatusLabel(row.bookingStatus));if(row.paymentStatus)bits.push(paymentStatusLabel(row.paymentStatus));if(row.reference)bits.push(t("booking_reference_short")+": "+row.reference);
+          meta.textContent=bits.join(" · ")||t("overview_fact_unset"); main.appendChild(title);main.appendChild(meta);
+          if(needs){const badge=document.createElement("span");badge.className="booking-attention-badge";badge.textContent=t("filter_needs_attention");main.appendChild(badge);}
+          btn.appendChild(main);
           const arrow=document.createElement("span");arrow.className="logistics-item-arrow";arrow.textContent="›";btn.appendChild(arrow);
           btn.addEventListener("click",()=>openBookingSource(row));section.appendChild(btn);
         }); body.appendChild(section);
@@ -4137,6 +4750,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function openMoneySheet(tripId) {
       const trip=setOperationsTrip(tripId);if(!trip)return;
+      _moneyFilter="all";
       renderMoneyHub();openSheetEl("moneySheet");
     }
     function closeMoneySheet(){closeSheetEl("moneySheet");}
@@ -4145,28 +4759,49 @@ document.addEventListener("DOMContentLoaded", () => {
       const trip=operationsTrip();if(!trip)return;
       const budget=Finance.budgetInfo(trip);
       $("budgetAmount").value=budget.amount==null?"":String(budget.amount);
-      $("budgetCurrency").value=budget.currency||Finance.preferredCurrency(trip)||"";
+      populateCurrencySelect($("budgetCurrency"),budget.currency||Finance.preferredCurrency(trip)||"",trip);
       const summary=$("budgetSummary");summary.innerHTML="";
       const bs=Finance.budgetSummary(trip), totals=Finance.totalsByCurrency(trip);
+      const progress=$("budgetProgress"),progressFill=$("budgetProgressFill"),progressLabel=$("budgetProgressLabel");
       if(bs.active){
         const line=document.createElement("div");line.className="money-summary-main";line.textContent=t("budget_recorded")+": "+formatMoneyAmount(bs.comparableSpent,bs.budget.currency)+" · "+t("budget_remaining")+": "+formatMoneyAmount(bs.remaining,bs.budget.currency);summary.appendChild(line);
         if(bs.otherTotals.length){const x=document.createElement("div");x.className="field-note";x.textContent=t("budget_other_currencies")+": "+bs.otherTotals.map(v=>formatMoneyAmount(v.amount,v.currency)).join(" · ");summary.appendChild(x);}
         if(bs.exceeded){const x=document.createElement("div");x.className="readiness-row readiness-check";x.textContent=t("budget_exceeded_note");summary.appendChild(x);}
-      } else if(totals.length){const line=document.createElement("div");line.className="money-summary-main";line.textContent=t("money_recorded_totals")+": "+totals.map(v=>formatMoneyAmount(v.amount,v.currency)).join(" · ");summary.appendChild(line);}
-      else {const line=document.createElement("div");line.className="field-note";line.textContent=t("money_empty_summary");summary.appendChild(line);}
+        const pct=bs.budget.amount>0?Math.max(0,Math.round((bs.comparableSpent/bs.budget.amount)*100)):0;
+        progress.hidden=false;progress.classList.toggle("is-over",pct>100);progressFill.style.width=Math.min(pct,100)+"%";progressLabel.textContent=tf("budget_progress_label",{pct});
+      } else {
+        progress.hidden=true;progress.classList.remove("is-over");progressFill.style.width="0%";progressLabel.textContent="";
+        if(totals.length){const line=document.createElement("div");line.className="money-summary-main";line.textContent=t("money_recorded_totals")+": "+totals.map(v=>formatMoneyAmount(v.amount,v.currency)).join(" · ");summary.appendChild(line);}
+        else {const line=document.createElement("div");line.className="field-note";line.textContent=t("money_empty_summary");summary.appendChild(line);}
+      }
 
-      const list=$("expensesList");list.innerHTML="";
       const expenseSource=Array.isArray(trip.expenses)?trip.expenses:[];
       const rows=tripExpenses(trip).map((raw)=>({raw,index:expenseSource.indexOf(raw),info:Finance.expenseInfo(raw)}));
-      rows.sort((a,b)=>(a.info.date||"9999").localeCompare(b.info.date||"9999")).forEach(({raw,index,info})=>{
-        const btn=document.createElement("button");btn.type="button";btn.className="logistics-item";
+      const paymentAttention=Finance.expensePaymentAttention(trip);
+      const insight=$("moneyInsights");
+      if(insight){
+        const parts=[tf("money_insights_summary",{expenses:rows.length,attention:paymentAttention.length})];
+        const primary=budget.currency||Finance.preferredCurrency(trip)||"";
+        const cats=Finance.expenseCategoryTotals(trip,primary).slice(0,3);
+        if(primary&&cats.length) parts.push(t("money_top_categories")+": "+cats.map(x=>expenseCategoryLabel(x.category)+" "+formatMoneyAmount(x.amount,primary)).join(" · "));
+        insight.textContent=parts.join("\n");
+      }
+
+      setFilterButtonState($("moneyFilters"),"data-money-filter",_moneyFilter);
+      const visibleRows=(_moneyFilter==="attention"?rows.filter(x=>x.info.paymentStatus==="unpaid"||x.info.paymentStatus==="partial"):rows.slice());
+      const list=$("expensesList");list.innerHTML="";
+      visibleRows.sort((a,b)=>{const aa=(a.info.paymentStatus==="unpaid"||a.info.paymentStatus==="partial")?0:1,bb=(b.info.paymentStatus==="unpaid"||b.info.paymentStatus==="partial")?0:1;return aa-bb||(a.info.date||"9999").localeCompare(b.info.date||"9999");}).forEach(({raw,index,info})=>{
+        const needs=info.paymentStatus==="unpaid"||info.paymentStatus==="partial";
+        const btn=document.createElement("button");btn.type="button";btn.className="logistics-item"+(needs?" booking-attention-row":"");
         const main=document.createElement("div");main.className="logistics-item-main";
         const title=document.createElement("div");title.className="logistics-item-title";title.textContent=info.title||t("expense_unnamed");
         const meta=document.createElement("div");meta.className="logistics-item-meta";const bits=[];if(info.amount!=null&&info.currency)bits.push(formatMoneyAmount(info.amount,info.currency));bits.push(expenseCategoryLabel(info.category));if(info.date)bits.push(info.date);if(info.paymentStatus)bits.push(paymentStatusLabel(info.paymentStatus));
         if(info.linkedType&&info.linkedId){const resolved=Finance.resolveLinkedEntity(trip,info.linkedType,info.linkedId,Logistics);bits.push(resolved.state==="resolved"?entityLinkLabel(trip,info.linkedType,info.linkedId):"⚠️ "+t("link_unresolved"));}
-        meta.textContent=bits.join(" · ");main.appendChild(title);main.appendChild(meta);btn.appendChild(main);const arrow=document.createElement("span");arrow.className="logistics-item-arrow";arrow.textContent="›";btn.appendChild(arrow);btn.addEventListener("click",()=>openExpenseSheet(index));list.appendChild(btn);
+        meta.textContent=bits.join(" · ");main.appendChild(title);main.appendChild(meta);
+        if(needs){const badge=document.createElement("span");badge.className="booking-attention-badge";badge.textContent=t("payment_attention_badge");main.appendChild(badge);}
+        btn.appendChild(main);const arrow=document.createElement("span");arrow.className="logistics-item-arrow";arrow.textContent="›";btn.appendChild(arrow);btn.addEventListener("click",()=>openExpenseSheet(index));list.appendChild(btn);
       });
-      if(!rows.length){const e=document.createElement("div");e.className="logistics-empty";e.textContent=t("expenses_empty");list.appendChild(e);}
+      if(!visibleRows.length){const e=document.createElement("div");e.className="logistics-empty";e.textContent=_moneyFilter==="attention"?t("money_no_attention"):t("expenses_empty");list.appendChild(e);}
     }
 
     function saveBudget() {
@@ -4185,7 +4820,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const trip=operationsTrip();if(!trip)return;_editingExpenseIndex=Number.isInteger(index)?index:null;
       const raw=_editingExpenseIndex!==null&&Array.isArray(trip.expenses)?trip.expenses[_editingExpenseIndex]:null, info=Finance.expenseInfo(raw);
       $("expenseSheetHead").textContent=_editingExpenseIndex===null?t("expense_add_title"):t("expense_edit_title");
-      $("expenseTitle").value=info.title;$("expenseAmount").value=info.amount==null?"":String(info.amount);$("expenseCurrency").value=info.currency||Finance.preferredCurrency(trip)||"";$("expenseCategory").value=info.category||"other";$("expenseDate").value=info.date;$("expensePaymentStatus").value=info.paymentStatus;$("expensePaidBy").value=info.paidBy;$("expenseNote").value=info.note;
+      $("expenseTitle").value=info.title;$("expenseAmount").value=info.amount==null?"":String(info.amount);populateCurrencySelect($("expenseCurrency"),info.currency||Finance.preferredCurrency(trip)||"",trip);$("expenseCategory").value=info.category||"other";$("expenseDate").value=info.date;$("expensePaymentStatus").value=info.paymentStatus;$("expensePaidBy").value=info.paidBy;$("expenseNote").value=info.note;
       populateEntityLinkSelect($("expenseLink"),trip,info.linkedType,info.linkedId);$("expenseDeleteBtn").hidden=_editingExpenseIndex===null;
       const more=$("expenseSheet").querySelector("details.logistics-more");if(more)more.open=!!(info.date||info.paymentStatus||info.paidBy||info.linkedType||info.note);openSheetEl("expenseSheet");
     }
@@ -4203,13 +4838,29 @@ document.addEventListener("DOMContentLoaded", () => {
     function saveExpense(){const trip=operationsTrip();if(!trip)return;const existing=_editingExpenseIndex!==null&&Array.isArray(trip.expenses)?trip.expenses[_editingExpenseIndex]:null;const read=readExpenseForm(existing);if(!read)return;const ok=commitState(()=>{applyLinkToRecord(read.next,read.linkSpec,trip);if(!Array.isArray(trip.expenses))trip.expenses=[];if(_editingExpenseIndex===null)trip.expenses.push(read.next);else trip.expenses[_editingExpenseIndex]=read.next;const cs=(trip.currencySettings&&typeof trip.currencySettings==="object")?Object.assign({},trip.currencySettings):{};if(!Finance.currencyCode(cs.primaryCurrency))cs.primaryCurrency=read.next.currency;trip.currencySettings=cs;});if(!ok)return;closeExpenseSheet();renderMoneyHub();renderCurrentView();if($("overviewSheet").classList.contains("open")&&trip.id===activeTripId)renderOverview();showToast(t("toast_expense_saved"));}
     function deleteExpense(){const trip=operationsTrip();if(!trip||_editingExpenseIndex===null||!Array.isArray(trip.expenses)||!trip.expenses[_editingExpenseIndex])return;const index=_editingExpenseIndex;if(!commitState(()=>{trip.expenses.splice(index,1);if(!trip.expenses.length)delete trip.expenses;}))return;closeExpenseSheet();renderMoneyHub();renderCurrentView();showUndoToast(t("toast_expense_deleted"));}
 
-    function openDocumentsSheet(tripId){const trip=setOperationsTrip(tripId);if(!trip)return;renderDocumentsHub();openSheetEl("documentsSheet");}
+    function openDocumentsSheet(tripId){const trip=setOperationsTrip(tripId);if(!trip)return;_documentsFilter="all";renderDocumentsHub();openSheetEl("documentsSheet");}
     function closeDocumentsSheet(){closeSheetEl("documentsSheet");}
-    function renderDocumentsHub(){const trip=operationsTrip();if(!trip)return;const derived=$("derivedDocumentsList"),stand=$("documentsList");derived.innerHTML="";stand.innerHTML="";
-      const drows=Finance.derivedConfirmationDocuments(trip,Logistics);drows.forEach(row=>{const btn=document.createElement("button");btn.type="button";btn.className="logistics-item";const main=document.createElement("div");main.className="logistics-item-main";const title=document.createElement("div");title.className="logistics-item-title";title.textContent=row.label||t("document_unnamed");const meta=document.createElement("div");meta.className="logistics-item-meta";const bits=[documentTypeLabel(row.type)];if(row.date)bits.push(row.date);if(row.reference)bits.push(t("booking_reference_short")+": "+row.reference);meta.textContent=bits.join(" · ");main.appendChild(title);main.appendChild(meta);btn.appendChild(main);const arrow=document.createElement("span");arrow.className="logistics-item-arrow";arrow.textContent="›";btn.appendChild(arrow);btn.addEventListener("click",()=>openBookingSource({kind:row.kind,sourceIndex:row.sourceIndex,dayIndex:row.dayIndex,itemIndex:row.itemIndex}));derived.appendChild(btn);});
-      if(!drows.length){const e=document.createElement("div");e.className="logistics-empty";e.textContent=t("documents_derived_empty");derived.appendChild(e);}
+    function renderDocumentsHub(){
+      const trip=operationsTrip();if(!trip)return;
+      const derived=$("derivedDocumentsList"),stand=$("documentsList");derived.innerHTML="";stand.innerHTML="";
+      const drows=Finance.derivedConfirmationDocuments(trip,Logistics);
       const documentSource=Array.isArray(trip.documents)?trip.documents:[];
-      const rows=tripDocuments(trip).map((raw)=>({raw,index:documentSource.indexOf(raw),info:Finance.documentInfo(raw)}));rows.forEach(({index,info})=>{const btn=document.createElement("button");btn.type="button";btn.className="logistics-item";const main=document.createElement("div");main.className="logistics-item-main";const title=document.createElement("div");title.className="logistics-item-title";title.textContent=info.label||t("document_unnamed");const meta=document.createElement("div");meta.className="logistics-item-meta";const bits=[documentTypeLabel(info.type)];if(info.status)bits.push(info.status==="needed"?t("document_status_needed"):t("document_status_available"));if(info.reference)bits.push(t("booking_reference_short")+": "+info.reference);if(info.linkedType&&info.linkedId){const resolved=Finance.resolveLinkedEntity(trip,info.linkedType,info.linkedId,Logistics);if(resolved.state==="missing")bits.push("⚠️ "+t("link_unresolved"));}meta.textContent=bits.join(" · ");main.appendChild(title);main.appendChild(meta);btn.appendChild(main);const arrow=document.createElement("span");arrow.className="logistics-item-arrow";arrow.textContent="›";btn.appendChild(arrow);btn.addEventListener("click",()=>openDocumentSheet(index));stand.appendChild(btn);});if(!rows.length){const e=document.createElement("div");e.className="logistics-empty";e.textContent=t("documents_empty");stand.appendChild(e);}}
+      const allRows=tripDocuments(trip).map((raw)=>({raw,index:documentSource.indexOf(raw),info:Finance.documentInfo(raw)}));
+      const neededRows=allRows.filter(x=>x.info.status==="needed");
+      const summary=$("documentsSummary");if(summary)summary.textContent=tf("documents_summary",{total:drows.length+allRows.length,needed:neededRows.length});
+      setFilterButtonState($("documentsFilters"),"data-documents-filter",_documentsFilter);
+      const showAll=_documentsFilter==="all";
+      const derivedSection=derived.closest("section"),standSection=stand.closest("section");
+      if(derivedSection)derivedSection.hidden=!showAll;
+      if(standSection)standSection.hidden=false;
+      if(showAll){
+        drows.forEach(row=>{const btn=document.createElement("button");btn.type="button";btn.className="logistics-item";const main=document.createElement("div");main.className="logistics-item-main";const title=document.createElement("div");title.className="logistics-item-title";title.textContent=row.label||t("document_unnamed");const meta=document.createElement("div");meta.className="logistics-item-meta";const bits=[documentTypeLabel(row.type)];if(row.date)bits.push(row.date);if(row.reference)bits.push(t("booking_reference_short")+": "+row.reference);meta.textContent=bits.join(" · ");main.appendChild(title);main.appendChild(meta);btn.appendChild(main);const arrow=document.createElement("span");arrow.className="logistics-item-arrow";arrow.textContent="›";btn.appendChild(arrow);btn.addEventListener("click",()=>openBookingSource({kind:row.kind,sourceIndex:row.sourceIndex,dayIndex:row.dayIndex,itemIndex:row.itemIndex}));derived.appendChild(btn);});
+        if(!drows.length){const e=document.createElement("div");e.className="logistics-empty";e.textContent=t("documents_derived_empty");derived.appendChild(e);}
+      }
+      const rows=showAll?allRows:neededRows;
+      rows.forEach(({index,info})=>{const needs=info.status==="needed";const btn=document.createElement("button");btn.type="button";btn.className="logistics-item"+(needs?" booking-attention-row":"");const main=document.createElement("div");main.className="logistics-item-main";const title=document.createElement("div");title.className="logistics-item-title";title.textContent=info.label||t("document_unnamed");const meta=document.createElement("div");meta.className="logistics-item-meta";const bits=[documentTypeLabel(info.type)];if(info.status)bits.push(info.status==="needed"?t("document_status_needed"):t("document_status_available"));if(info.reference)bits.push(t("booking_reference_short")+": "+info.reference);if(info.linkedType&&info.linkedId){const resolved=Finance.resolveLinkedEntity(trip,info.linkedType,info.linkedId,Logistics);if(resolved.state==="missing")bits.push("⚠️ "+t("link_unresolved"));}meta.textContent=bits.join(" · ");main.appendChild(title);main.appendChild(meta);if(needs){const badge=document.createElement("span");badge.className="booking-attention-badge";badge.textContent=t("filter_needed");main.appendChild(badge);}btn.appendChild(main);const arrow=document.createElement("span");arrow.className="logistics-item-arrow";arrow.textContent="›";btn.appendChild(arrow);btn.addEventListener("click",()=>openDocumentSheet(index));stand.appendChild(btn);});
+      if(!rows.length){const e=document.createElement("div");e.className="logistics-empty";e.textContent=showAll?t("documents_empty"):t("documents_no_needed");stand.appendChild(e);}
+    }
 
     function openDocumentSheet(index){const trip=operationsTrip();if(!trip)return;_editingDocumentIndex=Number.isInteger(index)?index:null;const raw=_editingDocumentIndex!==null&&Array.isArray(trip.documents)?trip.documents[_editingDocumentIndex]:null,info=Finance.documentInfo(raw);$("documentSheetHead").textContent=_editingDocumentIndex===null?t("document_add_title"):t("document_edit_title");$("documentLabel").value=info.label;$("documentType").value=info.type||"other";$("documentStatus").value=info.status;$("documentReference").value=info.reference;$("documentUrl").value=info.url;$("documentNote").value=info.note;populateEntityLinkSelect($("documentLink"),trip,info.linkedType,info.linkedId);$("documentDeleteBtn").hidden=_editingDocumentIndex===null;const more=$("documentSheet").querySelector("details.logistics-more");if(more)more.open=!!(info.reference||info.url||info.note||info.linkedType);openSheetEl("documentSheet");}
     function closeDocumentSheet(){_editingDocumentIndex=null;closeSheetEl("documentSheet");}
@@ -4217,6 +4868,116 @@ document.addEventListener("DOMContentLoaded", () => {
     function saveDocument(){const trip=operationsTrip();if(!trip)return;const existing=_editingDocumentIndex!==null&&Array.isArray(trip.documents)?trip.documents[_editingDocumentIndex]:null,read=readDocumentForm(existing);if(!read)return;const ok=commitState(()=>{applyLinkToRecord(read.next,read.linkSpec,trip);if(!Array.isArray(trip.documents))trip.documents=[];if(_editingDocumentIndex===null)trip.documents.push(read.next);else trip.documents[_editingDocumentIndex]=read.next;});if(!ok)return;closeDocumentSheet();renderDocumentsHub();renderCurrentView();if($("overviewSheet").classList.contains("open")&&trip.id===activeTripId)renderOverview();showToast(t("toast_document_saved"));}
     function deleteDocument(){const trip=operationsTrip();if(!trip||_editingDocumentIndex===null||!Array.isArray(trip.documents)||!trip.documents[_editingDocumentIndex])return;const index=_editingDocumentIndex;if(!commitState(()=>{trip.documents.splice(index,1);if(!trip.documents.length)delete trip.documents;}))return;closeDocumentSheet();renderDocumentsHub();renderCurrentView();showUndoToast(t("toast_document_deleted"));}
 
+
+    /* ══════════════════════════════════════════════════════════════════
+       TRIP-BOARD-001 (v1200): whole-trip agenda + traveller checklist.
+       Read-only agenda uses existing Today/Logistics models. Checklist data
+       is trip-owned and local-only; it never leaves the device unless the
+       user exports a normal TripMaster backup. */
+    let _tripBoardTripId = null;
+    let _tripBoardTab = "agenda";
+    let _tripTaskFilter = "open";
+
+    function tripBoardTrip() { return trips.find(x => x.id === _tripBoardTripId) || null; }
+    function newTaskId() { return newTripId("task"); }
+    function tripAgendaDates(trip) {
+      const dates = new Set();
+      (trip && Array.isArray(trip.days) ? trip.days : []).forEach(d => { if (d && d.date) dates.add(d.date); });
+      tripJourneys(trip).forEach(raw => { const j=journeyInfo(raw); if(j.date)dates.add(j.date); if(j.arrivalDate)dates.add(j.arrivalDate); });
+      tripStays(trip).forEach(raw => { const st=stayInfo(raw); if(st.startDate)dates.add(st.startDate); if(st.endDate)dates.add(st.endDate); });
+      return Array.from(dates).filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x)).sort();
+    }
+    function boardEventSearchValues(event, trip) {
+      const values=[event&&event.title||"",event&&event.startTime||"",event&&event.endTime||""];
+      if(!event||!event.source)return values;
+      if(event.source.kind==="activity"&&Number.isInteger(event.source.dayIndex)&&Number.isInteger(event.source.itemIndex)){
+        const item=trip.days&&trip.days[event.source.dayIndex]&&trip.days[event.source.dayIndex].items&&trip.days[event.source.dayIndex].items[event.source.itemIndex];
+        if(item)values.push(itemLocation(item),itemNote(item),itemCategory(item));
+      } else if(event.source.kind==="stay"&&Number.isInteger(event.source.index)){
+        const st=stayInfo(tripStays(trip)[event.source.index]); values.push(st.name,st.location,st.provider);
+      } else if(event.source.kind==="journey"&&Number.isInteger(event.source.index)){
+        const j=journeyInfo(tripJourneys(trip)[event.source.index]); values.push(j.origin,j.destination,j.provider,j.serviceNumber,j.mode);
+      }
+      return values;
+    }
+    function setTripBoardTab(tab) {
+      _tripBoardTab = ["agenda","tasks","attention"].includes(tab) ? tab : "agenda";
+      const agenda=$("tripBoardAgendaSection"), tasks=$("tripBoardTasksSection"), attention=$("tripBoardAttentionSection");
+      if(agenda)agenda.hidden=_tripBoardTab!=="agenda";
+      if(tasks)tasks.hidden=_tripBoardTab!=="tasks";
+      if(attention)attention.hidden=_tripBoardTab!=="attention";
+      document.querySelectorAll("#tripBoardTabs [data-board-tab]").forEach(btn=>{const on=btn.dataset.boardTab===_tripBoardTab;btn.classList.toggle("on",on);btn.setAttribute("aria-pressed",on?"true":"false");});
+      renderTripBoard();
+    }
+    function openTripBoardSheet(tripId, tab) {
+      const trip=trips.find(x=>x.id===tripId)||getActiveTrip(); if(!trip)return;
+      _tripBoardTripId=trip.id; _tripBoardTab=["tasks","attention"].includes(tab)?tab:"agenda"; _tripTaskFilter="open";
+      if($("tripBoardSearch"))$("tripBoardSearch").value="";
+      renderTripBoard(); setTripBoardTab(_tripBoardTab); openSheetEl("tripBoardSheet");
+    }
+    function closeTripBoardSheet(){ _tripBoardTripId=null; closeSheetEl("tripBoardSheet"); }
+    function renderTripBoardSummary(trip){
+      const el=$("tripBoardSummary"); if(!el)return; const stats=tripTaskStats(trip), dates=tripAgendaDates(trip);
+      el.textContent=tf("trip_board_summary",{days:dates.length,activities:(trip.days||[]).reduce((n,d)=>n+((d.items&&d.items.length)||0),0),tasks:stats.open});
+    }
+    function renderTripBoardAgenda(trip){
+      const wrap=$("tripBoardAgenda"); if(!wrap)return; wrap.innerHTML="";
+      const query=$("tripBoardSearch")?$("tripBoardSearch").value:""; let visible=0;
+      tripAgendaDates(trip).forEach(date=>{
+        const events=Today.buildEvents(trip,date).filter(e=>e.kind!=="travel");
+        const filtered=events.filter(e=>Operations.matchesText(query,boardEventSearchValues(e,trip)));
+        if(query && !filtered.length)return;
+        const section=document.createElement("section"); section.className="trip-board-day";
+        const head=document.createElement("div"); head.className="trip-board-day-head";
+        const title=document.createElement("strong"); title.textContent=formatDateOnly(date,{weekday:"short",day:"numeric",month:"short"})||date;
+        const count=document.createElement("span"); count.textContent=tf("trip_board_day_items",{n:filtered.length}); head.appendChild(title);head.appendChild(count);section.appendChild(head);
+        const list=document.createElement("div"); list.className="trip-board-day-list";
+        filtered.forEach(event=>{
+          visible++;
+          const btn=document.createElement("button");btn.type="button";btn.className="trip-board-event";
+          const time=document.createElement("span");time.className="trip-board-event-time";time.textContent=event.startTime||"—";
+          const copy=document.createElement("span");copy.className="trip-board-event-copy";const strong=document.createElement("strong");strong.textContent=(todayEventIcon(event.kind)+" "+(event.title||todayEventKindLabel(event.kind))).trim();
+          const meta=document.createElement("small");const bits=todayEventMeta(event,trip,hasAccessPlanningNeeds());meta.textContent=bits.join(" · ");copy.appendChild(strong);if(meta.textContent)copy.appendChild(meta);btn.appendChild(time);btn.appendChild(copy);
+          btn.addEventListener("click",()=>{if(trip.id!==activeTripId)switchTrip(trip.id,{silent:true});closeTripBoardSheet();todayOpenDetails(event,trip);});list.appendChild(btn);
+        });
+        if(!filtered.length&&!query){const empty=document.createElement("div");empty.className="logistics-empty";empty.textContent=t("trip_board_day_empty");list.appendChild(empty);}
+        section.appendChild(list);wrap.appendChild(section);
+      });
+      if(!visible&&query){const empty=document.createElement("div");empty.className="logistics-empty";empty.textContent=t("trip_board_no_results");wrap.appendChild(empty);}
+      if(!tripAgendaDates(trip).length){const empty=document.createElement("div");empty.className="logistics-empty";empty.textContent=t("trip_board_empty");wrap.appendChild(empty);}
+    }
+    function taskDueLabel(info){
+      const state=Operations.taskDueState(info,todayISO());
+      if(state==="overdue") return "⚠️ "+t("trip_task_overdue");
+      if(state==="today") return "⏰ "+t("trip_task_due_today");
+      if(info.date) return formatDateOnly(info.date,{day:"numeric",month:"short"})||info.date;
+      return "";
+    }
+    function taskPriorityLabel(priority){return priority==="high"?t("trip_task_priority_high"):priority==="low"?t("trip_task_priority_low"):t("trip_task_priority_normal");}
+    function renderTripBoardTasks(trip){
+      const wrap=$("tripBoardTasks"), progress=$("tripTaskProgress"); if(!wrap)return;wrap.innerHTML="";const allRows=Operations.sortedTasks(trip,todayISO()),stats=tripTaskStats(trip);const rows=allRows.filter(x=>_tripTaskFilter==="all"||(_tripTaskFilter==="done"?x.info.done:!x.info.done));
+      if(progress)progress.textContent=stats.total?tf("trip_task_progress_due",{done:stats.done,total:stats.total,overdue:stats.overdue||0,today:stats.dueToday||0}):t("trip_task_none");
+      document.querySelectorAll("#tripTaskFilters [data-task-filter]").forEach(btn=>{const on=btn.dataset.taskFilter===_tripTaskFilter;btn.classList.toggle("on",on);btn.setAttribute("aria-pressed",on?"true":"false");});
+      rows.forEach(({raw,index,info})=>{const due=Operations.taskDueState(info,todayISO());const row=document.createElement("div");row.className="trip-task-row"+(info.done?" done":"")+(due==="overdue"?" overdue":"")+(due==="today"?" due-today":"")+(info.priority==="high"?" priority-high":"");
+        const toggle=document.createElement("button");toggle.type="button";toggle.className="trip-task-toggle";toggle.setAttribute("aria-label",info.done?t("trip_task_mark_open"):t("trip_task_mark_done"));toggle.textContent=info.done?"✓":"○";
+        const copy=document.createElement("span");copy.className="trip-task-copy";const title=document.createElement("span");title.className="trip-task-title";title.textContent=info.title;copy.appendChild(title);
+        const meta=document.createElement("small");meta.className="trip-task-meta";const bits=[];const dueLabel=taskDueLabel(info);if(dueLabel)bits.push(dueLabel);if(info.priority!=="normal")bits.push(taskPriorityLabel(info.priority));meta.textContent=bits.join(" · ");if(meta.textContent)copy.appendChild(meta);
+        const del=document.createElement("button");del.type="button";del.className="trip-task-delete";del.setAttribute("aria-label",t("trip_task_delete"));del.textContent="🗑";
+        toggle.addEventListener("click",()=>{if(!commitState(()=>{raw.done=!info.done;}))return;renderTripBoard();renderCurrentView();});
+        del.addEventListener("click",()=>{if(!commitState(()=>{trip.tasks.splice(index,1);if(!trip.tasks.length)delete trip.tasks;},{type:"task-delete"}))return;renderTripBoard();renderCurrentView();showUndoToast(t("trip_task_deleted"));});
+        row.appendChild(toggle);row.appendChild(copy);row.appendChild(del);wrap.appendChild(row);
+      });
+      if(!rows.length){const empty=document.createElement("div");empty.className="logistics-empty";empty.textContent=allRows.length?t("trip_task_filter_empty"):t("trip_task_none");wrap.appendChild(empty);}
+    }
+    function renderTripBoardAttention(trip){
+      const wrap=$("tripBoardAttention"),summary=$("tripBoardAttentionSummary");if(!wrap)return;wrap.innerHTML="";const rows=readinessEntries(trip);const issues=rows.filter(r=>r.level==="issue").length,checks=rows.filter(r=>r.level==="check").length;
+      if(summary)summary.textContent=rows.length?tf("trip_board_attention_summary",{issues,checks}):t("trip_board_attention_clear");
+      if(!rows.length){const empty=document.createElement("div");empty.className="logistics-empty";empty.textContent=t("trip_board_attention_clear");wrap.appendChild(empty);return;}
+      const order=["schedule","logistics","bookings","money","documents","tasks","access","setup"];
+      order.forEach(area=>{const areaRows=rows.filter(r=>r.area===area);if(!areaRows.length)return;const group=document.createElement("section");group.className="trip-board-attention-group";const head=document.createElement("div");head.className="trip-board-attention-head";const title=document.createElement("strong");title.textContent=readinessAreaLabel(area);const btn=document.createElement("button");btn.type="button";btn.className="btn btn-muted compact-btn";btn.textContent=t("readiness_review_action");btn.addEventListener("click",()=>{closeTripBoardSheet();if(trip.id!==activeTripId)switchTrip(trip.id,{silent:true});openReadinessArea(area,trip);});head.appendChild(title);head.appendChild(btn);group.appendChild(head);areaRows.forEach(entry=>{const row=document.createElement("div");row.className="planning-issue readiness-row readiness-"+entry.level;row.textContent="• "+entry.text;group.appendChild(row);});wrap.appendChild(group);});
+    }
+    function renderTripBoard(){const trip=tripBoardTrip();if(!trip)return;renderTripBoardSummary(trip);if(_tripBoardTab==="tasks")renderTripBoardTasks(trip);else if(_tripBoardTab==="attention")renderTripBoardAttention(trip);else renderTripBoardAgenda(trip);}
+    function addTripTask(){const trip=tripBoardTrip(),input=$("tripTaskInput");if(!trip||!input)return;const title=input.value.trim();if(!title){showToast(t("trip_task_required"));return;}const date=$("tripTaskDate")?$("tripTaskDate").value:"";const priority=$("tripTaskPriority")?$("tripTaskPriority").value:"normal";if(!commitState(()=>{if(!Array.isArray(trip.tasks))trip.tasks=[];const task={id:newTaskId(),title,done:false,createdAt:new Date().toISOString(),priority:["low","normal","high"].includes(priority)?priority:"normal"};if(/^\d{4}-\d{2}-\d{2}$/.test(date))task.date=date;trip.tasks.push(task);}))return;input.value="";if($("tripTaskDate"))$("tripTaskDate").value="";if($("tripTaskPriority"))$("tripTaskPriority").value="normal";renderTripBoard();renderCurrentView();showToast(t("trip_task_added"));}
 
     /* ══════════════════════════════════════════════════════════════════
        OVERVIEW-001 (v1040 / C1): read-only whole-trip view
@@ -4254,6 +5015,39 @@ document.addEventListener("DOMContentLoaded", () => {
       if (overviewStays.length) bits.push(tf("overview_stays_count", { n: overviewStays.length }));
       else if (base.name || base.location) bits.push((base.name || t("trip_base_section")) + (base.location ? " · " + base.location : ""));
       meta.textContent = bits.join(" · ");
+
+      /* v1100 READINESS-2: one actionable control centre rather than a flat
+         warning list. Every open item is grouped by the product surface that
+         can actually resolve it, so the user can move from "what is wrong"
+         to "where do I fix it" without hunting through the app. */
+      const readiness = tripReadiness(trip);
+      const readinessCard = document.createElement("div");
+      readinessCard.className = "overview-card readiness-center-card readiness-" + readiness.level;
+      const readinessHead = document.createElement("div");
+      readinessHead.className = "readiness-center-head";
+      const readinessCopy = document.createElement("div");
+      const readinessTitle = document.createElement("div"); readinessTitle.className = "overview-card-title"; readinessTitle.textContent = t("readiness_center_title");
+      const readinessSummary = document.createElement("div"); readinessSummary.className = "overview-card-note";
+      readinessSummary.textContent = readiness.rows.length ? tf("readiness_center_summary", { issues:readiness.issues, checks:readiness.checks }) : t("readiness_ready_detail");
+      readinessCopy.appendChild(readinessTitle); readinessCopy.appendChild(readinessSummary);
+      const readinessStatus = document.createElement("div"); readinessStatus.className = "readiness-status readiness-" + readiness.level; readinessStatus.textContent = readinessLabel(readiness.level);
+      readinessHead.appendChild(readinessCopy); readinessHead.appendChild(readinessStatus); readinessCard.appendChild(readinessHead);
+      if (readiness.rows.length) {
+        const order = ["schedule","logistics","bookings","money","documents","tasks","access","setup"];
+        order.forEach(area => {
+          const areaRows = readiness.rows.filter(row => row.area === area);
+          if (!areaRows.length) return;
+          const group = document.createElement("section"); group.className = "readiness-area";
+          const groupHead = document.createElement("div"); groupHead.className = "readiness-area-head";
+          const groupTitle = document.createElement("strong"); groupTitle.textContent = readinessAreaLabel(area);
+          const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn btn-muted compact-btn readiness-area-btn"; btn.textContent = t("readiness_review_action"); btn.addEventListener("click", () => openReadinessArea(area, trip));
+          groupHead.appendChild(groupTitle); groupHead.appendChild(btn); group.appendChild(groupHead);
+          const list = document.createElement("div"); list.className = "planning-issues";
+          areaRows.forEach(entry => { const row=document.createElement("div"); row.className="planning-issue readiness-row readiness-"+entry.level; row.textContent="• "+entry.text; list.appendChild(row); });
+          group.appendChild(list); readinessCard.appendChild(group);
+        });
+      }
+      body.appendChild(readinessCard);
 
       /* ══ OVERVIEW-002 (v1050-RC2): pre-trip control centre ══
          Three compact cards before the day-by-day list: the trip facts, the
@@ -4315,7 +5109,7 @@ document.addEventListener("DOMContentLoaded", () => {
           .forEach(({raw,info})=>{
             const row=document.createElement("div"); row.className="overview-logistics-row";
             const main=document.createElement("div"); main.className="overview-travel-day-title"; main.textContent="🚆 " + (info.origin||"…") + " → " + (info.destination||"…"); row.appendChild(main);
-            const bits=[]; if(info.date)bits.push(info.date); if(info.mode)bits.push(journeyModeLabel(info.mode)); if(info.departureTime||info.arrivalTime)bits.push((info.departureTime||"…")+" → "+(info.arrivalTime||"…")); if(info.status)bits.push(bookingStatusLabel(info.status)); const pay=Finance.paymentStatus(raw&&raw.paymentStatus);if(pay)bits.push(paymentStatusLabel(pay)); if(info.serviceNumber)bits.push(info.serviceNumber); if(info.confirmation)bits.push(t("booking_reference_short")+": "+info.confirmation);
+            const bits=[]; if(info.date)bits.push(info.arrivalDate&&info.arrivalDate!==info.date?info.date+" → "+info.arrivalDate:info.date); if(info.mode)bits.push(journeyModeLabel(info.mode)); if(info.departureTime||info.arrivalTime)bits.push((info.departureTime||"…")+" → "+(info.arrivalTime||"…")); if(info.status)bits.push(bookingStatusLabel(info.status)); const pay=Finance.paymentStatus(raw&&raw.paymentStatus);if(pay)bits.push(paymentStatusLabel(pay)); if(info.serviceNumber)bits.push(info.serviceNumber); if(info.confirmation)bits.push(t("booking_reference_short")+": "+info.confirmation);
             const detail=document.createElement("div"); detail.className="overview-card-note"; detail.textContent=bits.join(" · ")||t("overview_fact_unset"); row.appendChild(detail); journeyCard.appendChild(row);
           });
         body.appendChild(journeyCard);
@@ -4382,32 +5176,6 @@ document.addEventListener("DOMContentLoaded", () => {
         mob.appendChild(note);
         body.appendChild(mob);
       }
-
-      const readiness = tripReadiness(trip);
-      const planCard = document.createElement("div");
-      planCard.className = "overview-card";
-      const pt = document.createElement("div");
-      pt.className = "overview-card-title"; pt.textContent = t("overview_card_planning");
-      planCard.appendChild(pt);
-      const status = document.createElement("div");
-      status.className = "readiness-status readiness-" + readiness.level;
-      status.textContent = readinessLabel(readiness.level);
-      planCard.appendChild(status);
-      if (readiness.rows.length) {
-        const list = document.createElement("div"); list.className = "planning-issues";
-        readiness.rows.forEach(entry => {
-          const row = document.createElement("div");
-          row.className = "planning-issue readiness-row readiness-" + entry.level;
-          row.textContent = "• " + entry.text;
-          list.appendChild(row);
-        });
-        planCard.appendChild(list);
-      } else {
-        const ok = document.createElement("div");
-        ok.className = "overview-card-ok"; ok.textContent = t("overview_planning_clear");
-        planCard.appendChild(ok);
-      }
-      body.appendChild(planCard);
 
       if (hasAccessPlanningNeeds()) {
         const st = tripPlanningStats(trip);
@@ -4495,7 +5263,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const end = itemEndTime(item);
             row.innerHTML =
               `<div class="overview-time">${escapeHtml(item.time || "--:--")}` +
-              (end ? `<span class="overview-time-end">${escapeHtml(end)}</span>` : "") +
+              (end ? `<span class="overview-time-end">${escapeHtml(end)}${itemEndsNextDay(item) ? " +1" : ""}</span>` : "") +
               `</div>` +
               `<div class="overview-item">` +
                 `<div class="overview-item-title">${escapeHtml(getCategoryIcon(item))} ${escapeHtml(item.title || "")}</div>` +
@@ -4541,13 +5309,19 @@ document.addEventListener("DOMContentLoaded", () => {
         labels.push(tf("access_profile_maxwalk", { n: prefs.maxWalkKm }));
       }
 
-      if (!labels.length) { strip.style.display = "none"; return; }
+      const freeNote = typeof access.notes === "string" ? access.notes.trim() : "";
+      if (!labels.length && !freeNote) { strip.style.display = "none"; return; }
       labels.forEach((label) => {
         const chip = document.createElement("span");
         chip.className = "access-profile-chip";
         chip.textContent = label;
         chips.appendChild(chip);
       });
+      let noteBox = strip.querySelector(".access-profile-note-value");
+      if (freeNote) {
+        if (!noteBox) { noteBox = document.createElement("div"); noteBox.className = "access-profile-note-value"; strip.appendChild(noteBox); }
+        noteBox.textContent = t("access_profile_saved_note") + ": " + freeNote;
+      } else if (noteBox) noteBox.remove();
       strip.style.display = "";
     }
 
@@ -4564,6 +5338,7 @@ document.addEventListener("DOMContentLoaded", () => {
         case "firstDaySheet":     closeFirstDaySheet(); return;
         case "dayDetailsSheet":   closeDayDetailsSheet(); return;
         case "menuSheet":         closeMenuSheet(); return;
+        case "languageSheet":     closeLanguageSelector(); return;
         case "aboutSheet":        closeAboutSheet(); return;
         case "tripDetailsSheet":  closeTripDetailsSheet(); return;
         case "logisticsSheet":    closeLogisticsSheet(); return;
@@ -4573,6 +5348,8 @@ document.addEventListener("DOMContentLoaded", () => {
         case "moneySheet":        closeMoneySheet(); return;
         case "expenseSheet":      closeExpenseSheet(); return;
         case "documentsSheet":    closeDocumentsSheet(); return;
+        case "tripBoardSheet":     closeTripBoardSheet(); return;
+        case "safetyCenterSheet":  closeSafetyCenter(); return;
         case "documentSheet":     closeDocumentSheet(); return;
         case "overviewSheet":     closeOverviewSheet(); return;
         case "confirmDeleteActivitySheet": closeConfirmSheet(id); _pendingDeleteActivity = null; return;
@@ -4584,14 +5361,50 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
+    function showUpdateBanner(){const el=$("updateBanner");if(!el)return;if(topOpenSheet()){_pendingUpdateReady=true;return;}el.hidden=false;}
+    function hideUpdateBanner(){_pendingUpdateReady=false;const el=$("updateBanner");if(el)el.hidden=true;}
+
+    window.addEventListener("popstate", (event) => {
+      if (!_backGuardArmed) return;
+      // Forward navigation into our guard is not a product Back action.
+      if (event && event.state && event.state.tripmasterGuard === 1) return;
+      const top = topOpenSheet();
+      if (top) {
+        closeAnySheet(top.id);
+        rearmBackGuard();
+        return;
+      }
+      if (currentView === "today") {
+        continueFromTodayToPlanner();
+        rearmBackGuard();
+        return;
+      }
+      if (currentView === "planner") {
+        goHome({ silent:true });
+        rearmBackGuard();
+        return;
+      }
+      // Home is the root product surface. The second back leaves the current
+      // document (or closes an installed PWA when the platform owns Back).
+      _backGuardArmed = false;
+      window.setTimeout(() => { try { history.back(); } catch (_) {} }, 0);
+    });
+
     /* ══════════════════════════════════════
        EVENT LISTENERS
     ══════════════════════════════════════ */
 
     // Header menu toggle
     // MENU-001 (v1020 fix): the hamburger now opens the product menu sheet.
+    window.addEventListener("tripmaster:update-ready", showUpdateBanner);
+    if ($("updateLaterBtn")) $("updateLaterBtn").addEventListener("click", hideUpdateBanner);
+    if ($("updateReloadBtn")) $("updateReloadBtn").addEventListener("click", () => location.reload());
+    if ($("todayAlertsBtn")) $("todayAlertsBtn").addEventListener("click", requestTodayAlerts);
+
     $("settingsToggle").addEventListener("click", openMenuSheet);
     $("menuSheetClose").addEventListener("click", closeMenuSheet);
+    if ($("languageQuickBtn")) $("languageQuickBtn").addEventListener("click", openLanguageSelector);
+    if ($("languageSheetClose")) $("languageSheetClose").addEventListener("click", closeLanguageSelector);
 
     // Theme
     /* STORE-001 (v1040 / A7): the theme is a real user preference, so a
@@ -4657,6 +5470,7 @@ document.addEventListener("DOMContentLoaded", () => {
     $("dayDetailsClose").addEventListener("click", closeDayDetailsSheet);
     $("dayDetailsCancelBtn").addEventListener("click", closeDayDetailsSheet);
     $("dayDetailsSaveBtn").addEventListener("click", saveDayDetails);
+    $("dayDuplicateBtn").addEventListener("click", duplicateCurrentDayPlan);
     $("dayTypeSelect").addEventListener("change", updateTravelDayFieldsVisibility);
 
     // Home
@@ -4709,6 +5523,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!wiped) { reportStorageFailure(); return; }
 
         days = []; trips = []; activeTripId = null; currentView = "home"; currentDayIndex = 0;
+        resetAIForTripContextChange();
         settings = nextSettings;
         setUndo(undoState, { settings: undoSettings, theme: undoTheme });
 
@@ -4770,7 +5585,7 @@ document.addEventListener("DOMContentLoaded", () => {
           text += `\n${t("export_journeys_heading")}\n`;
           exportJourneys.map(raw=>({raw,info:journeyInfo(raw)})).sort((a,b)=>(a.info.date||"9999").localeCompare(b.info.date||"9999") || (a.info.departureTime||"").localeCompare(b.info.departureTime||"")).forEach(({raw,info:j})=>{
             text += `🚆 ${j.date ? j.date + " · " : ""}${j.origin||"…"} → ${j.destination||"…"}${j.mode ? " · " + journeyModeLabel(j.mode) : ""}\n`;
-            if(j.departureTime||j.arrivalTime) text += `  ${t("travel_day_departure_time")}: ${j.departureTime||"…"} · ${t("travel_day_arrival_time")}: ${j.arrivalTime||"…"}\n`;
+            if(j.departureTime||j.arrivalTime) text += `  ${t("travel_day_departure_time")}: ${j.departureTime||"…"} · ${t("travel_day_arrival_time")}: ${j.arrivalTime||"…"}${j.arrivalDate&&j.arrivalDate!==j.date?" · "+t("journey_arrival_date")+": "+j.arrivalDate:""}\n`;
             if(j.provider) text += `  ${t("journey_provider_label")}: ${j.provider}\n`;
             if(j.serviceNumber) text += `  ${t("journey_service_label")}: ${j.serviceNumber}\n`;
             if(j.status) text += `  ${t("booking_status_label")}: ${bookingStatusLabel(j.status)}\n`;
@@ -4889,6 +5704,11 @@ document.addEventListener("DOMContentLoaded", () => {
       // MENU-003 (v1020 RC3): stays open; downloading a file is not navigation.
       exportBackup();
     });
+    $("safetyCenterBtn").addEventListener("click", openSafetyCenter);
+    $("safetyCenterClose").addEventListener("click", closeSafetyCenter);
+    $("safetySnapshotCreateBtn").addEventListener("click", createManualSafetySnapshot);
+    $("safetySnapshotRestoreBtn").addEventListener("click", restoreLocalSafetySnapshot);
+    $("safetyBackupDownloadBtn").addEventListener("click", exportBackup);
     $("restoreBtn").addEventListener("click", () => {
       // MENU-003 (v1020 RC3): stays open behind the file picker and the
       // restore confirmation, so the user is not stranded mid-flow.
@@ -4939,6 +5759,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     $("addCancelBtn").addEventListener("click", closeSheet);
     $("addSaveBtn").addEventListener("click", handleSave);
+
+    $("addDuplicateBtn").addEventListener("click", duplicateEditingActivity);
 
     // Delete activity from within Edit Activity sheet (reuses existing confirm dialog + delete logic)
     $("addDeleteBtn").addEventListener("click", () => {
@@ -5030,13 +5852,21 @@ document.addEventListener("DOMContentLoaded", () => {
     $("aiStripBtn").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openAISheet(); } });
     $("aiBtn").addEventListener("click", openAISheet);
     $("aiSheetClose").addEventListener("click", closeAISheet);
-    $("aiSendBtn").addEventListener("click", runAI);
+    $("aiSendBtn").addEventListener("click", () => runAI());
     $("aiPromptInput").addEventListener("keydown", (e) => { if (e.key === "Enter") runAI(); });
+    document.querySelectorAll(".ai-quick-prompt").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (_activeAIRequest && !_activeAIRequest.settled) return;
+        $("aiPromptInput").value = t(btn.dataset.aiPromptKey);
+        try { $("aiPromptInput").focus(); } catch (_) {}
+      });
+    });
     $("aiClearBtn").addEventListener("click", () => {
       $("aiOutput").innerText = t("ai_output_empty");
       $("aiOutput").classList.remove("loading");
       $("aiImportBtn").style.display = "none";
       $("aiPromptInput").value = "";
+      if (!_activeAIRequest) setAIRequestUi(false, "");
     });
     // Planner Agent is advisory-only. The legacy import control stays hidden
     // and deliberately has no mutation handler.
@@ -5088,6 +5918,21 @@ document.addEventListener("DOMContentLoaded", () => {
     $("confirmDeleteDayClose").addEventListener("click",  () => { closeConfirmSheet("confirmDeleteDaySheet"); _pendingDeleteDay = null; });
     $("deleteDayBtn").addEventListener("click", () => requestDeleteDay(currentDayIndex));
 
+    // RC4-HUB-001: visible Planner shortcuts to operational surfaces.
+    if ($("plannerReadinessBtn")) $("plannerReadinessBtn").addEventListener("click", openOverviewSheet);
+    $("plannerTodayQuick").addEventListener("click", () => openToday());
+    $("plannerLogisticsQuick").addEventListener("click", () => { const trip=getActiveTrip(); if(trip) openLogisticsSheet(trip.id); });
+    $("plannerBookingsQuick").addEventListener("click", () => { const trip=getActiveTrip(); if(trip) openBookingCenterSheet(trip.id); });
+    $("plannerMoneyQuick").addEventListener("click", () => { const trip=getActiveTrip(); if(trip) openMoneySheet(trip.id); });
+    $("plannerDocumentsQuick").addEventListener("click", () => { const trip=getActiveTrip(); if(trip) openDocumentsSheet(trip.id); });
+    $("plannerBoardQuick").addEventListener("click", () => { const trip=getActiveTrip(); if(trip) openTripBoardSheet(trip.id,"agenda"); });
+    $("tripBoardClose").addEventListener("click", closeTripBoardSheet);
+    $("tripBoardTabs").addEventListener("click", (e) => { const btn=e.target.closest("[data-board-tab]"); if(btn)setTripBoardTab(btn.dataset.boardTab); });
+    $("tripTaskFilters").addEventListener("click", (e) => { const btn=e.target.closest("[data-task-filter]"); if(!btn)return;_tripTaskFilter=["all","open","done"].includes(btn.dataset.taskFilter)?btn.dataset.taskFilter:"open";renderTripBoardTasks(tripBoardTrip()); });
+    $("tripBoardSearch").addEventListener("input", () => { if(_tripBoardTab==="agenda")renderTripBoardAgenda(tripBoardTrip()); });
+    $("tripTaskAddBtn").addEventListener("click", addTripTask);
+    $("tripTaskInput").addEventListener("keydown", (e) => { if(e.key==="Enter"){e.preventDefault();addTripTask();} });
+
     // TRIPMETA-001 (v1040 / B2,B3,C2)
     $("tripDetailsBtn").addEventListener("click", () => {
       closeMenuSheet();
@@ -5105,8 +5950,8 @@ document.addEventListener("DOMContentLoaded", () => {
     $("tripDetailsClose").addEventListener("click", closeTripDetailsSheet);
     $("tripDetailsCancelBtn").addEventListener("click", closeTripDetailsSheet);
     $("tripDetailsSaveBtn").addEventListener("click", saveTripDetails);
-    $("tripLogisticsBtn").addEventListener("click", () => openLogisticsSheet(_editingTripId));
-    $("tripBookingsBtn").addEventListener("click", () => openBookingCenterSheet(_editingTripId));
+    $("tripDuplicateBtn").addEventListener("click", () => { const trip=trips.find(x=>x.id===_editingTripId); if(!trip)return; closeTripDetailsSheet(); duplicateTrip(trip); });
+    $("tripArchiveBtn").addEventListener("click", () => { const trip=trips.find(x=>x.id===_editingTripId); if(!trip)return; setTripArchived(trip,!Operations.isArchivedTrip(trip)); });
     $("tripMoneyBtn").addEventListener("click", () => openMoneySheet(_editingTripId));
     $("tripDocumentsBtn").addEventListener("click", () => openDocumentsSheet(_editingTripId));
 
@@ -5125,7 +5970,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // v1080 booking, money and document organization
     $("bookingCenterClose").addEventListener("click", closeBookingCenterSheet);
+    $("bookingCenterFilters").addEventListener("click", (e) => { const btn=e.target.closest("[data-booking-filter]");if(!btn)return;_bookingCenterFilter=btn.dataset.bookingFilter==="attention"?"attention":"all";renderBookingCenter(); });
     $("moneyClose").addEventListener("click", closeMoneySheet);
+    $("moneyFilters").addEventListener("click", (e) => { const btn=e.target.closest("[data-money-filter]");if(!btn)return;_moneyFilter=btn.dataset.moneyFilter==="attention"?"attention":"all";renderMoneyHub(); });
     $("budgetSaveBtn").addEventListener("click", saveBudget);
     $("addExpenseBtn").addEventListener("click", () => openExpenseSheet(null));
     $("expenseSheetClose").addEventListener("click", closeExpenseSheet);
@@ -5133,6 +5980,7 @@ document.addEventListener("DOMContentLoaded", () => {
     $("expenseSaveBtn").addEventListener("click", saveExpense);
     $("expenseDeleteBtn").addEventListener("click", deleteExpense);
     $("documentsClose").addEventListener("click", closeDocumentsSheet);
+    $("documentsFilters").addEventListener("click", (e) => { const btn=e.target.closest("[data-documents-filter]");if(!btn)return;_documentsFilter=btn.dataset.documentsFilter==="needed"?"needed":"all";renderDocumentsHub(); });
     $("addDocumentBtn").addEventListener("click", () => openDocumentSheet(null));
     $("documentSheetClose").addEventListener("click", closeDocumentSheet);
     $("documentCancelBtn").addEventListener("click", closeDocumentSheet);
@@ -5214,6 +6062,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (bootMigration.error) console.warn("TripMaster: legacy Home migration deferred");
 
     let activeTrip = getActiveTrip();
+    if (activeTrip && Operations.isArchivedTrip(activeTrip)) {
+      if (writeAll([[KEY_ACTIVE_TRIP, ""]])) activeTripId = null;
+      activeTrip = null;
+    }
     if (activeTripId && !activeTrip) {
       // Stale pointer from a deleted/corrupt trip: clear only the pointer.
       if (writeAll([[KEY_ACTIVE_TRIP, ""]])) activeTripId = null;
@@ -5224,10 +6076,27 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!activeTrip) currentView = "home";
 
     currentDayIndex = 0;
+    if (typeof window.__tmBootProgress === "function") window.__tmBootProgress("initial-render");
     renderCurrentView();
     updateHeaderInfo();
-    if (bootMigration.migrated) showToast(t("toast_home_migrated"));
-    else showToast(t("toast_ready"));
+    armBackGuard();
+
+    /* BOOT-STATE-003 (v1500 RC2): critical boot ends here.
+       At this point storage is loaded, the active trip/view is resolved, all
+       core controls have already been wired, and the first usable UI has
+       rendered. Mobile/SPCK can still throw in non-critical post-render work
+       (toast/lifecycle/reminder registration). Such an error must never cover
+       an already-usable app with a fatal boot screen. */
+    if (typeof window.__tmBootProgress === "function") window.__tmBootProgress("core-ready");
+    document.documentElement.dataset.tmBoot = "ready";
+    window.dispatchEvent(new Event("tripmaster:ready"));
+
+    try {
+      if (bootMigration.migrated) showToast(t("toast_home_migrated"));
+      else showToast(t("toast_ready"));
+    } catch (err) {
+      console.warn("TripMaster: post-boot toast failed", err);
+    }
 
     /* ── Sleep / Wake lifecycle ──
        ACTIVE-TRIP-001 (v1040 / A4) + STALE-WRITE-001 (v1040 QA):
@@ -5252,7 +6121,10 @@ document.addEventListener("DOMContentLoaded", () => {
         activeTripId = localStorage.getItem(KEY_ACTIVE_TRIP) || null;
         const wakeMigration = migrateLegacyHomeDays();
         if (wakeMigration.error) console.warn("TripMaster: legacy Home migration deferred on wake");
-        const woken = getActiveTrip();
+        let woken = getActiveTrip();
+        if (woken && Operations.isArchivedTrip(woken)) { activeTripId=null; days=[]; currentView="home"; woken=null; }
+        const req = _activeAIRequest;
+        if (aiRequestIsCurrent(req) && (!woken || woken.id !== req.tripId)) resetAIForTripContextChange();
         if (woken) { days = woken.days || []; }
         else { days = []; currentView = "home"; }
         if (currentDayIndex >= days.length) currentDayIndex = 0;
@@ -5262,9 +6134,19 @@ document.addEventListener("DOMContentLoaded", () => {
     /* Only the wake direction is wired. There is deliberately no pagehide /
        beforeunload writer: see STALE-WRITE-001 above. */
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) reloadStateAfterWake();
+      if (document.hidden) {
+        const req = _activeAIRequest;
+        if (aiRequestIsCurrent(req)) {
+          req.backgrounded = true;
+          if (req.timeoutId) { window.clearTimeout(req.timeoutId); req.timeoutId = null; }
+          setAIRequestUi(true, t("ai_state_background"));
+        }
+        return;
+      }
+      reloadStateAfterWake();
+      resumeAIRequestAfterWake();
     });
-    window.addEventListener("pageshow", () => reloadStateAfterWake());
+    window.addEventListener("pageshow", () => { if (!_backGuardArmed) armBackGuard(); reloadStateAfterWake(); resumeAIRequestAfterWake(); });
 
     /* ── REMINDERS-001 follow-up: lightweight time-based UI refresh ──
        Purely visual re-render so the reminder countdown / "עבר" / "עכשיו" labels can
@@ -5277,8 +6159,13 @@ document.addEventListener("DOMContentLoaded", () => {
       else if (currentView === "planner") renderActivities(currentDayIndex);
     }, 30000);
 
-    // BOOT-WATCHDOG-001: only marked ready after initialization and wiring complete.
-    document.documentElement.dataset.tmBoot = "ready";
-    window.dispatchEvent(new Event("tripmaster:ready"));
+    // BOOT-STATE-003: non-critical post-render setup completed. The app was
+    // already marked ready immediately after its first usable render above.
+    if (typeof window.__tmBootProgress === "function") window.__tmBootProgress("post-boot-complete");
+  } catch (err) {
+    console.error("TripMaster: startup failed", err);
+    if (typeof window.__tmBootFail === "function") window.__tmBootFail(err, "app-init");
+    else throw err;
+  }
 
   }); // DOMContentLoaded

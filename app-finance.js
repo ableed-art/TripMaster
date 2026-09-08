@@ -214,12 +214,31 @@
   }
 
   function bookingAttentionEntries(trip, logistics) {
-    return bookingEntries(trip, logistics).filter((row) => {
-      if (row.bookingStatus === "cancelled") return false;
-      if (row.bookingStatus === "planned") return true;
-      return row.paymentStatus === "unpaid" || row.paymentStatus === "partial";
-    });
+    return bookingEntries(trip, logistics).filter(bookingEntryNeedsAttention);
   }
+  function bookingEntryNeedsAttention(row) {
+    if (!row || row.bookingStatus === "cancelled") return false;
+    if (row.bookingStatus === "planned") return true;
+    return row.paymentStatus === "unpaid" || row.paymentStatus === "partial";
+  }
+
+  function expensePaymentAttention(trip) {
+    return tripExpenses(trip).map(expenseInfo).filter((e) => e.paymentStatus === "unpaid" || e.paymentStatus === "partial");
+  }
+
+  function expenseCategoryTotals(trip, currency) {
+    const code = currencyCode(currency);
+    if (!code) return [];
+    const totals = Object.create(null);
+    tripExpenses(trip).map(expenseInfo).forEach((e) => {
+      if (e.currency !== code || e.amount == null) return;
+      totals[e.category] = (totals[e.category] || 0) + e.amount;
+    });
+    return Object.keys(totals).map((category) => ({
+      category, amount: Math.round((totals[category] + Number.EPSILON) * 100) / 100
+    })).sort((a,b) => b.amount - a.amount);
+  }
+
 
   function derivedConfirmationDocuments(trip, logistics) {
     return bookingEntries(trip, logistics)
@@ -269,11 +288,77 @@
     return { state: "missing", entity: null };
   }
 
+  function inferredStayContextFromActivities(trip) {
+    if (!trip || !Array.isArray(trip.days)) return [];
+    const candidates = [];
+    const patterns = [
+      /(מלון\s+.+)$/i,
+      /(فندق\s+.+)$/i,
+      /(отель\s+.+)$/i,
+      /(гостиница\s+.+)$/i,
+      /\b(hotel\s+.+)$/i,
+      /\b(hostel\s+.+)$/i,
+      /\b(resort\s+.+)$/i,
+      /\b(hostal\s+.+)$/i,
+      /\b(pousada\s+.+)$/i
+    ];
+    trip.days.forEach((day, dayIndex) => {
+      const date = validDate(day && day.date);
+      (day && Array.isArray(day.items) ? day.items : []).forEach((item, itemIndex) => {
+        const title = cleanString(item && item.title);
+        if (!title) return;
+        let name = "";
+        for (const re of patterns) {
+          const m = title.match(re);
+          if (m && m[1]) { name = cleanString(m[1]); break; }
+        }
+        if (!name) return;
+        candidates.push({
+          key: name.toLocaleLowerCase(),
+          name: name.slice(0, 240),
+          location: cleanString(item && item.location) || cleanString(trip.destination),
+          date,
+          id: cleanString(item && item.uid) || `d${dayIndex}-i${itemIndex}`
+        });
+      });
+    });
+    const unique = [];
+    const seen = new Set();
+    candidates.forEach((row) => {
+      if (!row.key || seen.has(row.key)) return;
+      seen.add(row.key);
+      unique.push(row);
+    });
+    // Only infer when the itinerary points to one unambiguous lodging.
+    if (unique.length !== 1) return [];
+    const row = unique[0];
+    const tripDates = trip.days.map((d) => validDate(d && d.date)).filter(Boolean).sort();
+    const lastDate = tripDates.length ? tripDates[tripDates.length - 1] : "";
+    return [{
+      id: `inferred-stay-${row.id}`.slice(0, 160),
+      name: row.name,
+      location: row.location,
+      startDate: row.date || "",
+      endDate: (row.date && lastDate && lastDate >= row.date) ? lastDate : "",
+      checkInTime: "",
+      checkOutTime: "",
+      status: "",
+      paymentStatus: ""
+    }];
+  }
+
   function buildTripContext(trip, options) {
     const opts = options && typeof options === "object" ? options : {};
     const includeSensitive = opts.includeSensitive === true;
     const L = root.TripMasterLogistics;
+    const T = root.TripMasterTravel;
+    const D = root.TripMasterIntelligence;
     const days = trip && Array.isArray(trip.days) ? trip.days : [];
+    const rawStays = (L && L.tripStays ? L.tripStays(trip) : []);
+    const mappedStays = rawStays.map((raw) => {
+      const s = L.stayInfo(raw);
+      return { id:s.id, name:s.name, location:s.location, startDate:s.startDate, endDate:s.endDate, checkInTime:s.checkInTime, checkOutTime:s.checkOutTime, status:s.status, paymentStatus:paymentStatus(raw.paymentStatus) };
+    });
     const out = {
       schema: "tripmaster-context-v1",
       trip: {
@@ -285,29 +370,50 @@
           name: cleanString(trip.base.name), location: cleanString(trip.base.location)
         } : null
       },
-      days: days.map((day) => ({
-        date: validDate(day && day.date),
-        dayType: cleanString(day && day.dayType) || "normal",
-        activities: (day && Array.isArray(day.items) ? day.items : []).filter(Boolean).map((item) => ({
-          title: cleanString(item.title), time: cleanString(item.time), endTime: cleanString(item.endTime),
-          location: cleanString(item.location), category: cleanString(item.category),
-          accessStatus: cleanString(item.accessStatus),
-          bookingStatus: cleanString(item.booking && item.booking.status),
-          paymentStatus: paymentStatus(item.booking && item.booking.paymentStatus)
-        }))
-      })),
-      stays: (L && L.tripStays ? L.tripStays(trip) : []).map((raw) => {
-        const s = L.stayInfo(raw);
-        return { id:s.id, name:s.name, location:s.location, startDate:s.startDate, endDate:s.endDate, status:s.status, paymentStatus:paymentStatus(raw.paymentStatus) };
+      days: days.map((day) => {
+        const travelDay = T && T.hasTravelDayDetails && T.hasTravelDayDetails(day) ? T.travelDayInfo(day) : null;
+        return {
+          date: validDate(day && day.date),
+          dayType: cleanString(day && day.dayType) || "normal",
+          activities: (day && Array.isArray(day.items) ? day.items : []).filter(Boolean).map((item) => {
+            const tr = D && D.travelFromPrevious ? D.travelFromPrevious(item) : null;
+            return {
+              id: cleanString(item.uid), title: cleanString(item.title), time: cleanString(item.time), endTime: cleanString(item.endTime),
+              location: cleanString(item.location), category: cleanString(item.category),
+              accessStatus: cleanString(item.accessStatus),
+              bookingStatus: cleanString(item.booking && item.booking.status),
+              paymentStatus: paymentStatus(item.booking && item.booking.paymentStatus),
+              travelFromPrevious: tr && tr.known ? {
+                mode: cleanString(tr.mode), durationMin: tr.durationMin, unresolved: tr.unresolved === true
+              } : null
+            };
+          }),
+          // Reference is intentionally excluded: the backend contract treats
+          // booking/service references as sensitive by default.
+          travelDay: travelDay ? {
+            origin: cleanString(travelDay.origin), destination: cleanString(travelDay.destination), mode: cleanString(travelDay.mode),
+            departureTime: cleanString(travelDay.departureTime), arrivalTime: cleanString(travelDay.arrivalTime)
+          } : null
+        };
       }),
+      // If no formal Stay exists, expose one itinerary-inferred lodging to
+      // the AI context only. This never writes or mutates trip data.
+      stays: mappedStays.length ? mappedStays : inferredStayContextFromActivities(trip),
       journeys: (L && L.tripJourneys ? L.tripJourneys(trip) : []).map((raw) => {
         const j = L.journeyInfo(raw);
         return { id:j.id, date:j.date, mode:j.mode, origin:j.origin, destination:j.destination, departureTime:j.departureTime, arrivalTime:j.arrivalTime, status:j.status, paymentStatus:paymentStatus(raw.paymentStatus) };
       }),
-      money: { budget: budgetInfo(trip), totals: totalsByCurrency(trip), expenses: tripExpenses(trip).map((raw) => {
-        const e = expenseInfo(raw);
-        return { id:e.id, title:e.title, category:e.category, amount:e.amount, currency:e.currency, date:e.date, paymentStatus:e.paymentStatus };
-      }) },
+      money: {
+        budget: budgetInfo(trip),
+        totals: totalsByCurrency(trip),
+        // RC4-FIX1-PRIVACY-001: itemized expenses are not part of the default
+        // AI projection. Aggregate budget/totals remain useful without sending
+        // unrelated transaction-level detail on every question.
+        expenses: (includeSensitive || opts.includeExpenseDetails === true) ? tripExpenses(trip).map((raw) => {
+          const e = expenseInfo(raw);
+          return { id:e.id, title:e.title, category:e.category, amount:e.amount, currency:e.currency, date:e.date, paymentStatus:e.paymentStatus };
+        }) : []
+      },
       bookingAttentionCount: bookingAttentionEntries(trip, L).length,
       documentAttentionCount: documentNeedsAttention(trip).length
     };
@@ -351,7 +457,10 @@
     documentsTrackingActive,
     activityRows,
     bookingEntries,
+    bookingEntryNeedsAttention,
     bookingAttentionEntries,
+    expensePaymentAttention,
+    expenseCategoryTotals,
     derivedConfirmationDocuments,
     documentNeedsAttention,
     resolveLinkedEntity,

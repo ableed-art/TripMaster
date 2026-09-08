@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="./styles.css" />
 
   <script src="./dir-boot.js"></script>
+  <script src="./boot-watchdog.js"></script>
 
 </head>
 
@@ -42,6 +43,9 @@
            the same job. It now navigates to Home, which is the single place
            trips are seen, selected, created, edited and deleted. -->
       <div class="header-right">
+        <button class="header-language-btn" id="languageQuickBtn" type="button"
+                data-i18n-title="lang_title" data-i18n-aria-label="lang_title"
+                title="🌐 שפה" aria-label="🌐 שפה">🌐</button>
         <button class="header-icon-btn" id="themeBtn" type="button" data-i18n-title="header_theme_title" title="ערכת נושא">
           🌓
         </button>
@@ -86,6 +90,7 @@
         <div class="today-head-actions">
           <button class="btn btn-muted compact-btn" id="todayPlannerBtn" type="button" data-i18n="today_open_planner">Planner</button>
           <button class="btn btn-muted compact-btn" id="todayOverviewBtn" type="button" data-i18n="menu_overview">Overview</button>
+          <button class="btn btn-muted compact-btn" id="todayAlertsBtn" type="button" data-i18n="today_alerts_enable">Enable alerts</button>
         </div>
       </div>
       <div class="today-preview-controls">
@@ -95,7 +100,8 @@
           <select id="todayPreviewSelect"></select>
         </label>
       </div>
-      <div id="todayBody" aria-live="polite"></div>
+      <div id="todayLiveStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div id="todayBody"></div>
     </section>
 
     <div id="plannerView">
@@ -135,6 +141,56 @@
     <div class="day-health" id="dayHealthStrip" role="status" aria-live="polite" style="display:none"></div>
     <div class="day-logistics" id="dayLogisticsStrip" style="display:none"></div>
 
+    <button class="planner-readiness-banner" id="plannerReadinessBtn" type="button">
+      <span class="planner-readiness-icon" id="plannerReadinessIcon" aria-hidden="true">✓</span>
+      <span class="planner-readiness-copy">
+        <strong id="plannerReadinessTitle" data-i18n="planner_readiness_title">Trip readiness</strong>
+        <span id="plannerReadinessMeta"></span>
+      </span>
+      <span class="planner-readiness-open" aria-hidden="true">›</span>
+    </button>
+
+    <!-- RC4-HUB-001: core trip operations are visible in Planner instead of
+         being hidden behind Trip Details / Menu. These are navigation only. -->
+    <div class="planner-ops-hub" id="plannerOpsHub" data-i18n-aria-label="ops_hub_aria" aria-label="Trip operations">
+      <button class="planner-ops-card" id="plannerTodayQuick" type="button">
+        <span class="planner-ops-icon" aria-hidden="true">✨</span>
+        <span class="planner-ops-copy">
+          <strong data-i18n="ops_today_title">Today</strong>
+          <span id="plannerTodayQuickMeta" data-i18n="ops_today_preview">Preview the trip day</span>
+        </span>
+      </button>
+      <button class="planner-ops-card" id="plannerLogisticsQuick" type="button">
+        <span class="planner-ops-icon" aria-hidden="true">🏨</span>
+        <span class="planner-ops-copy">
+          <strong data-i18n="ops_logistics_title">Stays & journeys</strong>
+          <span id="plannerLogisticsQuickMeta"></span>
+        </span>
+      </button>
+      <button class="planner-ops-card" id="plannerBookingsQuick" type="button">
+        <span class="planner-ops-icon" aria-hidden="true">🎟️</span>
+        <span class="planner-ops-copy">
+          <strong data-i18n="ops_bookings_title">Booking Center</strong>
+          <span id="plannerBookingsQuickMeta"></span>
+        </span>
+      </button>
+    </div>
+
+    <div class="planner-secondary-tools" id="plannerSecondaryTools" data-i18n-aria-label="ops_more_aria" aria-label="More trip tools">
+      <button class="planner-secondary-card" id="plannerMoneyQuick" type="button">
+        <span aria-hidden="true">💰</span>
+        <span><strong data-i18n="money_title">Money</strong><small id="plannerMoneyQuickMeta"></small></span>
+      </button>
+      <button class="planner-secondary-card" id="plannerDocumentsQuick" type="button">
+        <span aria-hidden="true">📄</span>
+        <span><strong data-i18n="documents_title">Documents</strong><small id="plannerDocumentsQuickMeta"></small></span>
+      </button>
+      <button class="planner-secondary-card" id="plannerBoardQuick" type="button">
+        <span aria-hidden="true">🧭</span>
+        <span><strong data-i18n="trip_board_title">Trip Board</strong><small id="plannerBoardQuickMeta"></small></span>
+      </button>
+    </div>
+
     <!-- Hero card: current / next activity -->
     <div class="hero-card" id="heroCard">
       <div class="hero-card-inner" id="heroCardInner">
@@ -160,7 +216,7 @@
       <div class="timeline-list" id="activityList"></div>
     </div>
 
-    <!-- AI-PROXY-001 (v1090-RC3): Planner Agent now runs through the
+    <!-- AI-PROXY-001 (v1090-RC4): Planner Agent now runs through the
          TripMaster backend. The PWA never stores or sends a provider API key. -->
     <div class="ai-suggestion-strip" id="aiStripBtn" role="button" tabindex="0"
          data-i18n-aria-label="ai_open_aria" aria-label="פתח את TripMaster AI">
@@ -259,24 +315,7 @@
         </div>
       </div>
 
-      <!-- I18N-001 (v1030) / I18N-003 (v1030 RC5): compact language selector.
-           Collapsed by default, showing only the current language:
-           "🌐 עברית ▾". Tapping the row opens the list; picking a language
-           applies it and collapses again. The globe stays outside
-           #langCurrentLabel so it always leads in the page direction, while
-           the language name is bidi-isolated by its own dir attribute.
-           Options are rendered by renderLanguageOptions() from LANG_META, so
-           only languages flagged active can ever appear. -->
-      <div class="sec">
-        <button class="sec-head" id="langHead" type="button" aria-expanded="false" aria-controls="langBody" data-i18n-aria-label="lang_title" aria-label="🌐 שפה">
-          <span class="sec-title">🌐 <span id="langCurrentLabel" lang="he" dir="rtl">עברית</span></span>
-          <span class="sec-chevron" aria-hidden="true">▾</span>
-        </button>
-        <div class="sec-body" id="langBody">
-          <div class="lang-list" id="langOptions"></div>
-          <div class="sec-note" data-i18n="lang_note">השפה משנה את ממשק האפליקציה בלבד. שמות הטיולים, הפעילויות וההערות שכתבתם נשארים בדיוק כפי שהם.</div>
-        </div>
-      </div>
+      <!-- RC4-UX-003: Language selection lives exclusively in the persistent header globe. -->
 
       <!-- PREFS-001 (v1020): Trip Preferences. Stored under settings.prefs.
            All optional, no onboarding, no gating. Nothing consumes these yet —
@@ -307,7 +346,7 @@
             <button class="opt" type="button" data-key="noSelfDrive" data-i18n="mobility_no_self_drive">לא מתכנן נהיגה עצמית</button>
           </div>
 
-          <label data-i18n="prefs_max_walk">מרחק הליכה מקסימלי (ק״מ)</label>
+          <label for="prefMaxWalk" data-i18n="prefs_max_walk">מרחק הליכה מקסימלי (ק״מ)</label>
           <input id="prefMaxWalk" type="number" min="0" max="50" step="0.5" placeholder="3" />
 
           <label data-i18n="prefs_budget">רמת תקציב</label>
@@ -317,9 +356,9 @@
             <button class="opt" type="button" data-val="high" data-i18n="prefs_budget_high">מפנק</button>
           </div>
 
-          <label data-i18n="prefs_notes">הערות חופשיות</label>
+          <label for="prefNotes" data-i18n="prefs_notes">הערות חופשיות</label>
           <textarea id="prefNotes" rows="2" data-i18n-placeholder="prefs_notes_ph" placeholder="מה חשוב לכם בטיול הזה?"></textarea>
-          <div class="sec-note" data-i18n="prefs_note">ההעדפות נשמרות במכשיר בלבד ונכללות בגיבוי.</div>
+          <div class="sec-note" data-i18n="prefs_note">ההעדפות נשמרות במכשיר ונכללות בגיבוי. בשימוש ב-TripMaster AI, חלק מההעדפות המובנות עשויות להיכלל במידע המסונן שנשלח עם הבקשה.</div>
           <div class="sec-note sec-note-strong" data-i18n="mobility_info_note">העדפות התחבורה הן מידע לתכנון בלבד. TripMaster עדיין לא מחשב מסלולים, זמני נסיעה או מרחקי הליכה.</div>
         </div>
       </div>
@@ -354,9 +393,9 @@
             <button class="opt" type="button" data-val="electric" data-i18n="access_wc_electric">ממונע</button>
           </div>
 
-          <label data-i18n="access_notes_label">צרכים והעדפות לתכנון</label>
+          <label for="accessNotes" data-i18n="access_notes_label">צרכים והעדפות לתכנון</label>
           <textarea id="accessNotes" rows="2" data-i18n-placeholder="access_notes_ph" placeholder="מה יעזור לכם בתכנון?"></textarea>
-          <div class="sec-note" data-i18n="access_note">אין צורך לפרט מידע רפואי. נשמר במכשיר בלבד.</div>
+          <div class="sec-note" data-i18n="access_note">אין צורך לפרט מידע רפואי. ההערה החופשית נשמרת במכשיר ואינה נשלחת ל-AI כברירת מחדל; העדפות Access מובנות עשויות להיכלל בבקשת AI.</div>
         </div>
       </div>
 
@@ -391,6 +430,10 @@
           <button class="menu-item" id="restoreBtn" type="button">
           <span class="sec-icon">📂</span>
           <span data-i18n="data_restore">שחזור</span>
+          </button>
+          <button class="menu-item" id="safetyCenterBtn" type="button">
+          <span class="sec-icon">🛟</span>
+          <span data-i18n="safety_center_title">מרכז בטיחות נתונים</span>
           </button>
           <button class="menu-item" id="exportBtn" type="button">
           <span class="sec-icon">📤</span>
@@ -432,6 +475,18 @@
       </div>
     </div><!-- /settingsArea -->
   </div><!-- /menuSheet -->
+
+  <!-- RC4-UX-002: dedicated language picker for the persistent header globe.
+       This is intentionally separate from the full product menu so the globe
+       opens languages only, while the hamburger opens the menu only. -->
+  <div class="sheet language-sheet" id="languageSheet" role="dialog" aria-modal="true" aria-labelledby="languageSheetTitle">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <div class="sheet-title" id="languageSheetTitle" data-i18n="lang_title">שפה</div>
+      <button class="sheet-close" id="languageSheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
+    </div>
+    <div class="lang-list language-sheet-list" id="languageQuickOptions"></div>
+  </div><!-- /languageSheet -->
 
   <!-- ══ ADD/EDIT SHEET ══ -->
   <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
@@ -502,6 +557,7 @@
                duration it was not given. -->
           <label for="addEndTime" data-i18n="field_end_time">שעת סיום</label>
           <input type="time" id="addEndTime" />
+          <label class="day-check activity-nextday-check"><input type="checkbox" id="addEndNextDay" /> <span data-i18n="field_end_next_day">Ends the next day</span></label>
           <div class="field-note" data-i18n="field_end_time_note">בלי שעת סיום, הפעילות מיוצאת ליומן כשעה אחת — בדיוק כמו קודם.</div>
 
           <!-- ACCESS-ACT-001 (v1040 / D1,D2): the traveller's own research. The
@@ -602,23 +658,31 @@
         <div class="gcal-note" data-i18n="gcal_note">נפתח ב-Google Calendar עם הפרטים מוכנים. התזכורת שבחרתם לא עוברת — Google מגדיר תזכורת ברירת מחדל. דורש חיבור לאינטרנט.</div>
       </div>
 
+      <button class="btn btn-muted" id="addDuplicateBtn" style="margin-top:10px; display:none" type="button" data-i18n="activity_duplicate_btn">📋 Duplicate activity</button>
       <button class="btn btn-danger" id="addDeleteBtn" style="margin-top:10px; display:none" type="button" data-i18n="btn_delete_activity">🗑 מחק פעילות</button>
       <button class="btn btn-muted" id="addCancelBtn" style="margin-top:10px" type="button" data-i18n="btn_cancel">ביטול</button>
     </div>
   </div>
 
-  <!-- ══ PLANNER AGENT SHEET (v1090-RC3) ══ -->
+  <!-- ══ TRIPMASTER AGENT SHEET (v1090-RC4) ══ -->
   <div class="sheet" id="aiSheet" role="dialog" aria-modal="true" aria-labelledby="aiSheetTitle">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h3 id="aiSheetTitle" data-i18n="ai_sheet_title">🤖 TripMaster AI Planner</h3>
+      <h3 id="aiSheetTitle" data-i18n="ai_sheet_title">🤖 TripMaster AI</h3>
       <button class="sheet-close" id="aiSheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
-    <div class="ai-agent-note" data-i18n="ai_agent_note">הסוכן קורא רק מידע מסונן מהטיול הנוכחי ומציע הצעות בלבד. הוא לא משנה הזמנות או את המסלול.</div>
+    <div class="ai-agent-note" data-i18n="ai_agent_note">כשמשתמשים ב-TripMaster AI, נשלח לשירות ה-AI מידע מסונן מהטיול הנוכחי כדי לענות. מסמכים, קישורי הזמנה ומספרי אישור אינם נשלחים כברירת מחדל, וה-AI לא משנה את הטיול.</div>
+    <div class="ai-quick-prompts" data-i18n-aria-label="ai_quick_aria" aria-label="Quick questions">
+      <button type="button" class="ai-quick-prompt" data-ai-prompt-key="ai_quick_now">✨ <span data-i18n="ai_quick_now">מה חשוב עכשיו?</span></button>
+      <button type="button" class="ai-quick-prompt" data-ai-prompt-key="ai_quick_bookings">🎟️ <span data-i18n="ai_quick_bookings">מה דורש טיפול בהזמנות?</span></button>
+      <button type="button" class="ai-quick-prompt" data-ai-prompt-key="ai_quick_research">🔎 <span data-i18n="ai_quick_research">ספר לי על מקום בטיול</span></button>
+      <button type="button" class="ai-quick-prompt" data-ai-prompt-key="ai_quick_recovery">🛟 <span data-i18n="ai_quick_recovery">משהו השתבש</span></button>
+    </div>
     <div class="ai-input-row">
-      <input id="aiPromptInput" data-i18n-placeholder="ai_prompt_placeholder" placeholder="למשל: מה כדאי לבדוק לפני מחר?" autocomplete="off" maxlength="2000" />
+      <input id="aiPromptInput" data-i18n-placeholder="ai_prompt_placeholder" data-i18n-aria-label="ai_prompt_placeholder" placeholder="למשל: מה כדאי לבדוק לפני מחר?" autocomplete="off" maxlength="2000" />
       <button id="aiSendBtn" type="button" data-i18n="ai_send">שלח</button>
     </div>
+    <div class="ai-request-state" id="aiRequestState" role="status" aria-live="polite"></div>
     <div id="aiOutput" role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="ai-actions" style="margin-top:10px">
       <button class="btn btn-primary" id="aiImportBtn" type="button" style="display:none">➕ ייבא לטיול</button>
@@ -640,7 +704,7 @@
       <h3 id="newTripSheetTitle" data-i18n="newtrip_title">🧳 טיול חדש</h3>
       <button class="sheet-close" id="newTripSheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
-    <label data-i18n="newtrip_name">שם הטיול</label>
+    <label for="newTripNameInput" data-i18n="newtrip_name">שם הטיול</label>
     <input id="newTripNameInput" placeholder="London 2026" autocomplete="off" />
     <div class="row" style="margin-top:4px">
       <button class="btn btn-muted" id="newTripCancelBtn" type="button" data-i18n="btn_cancel">ביטול</button>
@@ -700,6 +764,9 @@
         <div><label for="travelDayDepartureTime" data-i18n="travel_day_departure_time">Known departure time</label><input type="time" id="travelDayDepartureTime" /></div>
         <div><label for="travelDayArrivalTime" data-i18n="travel_day_arrival_time">Known arrival time</label><input type="time" id="travelDayArrivalTime" /></div>
       </div>
+      <label for="travelDayArrivalDate" data-i18n="travel_day_arrival_date">Arrival date</label>
+      <input type="date" id="travelDayArrivalDate" />
+      <div class="field-note" data-i18n="travel_day_arrival_date_note">Use this when the Travel Day reaches the destination after midnight or on a later date.</div>
       <label for="travelDayReference" data-i18n="travel_day_reference">Reference / note</label>
       <textarea id="travelDayReference" rows="2" data-i18n-placeholder="travel_day_reference_ph" placeholder="Flight/train number, terminal, booking note…"></textarea>
       <div class="field-note" data-i18n="travel_day_truth_note">TripMaster stores only what you enter. It does not check live schedules or availability.</div>
@@ -712,6 +779,10 @@
       <div class="field-note" data-i18n="day_base_flow_note">Planning markers only. No route or travel time is calculated.</div>
     </div>
 
+    <div class="day-productivity-actions">
+      <button class="btn btn-muted" id="dayDuplicateBtn" type="button" data-i18n="day_duplicate_btn">📋 Duplicate day plan</button>
+      <div class="field-note" data-i18n="day_duplicate_note">Copies the day plan to the next free date. Completion and booking/payment confirmations are reset in the copy.</div>
+    </div>
     <div class="row" style="margin-top:4px">
       <button class="btn btn-muted" id="dayDetailsCancelBtn" type="button" data-i18n="btn_cancel">Cancel</button>
       <button class="btn btn-primary" id="dayDetailsSaveBtn" type="button" data-i18n="btn_save">Save</button>
@@ -842,14 +913,11 @@
       <textarea id="tripBaseNoteInput" rows="2" data-i18n-placeholder="trip_base_note_ph" placeholder="למשל: קבלה 24/7 או כניסה צדדית"></textarea>
       <div class="field-note" data-i18n="trip_base_info_note">נשמר כמידע שלכם בלבד. TripMaster לא מאמת את המלון ולא מחשב ממנו מסלולים.</div>
     </div>
-    <div class="trip-logistics-launch">
-      <button class="btn btn-muted logistics-launch-btn" id="tripLogisticsBtn" type="button" data-i18n="logistics_manage_btn">🏨 Stays & journeys</button>
-      <div class="field-note" id="tripLogisticsSummary" data-i18n="logistics_manage_note">Optional logistics for multi-stay and intercity trips.</div>
-    </div>
     <div class="trip-operations-launch">
-      <button class="btn btn-muted logistics-launch-btn" id="tripBookingsBtn" type="button" data-i18n="booking_center_btn">🎟️ Booking Center</button>
       <button class="btn btn-muted logistics-launch-btn" id="tripMoneyBtn" type="button" data-i18n="money_manage_btn">💰 Money</button>
       <button class="btn btn-muted logistics-launch-btn" id="tripDocumentsBtn" type="button" data-i18n="documents_manage_btn">📄 Documents</button>
+      <button class="btn btn-muted logistics-launch-btn" id="tripDuplicateBtn" type="button" data-i18n="trip_duplicate_btn">📑 Duplicate trip</button>
+      <button class="btn btn-muted logistics-launch-btn" id="tripArchiveBtn" type="button" data-i18n="trip_archive_btn">📦 Archive trip</button>
     </div>
     <div class="planning-summary" id="tripDetailsPlanningSummary" style="display:none"></div>
     <div class="row" style="margin-top:4px">
@@ -969,6 +1037,9 @@
         <div><label for="journeyDepartureTime" data-i18n="travel_day_departure_time">Departure time</label><input id="journeyDepartureTime" type="time" /></div>
         <div><label for="journeyArrivalTime" data-i18n="travel_day_arrival_time">Arrival time</label><input id="journeyArrivalTime" type="time" /></div>
       </div>
+      <label for="journeyArrivalDate" data-i18n="journey_arrival_date">Arrival date</label>
+      <input id="journeyArrivalDate" type="date" />
+      <div class="field-note" data-i18n="journey_arrival_date_note">Use this when a journey arrives after midnight or on a later date.</div>
       <label for="journeyProvider" data-i18n="journey_provider_label">Operator / provider</label>
       <input id="journeyProvider" autocomplete="off" />
       <label for="journeyServiceNumber" data-i18n="journey_service_label">Flight / train / service number</label>
@@ -1011,6 +1082,11 @@
       <button class="sheet-close" id="bookingCenterClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
     </div>
     <div class="field-note" data-i18n="booking_center_truth">A read-only view of booking information you entered. TripMaster does not validate reservations or payment.</div>
+    <div id="bookingCenterSummary" class="operations-summary" aria-live="polite"></div>
+    <div class="filter-row" id="bookingCenterFilters" role="group" data-i18n-aria-label="booking_filter_group_aria" aria-label="Booking filters">
+      <button class="filter-chip on" id="bookingFilterAll" type="button" data-booking-filter="all" aria-pressed="true" data-i18n="filter_all">All</button>
+      <button class="filter-chip" id="bookingFilterAttention" type="button" data-booking-filter="attention" aria-pressed="false" data-i18n="filter_needs_attention">Needs attention</button>
+    </div>
     <div id="bookingCenterBody"></div>
   </div>
 
@@ -1026,16 +1102,25 @@
       <div class="trip-base-heading" data-i18n="budget_title">Budget</div>
       <div class="row">
         <div><label for="budgetAmount" data-i18n="budget_amount_label">Budget amount</label><input id="budgetAmount" type="number" min="0" step="0.01" inputmode="decimal" /></div>
-        <div><label for="budgetCurrency" data-i18n="currency_label">Currency</label><input id="budgetCurrency" maxlength="3" autocomplete="off" inputmode="text" placeholder="EUR" /></div>
+        <div><label for="budgetCurrency" data-i18n="currency_label">Currency</label><select id="budgetCurrency"></select></div>
       </div>
       <div class="field-note" data-i18n="budget_optional_note">Leave the amount empty to use no trip budget.</div>
       <button class="btn btn-muted compact-btn" id="budgetSaveBtn" type="button" data-i18n="budget_save_btn">Save budget</button>
       <div id="budgetSummary" class="money-summary"></div>
+      <div id="budgetProgress" class="budget-progress" hidden>
+        <div class="budget-progress-track" aria-hidden="true"><span id="budgetProgressFill"></span></div>
+        <div class="budget-progress-label" id="budgetProgressLabel"></div>
+      </div>
+      <div id="moneyInsights" class="operations-summary"></div>
     </section>
     <section class="logistics-section">
       <div class="logistics-section-head">
         <div class="trip-base-heading" data-i18n="expenses_title">Expenses</div>
         <button class="btn btn-muted compact-btn" id="addExpenseBtn" type="button" data-i18n="expense_add_btn">＋ Add expense</button>
+      </div>
+      <div class="filter-row" id="moneyFilters" role="group" data-i18n-aria-label="money_filter_group_aria" aria-label="Expense filters">
+        <button class="filter-chip on" type="button" data-money-filter="all" aria-pressed="true" data-i18n="filter_all">All</button>
+        <button class="filter-chip" type="button" data-money-filter="attention" aria-pressed="false" data-i18n="filter_needs_attention">Needs attention</button>
       </div>
       <div id="expensesList" class="logistics-list"></div>
     </section>
@@ -1051,7 +1136,7 @@
     <input id="expenseTitle" autocomplete="off" />
     <div class="row">
       <div><label for="expenseAmount" data-i18n="expense_amount_label">Amount</label><input id="expenseAmount" type="number" min="0" step="0.01" inputmode="decimal" /></div>
-      <div><label for="expenseCurrency" data-i18n="currency_label">Currency</label><input id="expenseCurrency" maxlength="3" autocomplete="off" placeholder="EUR" /></div>
+      <div><label for="expenseCurrency" data-i18n="currency_label">Currency</label><select id="expenseCurrency"></select></div>
     </div>
     <label for="expenseCategory" data-i18n="expense_category_label">Category</label>
     <select id="expenseCategory">
@@ -1087,6 +1172,50 @@
     </div>
   </div>
 
+  <!-- ══ TRIP BOARD / CHECKLIST (v1200) ══ -->
+  <div class="sheet" id="tripBoardSheet" role="dialog" aria-modal="true" aria-labelledby="tripBoardHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="tripBoardHead" data-i18n="trip_board_title">🧭 Trip Board</h3>
+      <button class="sheet-close" id="tripBoardClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
+    </div>
+    <div id="tripBoardSummary" class="operations-summary"></div>
+    <div class="filter-row" id="tripBoardTabs" role="group" data-i18n-aria-label="trip_board_tabs_aria" aria-label="Trip Board sections">
+      <button class="filter-chip on" type="button" data-board-tab="agenda" aria-pressed="true" data-i18n="trip_board_agenda">Agenda</button>
+      <button class="filter-chip" type="button" data-board-tab="tasks" aria-pressed="false" data-i18n="trip_board_tasks">Checklist</button>
+      <button class="filter-chip" type="button" data-board-tab="attention" aria-pressed="false" data-i18n="trip_board_attention">Attention</button>
+    </div>
+    <section id="tripBoardAgendaSection">
+      <label for="tripBoardSearch" data-i18n="trip_board_search_label">Search the trip</label>
+      <input id="tripBoardSearch" type="search" autocomplete="off" data-i18n-placeholder="trip_board_search_ph" placeholder="Activity, place, hotel, train…" />
+      <div id="tripBoardAgenda" class="trip-board-agenda"></div>
+    </section>
+    <section id="tripBoardTasksSection" hidden>
+      <div class="trip-task-add">
+        <label for="tripTaskInput" data-i18n="trip_task_add_label">Add a trip task</label>
+        <div class="trip-task-add-row">
+          <input id="tripTaskInput" autocomplete="off" data-i18n-placeholder="trip_task_add_ph" placeholder="Buy tickets, check transfer…" />
+          <button class="btn btn-primary compact-btn" id="tripTaskAddBtn" type="button" data-i18n="trip_task_add_btn">Add</button>
+        </div>
+        <div class="trip-task-meta-row">
+          <div><label for="tripTaskDate" data-i18n="trip_task_date_label">Due date</label><input id="tripTaskDate" type="date" /></div>
+          <div><label for="tripTaskPriority" data-i18n="trip_task_priority_label">Priority</label><select id="tripTaskPriority"><option value="normal" data-i18n="trip_task_priority_normal">Normal</option><option value="high" data-i18n="trip_task_priority_high">High</option><option value="low" data-i18n="trip_task_priority_low">Low</option></select></div>
+        </div>
+      </div>
+      <div id="tripTaskProgress" class="operations-summary"></div>
+      <div class="filter-row" id="tripTaskFilters" role="group" data-i18n-aria-label="trip_task_filters_aria" aria-label="Checklist filters">
+        <button class="filter-chip" type="button" data-task-filter="all" aria-pressed="false" data-i18n="filter_all">All</button>
+        <button class="filter-chip on" type="button" data-task-filter="open" aria-pressed="true" data-i18n="trip_task_filter_open">Open</button>
+        <button class="filter-chip" type="button" data-task-filter="done" aria-pressed="false" data-i18n="trip_task_filter_done">Done</button>
+      </div>
+      <div id="tripBoardTasks" class="trip-task-list"></div>
+    </section>
+    <section id="tripBoardAttentionSection" hidden>
+      <div id="tripBoardAttentionSummary" class="operations-summary"></div>
+      <div id="tripBoardAttention" class="trip-board-attention"></div>
+    </section>
+  </div>
+
   <!-- ══ DOCUMENTS / CONFIRMATIONS (v1080) ══ -->
   <div class="sheet" id="documentsSheet" role="dialog" aria-modal="true" aria-labelledby="documentsHead">
     <div class="sheet-handle"></div>
@@ -1095,6 +1224,11 @@
       <button class="sheet-close" id="documentsClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
     </div>
     <div class="field-note" data-i18n="documents_truth_note">References are stored locally. Files are not uploaded or attached in this version.</div>
+    <div id="documentsSummary" class="operations-summary" aria-live="polite"></div>
+    <div class="filter-row" id="documentsFilters" role="group" data-i18n-aria-label="documents_filter_group_aria" aria-label="Document filters">
+      <button class="filter-chip on" id="documentsFilterAll" type="button" data-documents-filter="all" aria-pressed="true" data-i18n="filter_all">All</button>
+      <button class="filter-chip" id="documentsFilterNeeded" type="button" data-documents-filter="needed" aria-pressed="false" data-i18n="filter_needed">Needed</button>
+    </div>
     <section class="logistics-section">
       <div class="logistics-section-head">
         <div class="trip-base-heading" data-i18n="documents_from_bookings">From bookings</div>
@@ -1160,6 +1294,30 @@
     <div id="overviewBody"></div>
   </div>
 
+  <!-- ══ DATA SAFETY / BETA RELIABILITY CENTER (v1400) ══ -->
+  <div class="sheet" id="safetyCenterSheet" role="dialog" aria-modal="true" aria-labelledby="safetyCenterHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="safetyCenterHead" data-i18n="safety_center_title">🛟 Data Safety Center</h3>
+      <button class="sheet-close" id="safetyCenterClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
+    </div>
+    <div class="field-note" data-i18n="safety_center_note">The local safety snapshot stays on this device and keeps only the latest copy.</div>
+    <div id="safetyHealthGrid" class="safety-health-grid"></div>
+    <section class="logistics-section">
+      <div class="trip-base-heading" data-i18n="safety_snapshot_heading">Local safety snapshot</div>
+      <div id="safetySnapshotMeta" class="operations-summary"></div>
+      <div class="safety-actions">
+        <button class="btn btn-primary" id="safetySnapshotCreateBtn" type="button" data-i18n="safety_snapshot_create">Create snapshot now</button>
+        <button class="btn btn-muted" id="safetySnapshotRestoreBtn" type="button" data-i18n="safety_snapshot_restore">Restore snapshot</button>
+      </div>
+    </section>
+    <section class="logistics-section">
+      <div class="trip-base-heading" data-i18n="safety_backup_heading">Portable backup</div>
+      <div class="field-note" data-i18n="safety_backup_note">A downloaded backup is still the safest copy if the phone or browser storage is lost.</div>
+      <button class="btn btn-muted" id="safetyBackupDownloadBtn" type="button" data-i18n="data_backup">Backup</button>
+    </section>
+  </div>
+
   <!-- ══ ABOUT SHEET ══ -->
   <div class="sheet about-sheet" id="aboutSheet" role="dialog" aria-modal="true" aria-labelledby="aboutHead">
     <div class="sheet-handle"></div>
@@ -1170,12 +1328,12 @@
     <div class="about-body">
       <!-- Overwritten at boot by app.js from APP_VERSION; the literal is only
            a pre-script fallback. -->
-      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1090-RC3</span>
+      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1700-RC1</span>
 
       <h4 data-i18n="about_privacy_h">🔒 פרטיות</h4>
       <div>
-        <span data-i18n="about_privacy_1">כל הנתונים נשמרים מקומית על המכשיר שלך בלבד.</span><br>
-        <span data-i18n="about_privacy_2">אין חשבון, אין שרת, ואין סנכרון ענן כרגע.</span>
+        <span data-i18n="about_privacy_1">נתוני הטיול נשמרים מקומית במכשיר שלך כברירת מחדל.</span><br>
+        <span data-i18n="about_privacy_2">אין כרגע חשבון או סנכרון ענן. כשמשתמשים ב-TripMaster AI, נשלח לשרת רק מידע מסונן שנדרש כדי לענות לבקשה.</span>
       </div>
 
       <h4 data-i18n="about_beta_h">🧪 איך לבדוק (Beta)</h4>
@@ -1195,6 +1353,17 @@
     </div>
   </div>
 
+  <div class="update-banner" id="updateBanner" role="status" aria-live="polite" hidden>
+    <div class="update-banner-copy">
+      <strong data-i18n="update_ready_title">Update ready</strong>
+      <span data-i18n="update_ready_body">A newer TripMaster version is ready. Reload when it is convenient.</span>
+    </div>
+    <div class="update-banner-actions">
+      <button class="btn btn-muted compact-btn" id="updateLaterBtn" type="button" data-i18n="update_later">Later</button>
+      <button class="btn btn-primary compact-btn" id="updateReloadBtn" type="button" data-i18n="update_reload">Reload</button>
+    </div>
+  </div>
+
   <!-- A11Y-001 (v1040 / D6): the toast is the app's only status channel, so
        it is a polite live region. aria-atomic keeps the text and the Undo
        action from being announced as two unrelated fragments. -->
@@ -1210,9 +1379,9 @@
   <script src="./app-finance.js"></script>
   <script src="./app-travel.js"></script>
   <script src="./app-today.js"></script>
+  <script src="./app-operations.js"></script>
 
   <script src="./app.js"></script>
-  <script src="./boot-watchdog.js"></script>
 
   <script src="./sw-register.js"></script>
 </body>

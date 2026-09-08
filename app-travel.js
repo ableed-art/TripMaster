@@ -16,6 +16,13 @@
     return Number.isInteger(h) && Number.isInteger(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59 ? value : "";
   }
 
+  function validDate(value) {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return "";
+    const y=Number(value.slice(0,4)),m=Number(value.slice(5,7)),d=Number(value.slice(8,10));
+    const dt=new Date(Date.UTC(y,m-1,d));
+    return dt.getUTCFullYear()===y&&dt.getUTCMonth()===m-1&&dt.getUTCDate()===d?value:"";
+  }
+
   function dayType(day) {
     const value = day && day.dayType;
     return DAY_TYPES.indexOf(value) !== -1 ? value : "normal";
@@ -31,7 +38,8 @@
       mode,
       reference: cleanString(src.reference),
       departureTime: validTime(src.departureTime),
-      arrivalTime: validTime(src.arrivalTime)
+      arrivalTime: validTime(src.arrivalTime),
+      arrivalDate: validDate(src.arrivalDate)
     };
   }
 
@@ -43,12 +51,12 @@
 
   function hasTravelDayDetails(day) {
     const info = travelDayInfo(day);
-    return !!(info.origin || info.destination || info.mode || info.reference || info.departureTime || info.arrivalTime);
+    return !!(info.origin || info.destination || info.mode || info.reference || info.departureTime || info.arrivalTime || info.arrivalDate);
   }
 
   function countTravelDayDetails(day) {
     const info = travelDayInfo(day);
-    return [info.origin, info.destination, info.mode, info.reference, info.departureTime, info.arrivalTime].filter(Boolean).length;
+    return [info.origin, info.destination, info.mode, info.reference, info.departureTime, info.arrivalTime, info.arrivalDate].filter(Boolean).length;
   }
 
   root.TripMasterTravel = Object.freeze({

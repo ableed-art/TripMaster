@@ -30,7 +30,7 @@
       --text: #0B2239;
       --text2: #16304C;
       --sub: #4A5C6E;
-      --sub2: #94A3B8;
+      --sub2: #64748B;
       --border: #DDE3EA;
       --border-soft: #EDF1F5;
       --danger: #B91C1C;
@@ -83,7 +83,7 @@
       --text: #EAF1F7;
       --text2: #CBD9E5;
       --sub: #8FA6B8;
-      --sub2: #5A7186;
+      --sub2: #8EA3B7;
       --border: #1C3247;
       --border-soft: #142536;
       --danger: #F87171;
@@ -109,6 +109,14 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     html { scroll-behavior: smooth; }
+
+    /* I18N-AM-FOUNDATION (v1500): Ethiopic-friendly stack. No remote font
+       request is made, preserving the local/offline shell. A bundled
+       Noto Sans Ethiopic asset can be added at native-review activation
+       without changing component CSS because every control inherits --font. */
+    html[lang^="am"] {
+      --font: "Noto Sans Ethiopic", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
 
     body {
       font-family: var(--font);
@@ -167,6 +175,16 @@
     }
     .header-menu-btn:active { background: rgba(255,255,255,0.22); color: var(--on-navy); transform: scale(0.92); }
     .header-menu-btn svg { width: 18px; height: 18px; }
+
+    /* I18N-GLOBAL-001 (v1090-RC4): universal one-tap language entry point. */
+    .header-language-btn {
+      width: 44px; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,.24);
+      background: rgba(255,255,255,.14); color: var(--on-navy);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font); font-size: 1.1rem; line-height: 1; cursor: pointer;
+      flex-shrink: 0; transition: background .15s, transform .1s;
+    }
+    .header-language-btn:active { background: rgba(255,255,255,.26); transform: scale(.92); }
 
     /* Center: trip info */
     .header-center {
@@ -277,6 +295,7 @@
       gap: 3px;
       padding: 8px 14px;
       border: none;
+      padding: 0;
       background: transparent;
       color: var(--sub);
       font-size: .65rem;
@@ -909,10 +928,11 @@
     }
 
     .done, .delete {
-      width: 32px;
-      height: 32px;
+      width: 44px;
+      height: 44px;
       border-radius: 8px;
       border: none;
+      padding: 0;
       background: transparent;
       display: grid;
       place-items: center;
@@ -1226,6 +1246,8 @@
        sheets. #settingsArea is no longer a hidden header panel — it is the
        menu body. ── */
     .menu-sheet { height: 88%; }
+    .language-sheet { height: auto; max-height: 80%; }
+    .language-sheet-list { padding: 4px 0 8px; }
     .menu-sheet #settingsArea {
       display: block;
       background: none;
@@ -1901,7 +1923,7 @@
        aria-label carry the meaning, so nothing is lost to assistive tech.
        340px is deliberately under the common 360px phone width, so real
        devices keep the visible label. */
-    @media (max-width: 340px) {
+    @media (max-width: 400px) {
       .header-switch-btn span { display: none; }
       .header-switch-btn {
         min-width: 44px;
@@ -1909,6 +1931,12 @@
         padding-right: 8px;
         justify-content: center;
       }
+    }
+
+    /* Extremely narrow/zoomed layouts keep Language reachable. Theme is the
+       least critical header action and yields before the globe does. */
+    @media (max-width: 280px) {
+      #themeBtn { display: none; }
     }
 
     /* At 200% browser zoom a 320px device can expose an effective CSS
@@ -2390,7 +2418,7 @@
 .logistics-truth{margin-bottom:12px}
 .logistics-section{margin:14px 0;padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card2)}
 .logistics-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.compact-btn{min-height:44px;flex:0 0 auto}
+.compact-btn{min-height:44px;height:auto;width:auto;max-width:100%;flex:0 0 auto;padding:8px 14px;white-space:normal;line-height:1.25}
 .logistics-list{display:grid;gap:8px;margin-top:10px}
 .logistics-row{width:100%;min-height:52px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:12px;padding:10px 12px;text-align:start;font-family:var(--font);cursor:pointer}
 .logistics-row-title{font-weight:700;font-size:.84rem}
@@ -2406,7 +2434,8 @@
 .overview-logistics-row:first-of-type{border-top:0}
 .overview-day-logistics{margin:-2px 0 7px;padding:7px 9px;background:var(--card2);border-radius:10px;color:var(--text2);font-size:.73rem;line-height:1.45}
 .home-logistics-next{overflow-wrap:anywhere}
-@media(max-width:340px){.logistics-section-head{flex-direction:column}.compact-btn{width:100%}}
+@media(max-width:520px){.logistics-section-head{flex-wrap:wrap}.logistics-section-head>.compact-btn{margin-inline-start:auto}}
+@media(max-width:340px){.logistics-section-head{flex-direction:column}.logistics-section-head>.compact-btn{width:100%;margin-inline-start:0}}
 
 /* v1080 money / booking center / document references */
 .trip-operations-launch{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 12px}
@@ -2483,3 +2512,161 @@
   .today-item { grid-template-columns:54px minmax(0,1fr); gap:7px; }
   .today-action { min-height:44px; }
 }
+
+
+/* ══ v1090-RC4: visible operations hub + resilient AI request UX ══ */
+.planner-ops-hub{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}
+.planner-ops-card{min-width:0;min-height:68px;display:flex;align-items:center;gap:9px;padding:10px 11px;border:1px solid var(--border);border-radius:14px;background:var(--card);color:var(--text);font-family:var(--font);text-align:start;cursor:pointer;box-shadow:var(--shadow-sm,0 2px 8px rgba(0,0,0,.04))}
+.planner-ops-card:active{transform:translateY(1px);background:var(--card2)}
+.planner-ops-icon{font-size:1.35rem;flex:0 0 auto}
+.planner-ops-copy{display:flex;flex-direction:column;min-width:0;line-height:1.25}
+.planner-ops-copy strong{font-size:.82rem;overflow-wrap:anywhere}
+.planner-ops-copy span{margin-top:3px;font-size:.68rem;color:var(--sub);overflow-wrap:anywhere}
+.ai-quick-prompts{display:flex;gap:7px;overflow-x:auto;padding:1px 0 8px;scrollbar-width:none}
+.ai-quick-prompts::-webkit-scrollbar{display:none}
+.ai-quick-prompt{flex:0 0 auto;min-height:40px;border:1px solid var(--border);border-radius:999px;background:var(--card2);color:var(--text);font:inherit;font-size:.76rem;font-weight:750;padding:7px 10px;cursor:pointer}
+.ai-request-state{min-height:0;margin:3px 1px 7px;font-size:.75rem;color:var(--sub);line-height:1.35}
+.ai-request-state:empty{display:none}
+.ai-request-state.is-working{display:block}
+.ai-input-row button:disabled,.ai-quick-prompt:disabled{opacity:.55;cursor:default}
+@media(max-width:520px){.planner-ops-hub{gap:6px}.planner-ops-card{min-height:78px;display:block;text-align:center;padding:9px 6px}.planner-ops-icon{display:block;margin-bottom:4px}.planner-ops-copy strong{font-size:.78rem;line-height:1.18}.planner-ops-copy span{font-size:.68rem;line-height:1.25}}
+
+/* RC4-FIX2: discoverable secondary trip tools without crowding the primary hub. */
+.planner-secondary-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:-4px 0 12px}
+.planner-secondary-card{min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:12px;background:var(--card2);color:var(--text);font-family:var(--font);cursor:pointer;text-align:start}
+.planner-secondary-card>span:last-child{display:flex;flex-direction:column;min-width:0}
+.planner-secondary-card strong{font-size:.78rem;line-height:1.2}
+.planner-secondary-card small{margin-top:2px;font-size:.67rem;line-height:1.2;color:var(--sub)}
+@media(max-width:520px){.planner-secondary-card{min-height:52px;padding:8px}.planner-secondary-card strong{font-size:.76rem}.planner-secondary-card small{font-size:.66rem}}
+
+
+/* RC4-FIX3 major app hardening */
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.activity-nextday-check{margin-top:8px}
+.access-profile-note-value{margin-top:8px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--card2);color:var(--text2);font-size:.78rem;line-height:1.45;white-space:pre-wrap}
+.update-banner{position:fixed;z-index:1400;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));bottom:calc(74px + env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--accent-border);background:var(--card);box-shadow:var(--shadow-lg);border-radius:14px;color:var(--text)}
+.update-banner[hidden]{display:none}
+.update-banner-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.update-banner-copy strong{font-size:.86rem}.update-banner-copy span{font-size:.72rem;color:var(--sub);line-height:1.35}
+.update-banner-actions{display:flex;gap:8px;flex-shrink:0}
+@media(max-width:520px){.update-banner{align-items:stretch;flex-direction:column}.update-banner-actions{justify-content:flex-end}}
+
+.planner-readiness-banner{width:100%;display:flex;align-items:center;gap:10px;text-align:start;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:14px;padding:11px 12px;margin:0 0 10px;min-height:54px;box-shadow:var(--shadow-xs);cursor:pointer}
+.planner-readiness-banner.is-ready{border-color:var(--success-border);background:var(--success-soft)}.planner-readiness-banner.is-check{border-color:rgba(180,83,9,.28);background:rgba(180,83,9,.07)}.planner-readiness-banner.is-issue{border-color:var(--danger-border);background:var(--danger-soft)}
+.planner-readiness-icon{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;background:var(--bg2);font-weight:800}.planner-readiness-copy{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}.planner-readiness-copy strong{font-size:.82rem}.planner-readiness-copy span{font-size:.72rem;color:var(--sub);line-height:1.3}.planner-readiness-open{font-size:1.25rem;color:var(--sub)}
+
+/* v1100-RC1 — Readiness 2.0 / beta foundation */
+.readiness-center-card{border-width:1px}
+.readiness-center-card.readiness-ready{border-color:var(--success-border);background:linear-gradient(180deg,var(--success-soft),var(--card))}
+.readiness-center-card.readiness-check{border-color:rgba(180,83,9,.28)}
+.readiness-center-card.readiness-issue{border-color:var(--danger-border)}
+.readiness-center-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.readiness-area{margin-top:12px;padding-top:12px;border-top:1px solid var(--border-soft)}
+.readiness-area-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.readiness-area-head strong{font-size:.8rem}
+.readiness-area-btn{min-height:40px;white-space:nowrap}
+.readiness-area .planning-issues{margin-top:4px}
+@media(max-width:520px){.readiness-center-head{align-items:stretch;flex-direction:column}.readiness-center-head .readiness-status{align-self:flex-start}.readiness-area-head{align-items:flex-start;flex-wrap:wrap}.readiness-area-btn{min-height:44px;width:100%}}
+
+/* A11Y v1100: hero already has one full-size Directions action, so the
+   redundant 26px overlay control is intentionally removed from rendering. */
+.hero-map-btn{display:none!important}
+
+
+/* v1100-RC2 — beta operations pack */
+.operations-summary{margin:10px 0;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--card2);font-size:.76rem;line-height:1.45;color:var(--text2);overflow-wrap:anywhere}
+.operations-summary:empty{display:none}
+.filter-row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
+.filter-chip{min-height:40px;border:1px solid var(--border);border-radius:999px;padding:7px 12px;background:var(--card);color:var(--text2);font-family:var(--font);font-size:.74rem;font-weight:700;cursor:pointer}
+.filter-chip.on,.filter-chip[aria-pressed="true"]{background:var(--primary-soft);border-color:var(--primary);color:var(--primary)}
+.booking-attention-row{border-color:rgba(180,83,9,.38);background:rgba(180,83,9,.05)}
+.booking-attention-badge{display:inline-flex;align-items:center;min-height:24px;padding:2px 8px;border-radius:999px;background:rgba(180,83,9,.10);color:#92400e;font-size:.68rem;font-weight:750;margin-top:5px}
+html[data-theme="dark"] .booking-attention-badge{color:#fbbf24;background:rgba(251,191,36,.12)}
+.budget-progress{margin-top:10px}
+.budget-progress-track{height:10px;border-radius:999px;background:var(--border-soft);overflow:hidden}
+.budget-progress-track>span{display:block;height:100%;width:0;background:var(--primary);border-radius:inherit;transition:width .2s ease}
+.budget-progress.is-over .budget-progress-track>span{background:var(--danger)}
+.budget-progress-label{margin-top:5px;color:var(--sub);font-size:.72rem;line-height:1.35}
+.section-count{font-size:.7rem;color:var(--sub);font-weight:650;margin-inline-start:6px}
+@media(max-width:520px){.filter-chip{min-height:44px}.operations-summary{font-size:.78rem}}
+
+/* ══ v1200 — Trip Board / checklist ══ */
+.trip-board-agenda{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.trip-board-day{border:1px solid var(--line);border-radius:16px;background:var(--card);overflow:hidden}
+.trip-board-day-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);font-size:.86rem}
+.trip-board-day-head span{color:var(--sub);font-size:.76rem}
+.trip-board-day-list{display:flex;flex-direction:column}
+.trip-board-event{appearance:none;border:0;border-bottom:1px solid var(--line);background:transparent;color:inherit;display:grid;grid-template-columns:58px minmax(0,1fr);gap:12px;text-align:start;padding:12px 14px;min-height:56px;width:100%}
+.trip-board-event:last-child{border-bottom:0}
+.trip-board-event:active{background:var(--soft)}
+.trip-board-event-time{font-variant-numeric:tabular-nums;color:var(--sub);font-weight:700}
+.trip-board-event-copy{display:flex;flex-direction:column;min-width:0;gap:3px}
+.trip-board-event-copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trip-board-event-copy small{color:var(--sub);line-height:1.35}
+.trip-task-add{margin-top:12px}
+.trip-task-add-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+.trip-task-add-row .btn{min-width:84px}
+.trip-task-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.trip-task-row{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:8px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:8px;background:var(--card)}
+.trip-task-row.done .trip-task-title{text-decoration:line-through;color:var(--sub)}
+.trip-task-toggle,.trip-task-delete{width:44px;height:44px;border:0;border-radius:12px;background:var(--soft);color:inherit;font-size:1.1rem}
+.trip-task-delete{font-size:.95rem}
+.trip-task-title{line-height:1.35}
+@media (max-width:520px){.trip-board-event{grid-template-columns:48px minmax(0,1fr);padding:11px 12px}.trip-task-add-row{grid-template-columns:1fr}.trip-task-add-row .btn{width:100%}}
+
+/* ══ v1300 — Multi-trip productivity ══ */
+.home-past-list{opacity:.92}
+.home-past-list .home-other-row{background:color-mix(in srgb,var(--card) 88%,var(--soft))}
+.trip-operations-launch{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+
+/* ══ v1400 — Data Safety / beta reliability center ══ */
+.safety-health-grid{display:grid;gap:8px;margin:10px 0 16px}
+.safety-health-row{display:flex;justify-content:space-between;align-items:center;gap:14px;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 12px;font-size:.82rem}
+.safety-health-row span{color:var(--sub)}
+.safety-health-row strong{text-align:end;overflow-wrap:anywhere}
+.safety-health-row.ok strong{color:var(--ok,#1f8a62)}
+.safety-health-row.warn strong{color:var(--warn,#a66b00)}
+.safety-health-row.issue strong{color:var(--danger,#b33b3b)}
+.safety-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+@media(max-width:520px){.safety-actions{grid-template-columns:1fr}}
+
+/* v1400 — Today operational progress */
+.today-progress-card{border:1px solid var(--line);border-radius:16px;background:var(--card);padding:12px 14px;margin-bottom:12px}
+.today-progress-head{display:flex;justify-content:space-between;gap:12px;align-items:center;font-size:.84rem;margin-bottom:9px}
+.today-progress-head span{color:var(--sub);font-size:.76rem}
+.today-progress-track{height:8px;border-radius:999px;background:var(--soft);overflow:hidden}
+.today-progress-track span{display:block;height:100%;border-radius:inherit;background:var(--accent);transition:width .2s ease}
+
+/* v1400 — Today operational progress */
+.today-progress-card{border:1px solid var(--line);border-radius:16px;background:var(--card);padding:12px 14px;margin-bottom:12px}
+.today-progress-head{display:flex;justify-content:space-between;gap:12px;align-items:center;font-size:.84rem;margin-bottom:9px}
+.today-progress-head span{color:var(--sub);font-size:.76rem}
+.today-progress-track{height:8px;border-radius:999px;background:var(--soft);overflow:hidden}
+.today-progress-track span{display:block;height:100%;border-radius:inherit;background:var(--accent);transition:width .2s ease}
+
+/* ══ v1600/v1700 — Trip Board 2.0 + itinerary productivity ══ */
+.trip-task-meta-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.trip-task-meta-row>div{min-width:0}
+.trip-task-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.trip-task-meta{color:var(--sub);font-size:.7rem;line-height:1.35}
+.trip-task-row.overdue{border-color:rgba(185,28,28,.35);background:rgba(185,28,28,.05)}
+.trip-task-row.due-today{border-color:rgba(180,83,9,.35);background:rgba(180,83,9,.05)}
+.trip-task-row.priority-high:not(.done) .trip-task-title{font-weight:800}
+.trip-board-attention{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.trip-board-attention-group{border:1px solid var(--line);border-radius:14px;background:var(--card);padding:10px 12px}
+.trip-board-attention-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px}
+.trip-board-attention-head strong{font-size:.82rem}
+.day-productivity-actions{margin:14px 0 8px;border-top:1px solid var(--line);padding-top:12px}
+.day-productivity-actions .btn{width:100%}
+.home-past-list + .home-section-label{margin-top:18px}
+.home-other-list.home-past-list .trip-card-btn[title*="Restore"],.home-other-list.home-past-list .trip-card-btn[title*="שחזר"]{background:var(--primary-soft)}
+#tripArchiveBtn.is-archived{border-color:var(--primary);color:var(--primary)}
+@media(max-width:520px){.trip-task-meta-row{grid-template-columns:1fr}.trip-board-attention-head{align-items:flex-start;flex-direction:column}.trip-board-attention-head .btn{width:100%}}
+.today-task-section{display:flex;flex-direction:column;gap:8px}
+.today-task-row{display:grid;grid-template-columns:44px minmax(0,1fr);gap:9px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:7px;background:var(--card)}
+.today-task-row.overdue{border-color:rgba(185,28,28,.35);background:rgba(185,28,28,.05)}
+.today-task-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
+.today-task-copy strong{font-size:.8rem;line-height:1.35}
+.today-task-copy small{font-size:.68rem;color:var(--sub)}
+.today-task-board-btn{align-self:flex-start;margin-top:2px}
+@media(max-width:520px){.today-task-board-btn{width:100%}}
