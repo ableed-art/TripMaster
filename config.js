@@ -17,7 +17,8 @@
     const KEY_SAFETY_SNAPSHOT = "tm_safety_snapshot";
 
     // ── Beta readiness (v1009) ──
-    const APP_VERSION = "v1700-RC1";
+    const APP_BUILD_ID = "78ad2d961e61fe22";
+    const APP_VERSION = "v3800-RC2";
     // Support address for "שלח משוב". Set, so the mailto opens with the To
     // field, subject and body prefilled; the tester still picks which of
     // their own mail accounts sends it. Blank here would leave To empty.
@@ -27,6 +28,11 @@
        Planner Agent. No provider API key is stored or sent by the PWA. */
     const AGENT_API_BASE_URL = "https://incompatible-slushy-fossil.replit.app";
     const AGENT_QUERY_URL = AGENT_API_BASE_URL + "/v1/agent/query";
+
+    /* AI V2 client foundation. Transport remains deliberately disabled until
+       the production backend is reviewed and merged in the October server run. */
+    const AI_CLIENT_CONTRACT_VERSION = 2;
+    const AI_V2_TRANSPORT_ENABLED = false;
 
     /* ── PARTNER-001 (v1020): inert commercial foundation ──
        Structure only. PARTNERS_LIVE is false, every entry has url: null and

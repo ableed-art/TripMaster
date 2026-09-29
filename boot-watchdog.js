@@ -11,7 +11,8 @@
     ar: ["تعذر تشغيل TripMaster", "توقف بدء التشغيل قبل أن يصبح التطبيق جاهزًا. يمكنك محاولة إعادة التحميل.", "إعادة التحميل"],
     ru: ["TripMaster не удалось запустить", "Запуск остановился до того, как приложение было готово. Попробуйте перезагрузить.", "Перезагрузить"],
     es: ["TripMaster no pudo iniciarse", "El inicio se detuvo antes de que la aplicación estuviera lista. Puedes intentar recargar.", "Recargar"],
-    pt: ["O TripMaster não conseguiu iniciar", "A inicialização parou antes de o aplicativo ficar pronto. Você pode tentar recarregar.", "Recarregar"]
+    pt: ["O TripMaster não conseguiu iniciar", "A inicialização parou antes de o aplicativo ficar pronto. Você pode tentar recarregar.", "Recarregar"],
+    am: ["TripMaster መጀመር አልቻለም", "መተግበሪያው ዝግጁ ከመሆኑ በፊት ማስጀመሩ ቆሟል። ዳግም ለመጫን መሞከር ይችላሉ።", "ዳግም ጫን"]
   };
 
   const state = window.__TM_BOOT_STATE__ = window.__TM_BOOT_STATE__ || {
@@ -44,7 +45,7 @@
         at: new Date().toISOString(),
         phase: state.phase || "unknown",
         reason: reason || "unknown",
-        error: state.error ? String(state.error.message || state.error).slice(0, 300) : ""
+        error: state.error ? "startup_error" : ""
       }));
     } catch (_) {}
   }

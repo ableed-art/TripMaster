@@ -2,19 +2,42 @@
   "name": "TripMaster",
   "short_name": "TripMaster",
   "description": "TripMaster is a mobile-first travel planner for organizing day-by-day itineraries, tickets, budgets, and trip locations in one place — built for real use on the go, even with a weak connection.",
-  "id": "/TripMaster/",
+  "id": "./",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "display_override": ["standalone"],
+  "display_override": [
+    "standalone"
+  ],
   "background_color": "#F4F4F8",
   "theme_color": "#0B2239",
   "lang": "en",
   "dir": "auto",
-  "categories": ["travel", "productivity", "utilities"],
+  "categories": [
+    "travel",
+    "productivity",
+    "utilities"
+  ],
   "icons": [
-    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "./icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "prefer_related_applications": false,
+  "orientation": "any"
 }

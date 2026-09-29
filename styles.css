@@ -108,7 +108,8 @@
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    html { scroll-behavior: smooth; }
+    html { scroll-behavior: smooth; color-scheme: light; }
+    html[data-theme="dark"] { color-scheme: dark; }
 
     /* I18N-AM-FOUNDATION (v1500): Ethiopic-friendly stack. No remote font
        request is made, preserving the local/offline shell. A bundled
@@ -152,8 +153,9 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 14px;
-      height: 62px;
+      padding: 9px 14px;
+      min-height: 62px;
+      height: auto;
       max-width: 640px;
       margin: 0 auto;
     }
@@ -290,6 +292,7 @@
 
     .header-sec-btn {
       display: flex;
+      min-height: 44px;
       flex-direction: column;
       align-items: center;
       gap: 3px;
@@ -371,6 +374,7 @@
 
     .chip {
       flex: 0 0 auto;
+      min-height: 54px;
       border: 1.5px solid var(--border);
       background: var(--bg);
       color: var(--sub);
@@ -436,7 +440,7 @@
       background: transparent;
       font-size: 1.2rem;
       padding: 8px 14px;
-      min-width: 42px;
+      min-width: 44px;
     }
     .chip.add-day:active { border-color: var(--primary); color: var(--primary); }
 
@@ -1110,6 +1114,19 @@
       padding: 0 18px calc(20px + env(safe-area-inset-bottom));
       overflow-y: auto;
       overflow-x: hidden;
+      overscroll-behavior-y: contain;
+      -webkit-overflow-scrolling: touch;
+      scroll-padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    }
+
+    @supports (height: 100dvh) {
+      .sheet {
+        height: 80dvh;
+        max-height: calc(100dvh - env(safe-area-inset-top) - 8px);
+      }
+      #aiSheet { height: 90dvh !important; }
+      .confirm-sheet { max-height: calc(100dvh - env(safe-area-inset-top) - 8px) !important; }
+      .about-sheet { max-height: min(80dvh, calc(100dvh - env(safe-area-inset-top) - 8px)) !important; }
     }
 
     .sheet.open { bottom: 0; }
@@ -1159,10 +1176,13 @@
 
     .sheet-head {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
+      gap: 10px;
       margin: 16px 0 20px;
     }
+    .sheet-head > :first-child { min-width: 0; overflow-wrap: anywhere; }
+    .sheet-title, .sheet-head h3 { line-height: 1.3; overflow-wrap: anywhere; }
 
     .sheet-head h3 {
       font-size: 1.08rem;
@@ -1172,7 +1192,8 @@
     }
 
     .sheet-close {
-      width: 34px; height: 34px;
+      width: 44px; height: 44px;
+      flex: 0 0 44px;
       border-radius: 10px;
       border: none;
       background: var(--border-soft);
@@ -1486,8 +1507,9 @@
       width: 100%;
       border: none;
       border-radius: var(--radius);
-      padding: 0 18px;
-      height: 50px;
+      padding: 10px 18px;
+      min-height: 50px;
+      height: auto;
       font-weight: 700;
       font-size: .95rem;
       font-family: var(--font);
@@ -1498,6 +1520,9 @@
       justify-content: center;
       gap: 6px;
       letter-spacing: -0.01em;
+      line-height: 1.3;
+      white-space: normal;
+      text-align: center;
     }
 
     .btn:active { opacity: 0.82; transform: scale(0.98); }
@@ -1709,7 +1734,7 @@
       font-weight: 700;
       font-size: .88rem;
       padding: 8px 10px;
-      min-height: 36px;
+      min-height: 44px;
       border-radius: var(--radius-xs);
       cursor: pointer;
     }
@@ -2310,6 +2335,22 @@
 }
 
 
+/* A11Y-HC-001 (v3400): keep interactive boundaries and selected state
+   visible when the OS/browser forces a high-contrast palette. */
+@media (forced-colors: active) {
+  .btn, .chip, .opt, .lang-option, .header-menu-btn, .header-language-btn,
+  .header-icon-btn, .header-switch-btn, .strip-action-btn, .strip-danger-btn,
+  .sheet-close, .ai-quick-prompt, .filter-chip, .readiness-area-btn {
+    border: 1px solid ButtonText;
+    forced-color-adjust: auto;
+  }
+  .chip.active, .opt.on, .lang-option.on, [aria-pressed="true"], [aria-current="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  .sheet-backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    v1060-RC1 - Travel Days / readiness / Access Research
    ══════════════════════════════════════════════════════════════════════ */
@@ -2380,6 +2421,7 @@
 }
 .readiness-ready { background: var(--success-soft); color: var(--success); }
 .readiness-check { background: var(--card2); color: var(--text2); }
+.readiness-action { background: var(--card2); color: var(--text2); }
 .readiness-issue { background: var(--danger-soft); color: var(--danger); }
 .home-readiness { font-weight: 650; }
 .overview-travel-day {
@@ -2397,21 +2439,12 @@
 }
 .planning-chip.access-good { background: var(--success-soft); color: var(--success); }
 .planning-chip.access-issue { background: var(--danger-soft); color: var(--danger); }
-.planning-chip.access-check { font-weight: 650; }
 
 @media (max-width: 340px) {
   .day-strip-actions { gap: 4px; }
-  .strip-action-btn, .day-strip-actions .strip-danger-btn { width: 42px; height: 42px; }
+  .strip-action-btn, .day-strip-actions .strip-danger-btn { width: 44px; height: 44px; }
   .travel-day-time-row { flex-direction: column; }
 }
-.access-quick {
-  width: 100%; min-height: 46px; display: flex; align-items: center; gap: 8px;
-  margin: 10px 0 2px; padding: 9px 12px; border: 1px solid var(--border);
-  border-radius: 12px; background: var(--card2); color: var(--text2);
-  font-family: var(--font); font-size: .8rem; font-weight: 650; text-align: start; cursor: pointer;
-}
-.access-quick span:nth-child(2) { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-
 /* v1070 logistics */
 .trip-logistics-launch{margin:12px 0}
 .logistics-launch-btn{width:100%}
@@ -2491,6 +2524,7 @@
 .today-attention-level { flex:0 0 auto; min-width:48px; font-size:.69rem; font-weight:850; text-transform:uppercase; }
 .today-attention-row.issue .today-attention-level { color:var(--danger,#a93737); }
 .today-attention-row.check .today-attention-level { color:var(--warning,#946600); }
+.today-attention-row.action .today-attention-level { color:var(--text2); }
 .today-stay-card { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
 .today-stay-main { min-width:0; }
 .today-reminder-row { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-top:1px solid var(--border,#e4e9ea); font-size:.85rem; }
@@ -2524,7 +2558,7 @@
 .planner-ops-copy span{margin-top:3px;font-size:.68rem;color:var(--sub);overflow-wrap:anywhere}
 .ai-quick-prompts{display:flex;gap:7px;overflow-x:auto;padding:1px 0 8px;scrollbar-width:none}
 .ai-quick-prompts::-webkit-scrollbar{display:none}
-.ai-quick-prompt{flex:0 0 auto;min-height:40px;border:1px solid var(--border);border-radius:999px;background:var(--card2);color:var(--text);font:inherit;font-size:.76rem;font-weight:750;padding:7px 10px;cursor:pointer}
+.ai-quick-prompt{flex:0 0 auto;min-height:44px;border:1px solid var(--border);border-radius:999px;background:var(--card2);color:var(--text);font:inherit;font-size:.76rem;font-weight:750;padding:7px 10px;cursor:pointer}
 .ai-request-state{min-height:0;margin:3px 1px 7px;font-size:.75rem;color:var(--sub);line-height:1.35}
 .ai-request-state:empty{display:none}
 .ai-request-state.is-working{display:block}
@@ -2564,7 +2598,7 @@
 .readiness-area{margin-top:12px;padding-top:12px;border-top:1px solid var(--border-soft)}
 .readiness-area-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
 .readiness-area-head strong{font-size:.8rem}
-.readiness-area-btn{min-height:40px;white-space:nowrap}
+.readiness-area-btn{min-height:44px;white-space:nowrap}
 .readiness-area .planning-issues{margin-top:4px}
 @media(max-width:520px){.readiness-center-head{align-items:stretch;flex-direction:column}.readiness-center-head .readiness-status{align-self:flex-start}.readiness-area-head{align-items:flex-start;flex-wrap:wrap}.readiness-area-btn{min-height:44px;width:100%}}
 
@@ -2577,7 +2611,7 @@
 .operations-summary{margin:10px 0;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--card2);font-size:.76rem;line-height:1.45;color:var(--text2);overflow-wrap:anywhere}
 .operations-summary:empty{display:none}
 .filter-row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
-.filter-chip{min-height:40px;border:1px solid var(--border);border-radius:999px;padding:7px 12px;background:var(--card);color:var(--text2);font-family:var(--font);font-size:.74rem;font-weight:700;cursor:pointer}
+.filter-chip{min-height:44px;border:1px solid var(--border);border-radius:999px;padding:7px 12px;background:var(--card);color:var(--text2);font-family:var(--font);font-size:.74rem;font-weight:700;cursor:pointer}
 .filter-chip.on,.filter-chip[aria-pressed="true"]{background:var(--primary-soft);border-color:var(--primary);color:var(--primary)}
 .booking-attention-row{border-color:rgba(180,83,9,.38);background:rgba(180,83,9,.05)}
 .booking-attention-badge{display:inline-flex;align-items:center;min-height:24px;padding:2px 8px;border-radius:999px;background:rgba(180,83,9,.10);color:#92400e;font-size:.68rem;font-weight:750;margin-top:5px}
@@ -2670,3 +2704,89 @@ html[data-theme="dark"] .booking-attention-badge{color:#fbbf24;background:rgba(2
 .today-task-copy small{font-size:.68rem;color:var(--sub)}
 .today-task-board-btn{align-self:flex-start;margin-top:2px}
 @media(max-width:520px){.today-task-board-btn{width:100%}}
+
+
+/* v1800 — single-trip transfer + checklist editing */
+.trip-transfer-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.trip-transfer-actions .btn:last-child{grid-column:1/-1}
+.trip-task-edit,.trip-task-delete{min-width:44px;min-height:44px;border:0;background:transparent;border-radius:12px;cursor:pointer;font-size:1rem}
+.trip-task-edit:hover,.trip-task-delete:hover{background:var(--surface-soft)}
+@media(max-width:520px){.trip-transfer-actions{grid-template-columns:1fr}.trip-transfer-actions .btn:last-child{grid-column:auto}.trip-task-add-row{flex-wrap:wrap}.trip-task-add-row #tripTaskInput{flex:1 1 100%}}
+
+/* v2000 — Trip Brief + actionable attention detail */
+.trip-brief-body{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.trip-brief-card{margin:0}
+.attention-detail-row{width:100%;display:block;margin-top:7px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card2);color:var(--text2);font:inherit;font-size:.74rem;line-height:1.4;text-align:start;cursor:pointer;overflow-wrap:anywhere}
+.attention-detail-row.readiness-issue{border-inline-start:4px solid var(--danger)}
+.attention-detail-row.readiness-check{border-inline-start:4px solid var(--warning)}
+.attention-detail-row.readiness-action{border-inline-start:4px solid var(--border)}
+.attention-detail-row:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+@media(max-width:520px){.attention-detail-row{min-height:44px;font-size:.77rem}.trip-brief-body{gap:8px}}
+
+/* v2400 — beta health audit + diagnostics */
+.beta-health-details{display:flex;flex-direction:column;gap:7px;margin-top:8px}
+.beta-health-chip{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card2);font-size:.74rem;line-height:1.35}
+.beta-health-chip span{color:var(--sub)}
+.beta-health-chip strong{font-size:.72rem;text-align:end}
+.beta-health-chip.ok{border-inline-start:4px solid var(--ok,#1f8a62)}
+.beta-health-chip.warn{border-inline-start:4px solid var(--warning,#a66b00)}
+.beta-health-chip.issue{border-inline-start:4px solid var(--danger,#b33b3b)}
+.beta-diagnostics-section .safety-actions{grid-template-columns:1fr 1fr}
+@media(max-width:520px){.beta-diagnostics-section .safety-actions{grid-template-columns:1fr}.beta-health-chip{min-height:44px}}
+
+/* v3800: constrain modal content to the actual visible viewport with Gboard.
+   Overflow stays inside the sheet, including its Save/Cancel actions. */
+.sheet.open {
+  bottom: var(--tm-keyboard-bottom, 0px);
+  max-height: calc(var(--tm-visible-height, 100dvh) - env(safe-area-inset-top) - 8px) !important;
+  scroll-padding-top: 16px;
+}
+.sheet input, .sheet textarea, .sheet select { scroll-margin-block: 16px; max-width: 100%; min-width: 0; }
+.sheet-head, .safety-health-row, .beta-health-chip, .today-progress-head { flex-wrap: wrap; }
+.safety-health-row > *, .beta-health-chip > * { min-width: 0; overflow-wrap: anywhere; }
+.trip-task-row { flex-wrap: wrap; }
+.trip-task-copy { flex: 1 1 120px; overflow-wrap: anywhere; }
+/* v3800-RC2: content must reflow at large text sizes, including addresses
+   without spaces. Keep intentional chip scrollers outside this scope. */
+.today-view, .today-view-head > *, .today-hero-card, .today-section,
+.today-item > *, .today-attention-row > *, .today-reminder-row > *,
+.today-progress-head > *, .today-stay-card > *, .today-preview-picker {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.today-view button {
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  min-height: 44px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.today-view .compact-btn { flex-shrink: 1; }
+.today-section-head, .today-stay-card, .today-attention-row, .today-reminder-row { flex-wrap: wrap; }
+.today-stay-main { flex: 1 1 12rem; }
+.today-attention-row > :last-child { flex: 1 1 10rem; }
+.today-preview-picker select { width: 100%; min-width: 0; }
+.hero-title { white-space: normal; overflow-wrap: anywhere; }
+.hero-location, .hero-note-line, .hero-reminder-sub { min-width: 0; overflow-wrap: anywhere; }
+.planner-secondary-card, .planner-secondary-card > span { min-width: 0; overflow-wrap: anywhere; }
+.planner-secondary-card > [aria-hidden="true"] { flex-shrink: 0; }
+.hero-actions { flex-wrap: wrap; }
+.hero-btn {
+  flex: 1 1 5rem;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  min-height: 46px;
+  padding: 10px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.hero-btn svg { flex-shrink: 0; }
+@media (max-width: 520px) {
+  .today-item { grid-template-columns: minmax(0,1fr); gap: 5px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-delay: 0s !important; animation-delay: 0s !important; }
+}

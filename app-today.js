@@ -211,12 +211,11 @@
         const next=events.find(x=>x.source&&x.source.kind==="activity"&&e.source&&x.source.dayIndex===e.source.dayIndex&&x.source.itemIndex===e.source.itemIndex);
         return !next||next.temporal==="future"||next.temporal==="unknown";
       });
-      if(unresolvedRelevant)add("check","travel_unresolved");
+      if(unresolvedRelevant)add("action","travel_unresolved");
     }
     if(L){const overlaps=L.stayOverlaps(trip).some(pair=>pair.every(raw=>L.stayCoversDate(raw,date)));if(overlaps)add("issue","stay_conflict");}
-    const todayRelevant=events.filter(e=>e.kind!=="travel");if(todayRelevant.some(e=>e.bookingStatus==="planned"))add("check","booking_planned");if(todayRelevant.some(e=>e.paymentStatus==="unpaid"||e.paymentStatus==="partial"))add("check","payment_attention");
-    if(opts.accessActive&&todayRelevant.some(e=>e.kind==="activity"&&(!e.accessStatus||e.accessStatus==="needscheck")))add("check","access_needs_check");
-    if(F){const sources=new Set(todayRelevant.filter(e=>e.source&&e.source.id).map(e=>`${e.source.kind}:${e.source.id}`));if(F.tripDocuments(trip).some(doc=>linkedDocRelevant(trip,doc,date,sources)))add("check","document_needed");}
+    const todayRelevant=events.filter(e=>e.kind!=="travel");if(todayRelevant.some(e=>e.bookingStatus==="planned"))add("action","booking_planned");if(todayRelevant.some(e=>e.paymentStatus==="unpaid"||e.paymentStatus==="partial"))add("action","payment_attention");
+    if(F){const sources=new Set(todayRelevant.filter(e=>e.source&&e.source.id).map(e=>`${e.source.kind}:${e.source.id}`));if(F.tripDocuments(trip).some(doc=>linkedDocRelevant(trip,doc,date,sources)))add("action","document_needed");}
     if(!rows.length&&todayRelevant.some(e=>e.hasReference||e.documentIndices.length))add("info","confirmation_available");
     return rows;
   }
@@ -228,8 +227,16 @@
     return {schema:"tripmaster-today-v1",date,preview:preview||!active,isLive,activeTrip:active,clock:c,range,day,dayType:T&&day?T.dayType(day):"normal",travelDay:T&&day?T.travelDayInfo(day):null,events,now:state.now,next:state.next,stay:st,attention:att,reminders:rem,tomorrow:tomorrowGlance(trip,date),noMore:isLive&&!state.now&&!state.next&&events.length>0&&events.every(e=>e.temporal==="past")};
   }
 
-  function sanitizedContext(model){
-    if(!model)return null;const safeEvent=e=>e?{kind:e.kind,title:e.title,startTime:e.startTime,endTime:e.endTime,timingKnown:e.timingKnown,bookingStatus:e.bookingStatus,paymentStatus:e.paymentStatus,accessStatus:e.accessStatus,temporal:e.temporal}:null;
+  function sanitizedContext(model, options){
+    if(!model)return null;
+    const opts=options&&typeof options==="object"?options:{};
+    const includeAccess=opts.includeAccess===true;
+    const safeEvent=e=>{
+      if(!e)return null;
+      const out={kind:e.kind,title:e.title,startTime:e.startTime,endTime:e.endTime,timingKnown:e.timingKnown,bookingStatus:e.bookingStatus,paymentStatus:e.paymentStatus,temporal:e.temporal};
+      if(includeAccess)out.accessStatus=e.accessStatus;
+      return out;
+    };
     return {schema:"tripmaster-today-context-v1",date:model.date,preview:model.preview,isLive:model.isLive,clock:{date:model.clock.date,time:model.clock.time,timezone:model.clock.timezone,fallback:model.clock.fallback},dayType:model.dayType,now:safeEvent(model.now),next:safeEvent(model.next),currentStay:model.stay&&model.stay.effective?{name:clean(model.stay.effective.name),location:clean(model.stay.effective.location)}:null,todayItems:model.events.map(safeEvent),attention:model.attention.map(x=>({level:x.level,code:x.code})),tomorrow:model.tomorrow?{date:model.tomorrow.date,events:model.tomorrow.events.map(safeEvent)}:null};
   }
   function partnerContext(model){

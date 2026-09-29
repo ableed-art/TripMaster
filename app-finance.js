@@ -350,6 +350,7 @@
   function buildTripContext(trip, options) {
     const opts = options && typeof options === "object" ? options : {};
     const includeSensitive = opts.includeSensitive === true;
+    const includeActivityAccess = opts.includeActivityAccess !== false;
     const L = root.TripMasterLogistics;
     const T = root.TripMasterTravel;
     const D = root.TripMasterIntelligence;
@@ -373,6 +374,7 @@
       days: days.map((day) => {
         const travelDay = T && T.hasTravelDayDetails && T.hasTravelDayDetails(day) ? T.travelDayInfo(day) : null;
         return {
+          id: cleanString(day && day.id),
           date: validDate(day && day.date),
           dayType: cleanString(day && day.dayType) || "normal",
           activities: (day && Array.isArray(day.items) ? day.items : []).filter(Boolean).map((item) => {
@@ -380,7 +382,7 @@
             return {
               id: cleanString(item.uid), title: cleanString(item.title), time: cleanString(item.time), endTime: cleanString(item.endTime),
               location: cleanString(item.location), category: cleanString(item.category),
-              accessStatus: cleanString(item.accessStatus),
+              ...(includeActivityAccess ? { accessStatus: cleanString(item.accessStatus) } : {}),
               bookingStatus: cleanString(item.booking && item.booking.status),
               paymentStatus: paymentStatus(item.booking && item.booking.paymentStatus),
               travelFromPrevious: tr && tr.known ? {
@@ -392,7 +394,7 @@
           // booking/service references as sensitive by default.
           travelDay: travelDay ? {
             origin: cleanString(travelDay.origin), destination: cleanString(travelDay.destination), mode: cleanString(travelDay.mode),
-            departureTime: cleanString(travelDay.departureTime), arrivalTime: cleanString(travelDay.arrivalTime)
+            departureTime: cleanString(travelDay.departureTime), arrivalTime: cleanString(travelDay.arrivalTime), arrivalDate: cleanString(travelDay.arrivalDate)
           } : null
         };
       }),
@@ -401,7 +403,7 @@
       stays: mappedStays.length ? mappedStays : inferredStayContextFromActivities(trip),
       journeys: (L && L.tripJourneys ? L.tripJourneys(trip) : []).map((raw) => {
         const j = L.journeyInfo(raw);
-        return { id:j.id, date:j.date, mode:j.mode, origin:j.origin, destination:j.destination, departureTime:j.departureTime, arrivalTime:j.arrivalTime, status:j.status, paymentStatus:paymentStatus(raw.paymentStatus) };
+        return { id:j.id, date:j.date, arrivalDate:j.arrivalDate, mode:j.mode, origin:j.origin, destination:j.destination, departureTime:j.departureTime, arrivalTime:j.arrivalTime, provider:j.provider, serviceNumber:j.serviceNumber, status:j.status, paymentStatus:paymentStatus(raw.paymentStatus) };
       }),
       money: {
         budget: budgetInfo(trip),

@@ -29,9 +29,15 @@
         am: ["am-ET", "ltr"]
       };
       var lang = null;
+      var readable = false;
       if (raw) {
-        lang = JSON.parse(raw).language;
-      } else {
+        try {
+          var stored = JSON.parse(raw);
+          readable = !!stored && typeof stored === "object" && !Array.isArray(stored);
+          if (readable) lang = stored.language;
+        } catch (_) {}
+      }
+      if (!readable) {
         /* I18N-FIRST-RUN-001: on a true first run use the first supported
            browser/device language; unsupported locales start in English. */
         var list = (navigator.languages && navigator.languages.length)
@@ -46,5 +52,5 @@
       if (!m) return;
       document.documentElement.lang = m[0];
       document.documentElement.dir  = m[1];
-    } catch (e) { /* no storage, corrupt JSON: leave the shipped defaults */ }
+    } catch (e) { /* unavailable storage: leave the shipped defaults */ }
   })();

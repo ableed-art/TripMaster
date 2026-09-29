@@ -3,12 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://incompatible-slushy-fossil.replit.app; worker-src 'self'; manifest-src 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; base-uri 'none'" />
+  <meta name="referrer" content="no-referrer" />
   <meta name="theme-color" content="#0B2239" />
   <title>TripMaster</title>
 
   <link rel="manifest" href="./manifest.json" />
+  <meta name="application-name" content="TripMaster" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="TripMaster" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
 
   <link rel="stylesheet" href="./styles.css" />
 
@@ -46,7 +52,7 @@
         <button class="header-language-btn" id="languageQuickBtn" type="button"
                 data-i18n-title="lang_title" data-i18n-aria-label="lang_title"
                 title="🌐 שפה" aria-label="🌐 שפה">🌐</button>
-        <button class="header-icon-btn" id="themeBtn" type="button" data-i18n-title="header_theme_title" title="ערכת נושא">
+        <button class="header-icon-btn" id="themeBtn" type="button" data-i18n-title="header_theme_title" data-i18n-aria-label="header_theme_title" title="ערכת נושא" aria-label="ערכת נושא">
           🌓
         </button>
         <button class="header-switch-btn" id="homeNavBtn" type="button" data-i18n-aria-label="aria_go_home" aria-label="מעבר לבית — הטיולים שלי">
@@ -126,6 +132,54 @@
       <div class="chips" id="dayChips"></div>
     </div>
 
+    <!-- ACTIVITIES-FIRST-001 (v2900): planning content is intentionally
+         activity-first. Summary/readiness/access/navigation cards are rendered
+         after the activity timeline so they remain available without delaying
+         the traveller from reaching the day plan. -->
+
+    <!-- Hero card: current / next activity -->
+    <div class="hero-card" id="heroCard">
+      <div class="hero-card-inner" id="heroCardInner">
+        <!-- rendered by JS -->
+      </div>
+    </div>
+
+    <!-- Timeline: rest of the day -->
+    <div class="timeline-card" id="timelineCard" style="display:none">
+      <div class="timeline-header">
+        <div>
+          <div class="timeline-title" id="dayTitle">המשך היום</div>
+          <div class="timeline-meta" id="dayMeta"></div>
+        </div>
+        <button class="now-jump-btn" id="jumpNowBtnHeader" type="button" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <span data-i18n="btn_now">עכשיו</span>
+        </button>
+      </div>
+      <div class="timeline-list" id="activityList"></div>
+    </div>
+
+    <!-- AI-PROXY-001 (v1090-RC4): Planner Agent now runs through the
+         TripMaster backend. The PWA never stores or sends a provider API key. -->
+    <div class="ai-suggestion-strip" id="aiStripBtn" role="button" tabindex="0"
+         data-i18n-aria-label="ai_open_aria" aria-label="פתח את TripMaster AI">
+      <div class="ai-strip-icon">🤖</div>
+      <div class="ai-strip-text">
+        <div class="ai-strip-title" data-i18n="ai_strip_title">TripMaster AI</div>
+        <div class="ai-strip-sub" data-i18n="ai_strip_sub">שאל את Planner Agent על הטיול הזה</div>
+      </div>
+      <div class="ai-strip-arrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ACTIVITIES-FIRST-001: secondary trip context and navigation follow the
+         activities and TripMaster AI instead of preceding the day plan. -->
     <!-- ACCESS-PROFILE-001 (v1040 / D5): read-only echo of the saved Access
          profile. Informational only — nothing here is matched against the
          activities, and the note says so. Rendered empty (and hidden) unless
@@ -189,48 +243,12 @@
         <span aria-hidden="true">🧭</span>
         <span><strong data-i18n="trip_board_title">Trip Board</strong><small id="plannerBoardQuickMeta"></small></span>
       </button>
+      <button class="planner-secondary-card" id="plannerBriefQuick" type="button">
+        <span aria-hidden="true">📋</span>
+        <span><strong data-i18n="trip_brief_title">Trip Brief</strong><small id="plannerBriefQuickMeta" data-i18n="trip_brief_meta">Share-safe summary</small></span>
+      </button>
     </div>
 
-    <!-- Hero card: current / next activity -->
-    <div class="hero-card" id="heroCard">
-      <div class="hero-card-inner" id="heroCardInner">
-        <!-- rendered by JS -->
-      </div>
-    </div>
-
-    <!-- Timeline: rest of the day -->
-    <div class="timeline-card" id="timelineCard" style="display:none">
-      <div class="timeline-header">
-        <div>
-          <div class="timeline-title" id="dayTitle">המשך היום</div>
-          <div class="timeline-meta" id="dayMeta"></div>
-        </div>
-        <button class="now-jump-btn" id="jumpNowBtnHeader" type="button" style="display:none">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-          <span data-i18n="btn_now">עכשיו</span>
-        </button>
-      </div>
-      <div class="timeline-list" id="activityList"></div>
-    </div>
-
-    <!-- AI-PROXY-001 (v1090-RC4): Planner Agent now runs through the
-         TripMaster backend. The PWA never stores or sends a provider API key. -->
-    <div class="ai-suggestion-strip" id="aiStripBtn" role="button" tabindex="0"
-         data-i18n-aria-label="ai_open_aria" aria-label="פתח את TripMaster AI">
-      <div class="ai-strip-icon">🤖</div>
-      <div class="ai-strip-text">
-        <div class="ai-strip-title" data-i18n="ai_strip_title">TripMaster AI</div>
-        <div class="ai-strip-sub" data-i18n="ai_strip_sub">שאל את Planner Agent על הטיול הזה</div>
-      </div>
-      <div class="ai-strip-arrow">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
-      </div>
-    </div>
     </div><!-- /#plannerView -->
 
   </div>
@@ -240,7 +258,7 @@
     <div class="bottom-actions">
       <!-- Planner Agent has one primary discoverable entry point in the planner strip.
            This legacy compact FAB remains hidden to avoid duplicate controls. -->
-      <button class="fab-secondary" id="aiBtn" type="button" title="AI" style="display:none">🤖</button>
+      <button class="fab-secondary" id="aiBtn" type="button" title="AI" data-i18n-aria-label="ai_open_aria" aria-label="AI" style="display:none">🤖</button>
       <button class="fab-primary" id="addBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -303,18 +321,6 @@
            init/restore/reset assignments. Legacy settings.city/.hotel/.baseArea
            values inside older backups are still carried through untouched by
            normalizeSettings(), so old backups keep restoring correctly. -->
-      <!-- AI-DISABLE-001 (v1009): hidden alongside the AI helper entry points.
-           Input, its saved value, and its event listener are untouched —
-           only visibility changes — so re-enabling AI later does not require
-           restoring this field from scratch. -->
-      <div id="apiKeyFieldWrap" style="display:none">
-        <label>🔑 Anthropic API Key</label>
-        <input id="global-apikey" type="password" placeholder="sk-ant-..." autocomplete="off" />
-        <div style="font-size:.78rem;color:var(--sub);margin-top:-6px;margin-bottom:10px">
-          נשמר רק במכשיר שלך. מתאים לניסוי אישי בלבד.
-        </div>
-      </div>
-
       <!-- RC4-UX-003: Language selection lives exclusively in the persistent header globe. -->
 
       <!-- PREFS-001 (v1020): Trip Preferences. Stored under settings.prefs.
@@ -536,12 +542,6 @@
       <label for="addCategory" data-i18n="field_category">סוג פעילות</label>
       <select id="addCategory"></select>
 
-      <button class="access-quick" id="editAccessQuick" type="button" style="display:none" aria-controls="addMoreBody">
-        <span aria-hidden="true">♿</span>
-        <span id="editAccessQuickText" data-i18n="access_quick_open">Access Research</span>
-        <span aria-hidden="true">›</span>
-      </button>
-
       <!-- ══ MORE-001 (v1050-RC2): optional detail, opt-in ══ -->
       <div class="more-block" id="addMoreBlock">
         <button class="more-toggle" id="addMoreToggle" type="button"
@@ -560,18 +560,10 @@
           <label class="day-check activity-nextday-check"><input type="checkbox" id="addEndNextDay" /> <span data-i18n="field_end_next_day">Ends the next day</span></label>
           <div class="field-note" data-i18n="field_end_time_note">בלי שעת סיום, הפעילות מיוצאת ליומן כשעה אחת — בדיוק כמו קודם.</div>
 
-          <!-- ACCESS-ACT-001 (v1040 / D1,D2): the traveller's own research. The
-               wording never claims TripMaster checked anything. -->
-          <label for="addAccessStatus" data-i18n="field_access_status">נגישות הפעילות</label>
-          <select id="addAccessStatus">
-            <option value="" data-i18n="access_status_unknown">לא נבדק</option>
-            <option value="needscheck" data-i18n="access_status_needscheck">צריך לבדוק</option>
-            <option value="verified" data-i18n="access_status_verified">Verified / suitable</option>
-            <option value="problem" data-i18n="access_status_problem">בדקתי — יש בעיה</option>
-          </select>
-          <label for="addAccessNote" data-i18n="field_access_note">הערת נגישות</label>
-          <textarea id="addAccessNote" rows="2" data-i18n-placeholder="field_access_note_ph" placeholder="למשל: רמפה בכניסה הצדדית, מעלית לא פעילה אחרי 18:00"></textarea>
-          <div class="field-note" data-i18n="access_activity_note">המידע הזה נשמר על ידכם ומוצג כפי שהזנתם. TripMaster לא בודק נגישות של מקומות.</div>
+          <!-- ACCESS-PROFILE-001 (v2500): activity-level accessibility is no longer
+               user-maintained. Existing stored accessStatus/accessNote values are
+               preserved by the model, but the normal Add/Edit workflow does not
+               ask travellers to classify venues manually. -->
 
           <!-- TRAVEL-SEG-001 (v1050): optional manual travel information from the
                previous chronologically scheduled activity. Unknown stays unknown. -->
@@ -671,12 +663,12 @@
       <h3 id="aiSheetTitle" data-i18n="ai_sheet_title">🤖 TripMaster AI</h3>
       <button class="sheet-close" id="aiSheetClose" type="button" data-i18n-aria-label="aria_close" aria-label="סגור">✕</button>
     </div>
-    <div class="ai-agent-note" data-i18n="ai_agent_note">כשמשתמשים ב-TripMaster AI, נשלח לשירות ה-AI מידע מסונן מהטיול הנוכחי כדי לענות. מסמכים, קישורי הזמנה ומספרי אישור אינם נשלחים כברירת מחדל, וה-AI לא משנה את הטיול.</div>
+    <div class="ai-agent-note" data-i18n="ai_agent_note">כשמשתמשים ב-TripMaster AI, נשלח לשירות ה-AI רק הקשר מסונן שרלוונטי לשאלה ככל שניתן. מסמכים, קישורי הזמנה, מספרי אישור ופרטי תשלום אינם נשלחים כברירת מחדל, וה-AI לא משנה את הטיול.</div>
     <div class="ai-quick-prompts" data-i18n-aria-label="ai_quick_aria" aria-label="Quick questions">
-      <button type="button" class="ai-quick-prompt" data-ai-prompt-key="ai_quick_now">✨ <span data-i18n="ai_quick_now">מה חשוב עכשיו?</span></button>
-      <button type="button" class="ai-quick-prompt" data-ai-prompt-key="ai_quick_bookings">🎟️ <span data-i18n="ai_quick_bookings">מה דורש טיפול בהזמנות?</span></button>
-      <button type="button" class="ai-quick-prompt" data-ai-prompt-key="ai_quick_research">🔎 <span data-i18n="ai_quick_research">ספר לי על מקום בטיול</span></button>
-      <button type="button" class="ai-quick-prompt" data-ai-prompt-key="ai_quick_recovery">🛟 <span data-i18n="ai_quick_recovery">משהו השתבש</span></button>
+      <button type="button" class="ai-quick-prompt" data-ai-prompt-key="ai_quick_now" data-ai-intent="WHAT_NOW">✨ <span data-i18n="ai_quick_now">מה חשוב עכשיו?</span></button>
+      <button type="button" class="ai-quick-prompt" data-ai-prompt-key="ai_quick_bookings" data-ai-intent="BOOKING_AUDIT">🎟️ <span data-i18n="ai_quick_bookings">מה דורש טיפול בהזמנות?</span></button>
+      <button type="button" class="ai-quick-prompt" data-ai-prompt-key="ai_quick_research" data-ai-intent="ENTITY_RESEARCH">🔎 <span data-i18n="ai_quick_research">ספר לי על מקום בטיול</span></button>
+      <button type="button" class="ai-quick-prompt" data-ai-prompt-key="ai_quick_recovery" data-ai-intent="RECOVERY">🛟 <span data-i18n="ai_quick_recovery">משהו השתבש</span></button>
     </div>
     <div class="ai-input-row">
       <input id="aiPromptInput" data-i18n-placeholder="ai_prompt_placeholder" data-i18n-aria-label="ai_prompt_placeholder" placeholder="למשל: מה כדאי לבדוק לפני מחר?" autocomplete="off" maxlength="2000" />
@@ -1195,6 +1187,7 @@
         <label for="tripTaskInput" data-i18n="trip_task_add_label">Add a trip task</label>
         <div class="trip-task-add-row">
           <input id="tripTaskInput" autocomplete="off" data-i18n-placeholder="trip_task_add_ph" placeholder="Buy tickets, check transfer…" />
+          <button class="btn btn-muted compact-btn" id="tripTaskCancelEditBtn" type="button" data-i18n="trip_task_cancel_edit" hidden>Cancel edit</button>
           <button class="btn btn-primary compact-btn" id="tripTaskAddBtn" type="button" data-i18n="trip_task_add_btn">Add</button>
         </div>
         <div class="trip-task-meta-row">
@@ -1214,6 +1207,22 @@
       <div id="tripBoardAttentionSummary" class="operations-summary"></div>
       <div id="tripBoardAttention" class="trip-board-attention"></div>
     </section>
+  </div>
+
+  <!-- ══ TRIP BRIEF / SHARE-SAFE SUMMARY (v2000) ══ -->
+  <div class="sheet" id="tripBriefSheet" role="dialog" aria-modal="true" aria-labelledby="tripBriefHead">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="tripBriefHead" data-i18n="trip_brief_title">📋 Trip Brief</h3>
+      <button class="sheet-close" id="tripBriefClose" type="button" data-i18n-aria-label="aria_close" aria-label="Close">✕</button>
+    </div>
+    <div class="field-note" data-i18n="trip_brief_privacy_note">This summary intentionally leaves out booking references, confirmation codes and private notes.</div>
+    <div id="tripBriefStatus" class="operations-summary"></div>
+    <div id="tripBriefBody" class="trip-brief-body"></div>
+    <div class="row sheet-actions">
+      <button class="btn btn-muted" id="tripBriefCopyBtn" type="button" data-i18n="trip_brief_copy">Copy summary</button>
+      <button class="btn btn-primary" id="tripBriefShareBtn" type="button" data-i18n="trip_brief_share">Share summary</button>
+    </div>
   </div>
 
   <!-- ══ DOCUMENTS / CONFIRMATIONS (v1080) ══ -->
@@ -1303,6 +1312,24 @@
     </div>
     <div class="field-note" data-i18n="safety_center_note">The local safety snapshot stays on this device and keeps only the latest copy.</div>
     <div id="safetyHealthGrid" class="safety-health-grid"></div>
+    <section class="logistics-section beta-health-section">
+      <div class="trip-base-heading" data-i18n="beta_health_heading">Beta health check</div>
+      <div class="field-note" data-i18n="beta_health_note">Runs locally and checks TripMaster data structure without uploading trip content.</div>
+      <div id="betaHealthSummary" class="operations-summary" role="status" aria-live="polite"></div>
+      <div id="betaHealthDetails" class="beta-health-details"></div>
+      <div class="safety-actions">
+        <button class="btn btn-primary" id="betaHealthRunBtn" type="button" data-i18n="beta_health_run">Run data check</button>
+      </div>
+    </section>
+    <section class="logistics-section beta-diagnostics-section">
+      <div class="trip-base-heading" data-i18n="beta_diagnostics_heading">Beta diagnostics</div>
+      <div class="field-note" data-i18n="beta_diagnostics_note">The report contains app/runtime health and aggregate counts only. It excludes trip names, places, notes, booking references and money amounts.</div>
+      <div class="safety-actions">
+        <button class="btn btn-muted" id="betaDiagnosticsCopyBtn" type="button" data-i18n="beta_diagnostics_copy">Copy diagnostic report</button>
+        <button class="btn btn-muted" id="betaDiagnosticsClearBtn" type="button" data-i18n="ai_clear">Clear</button>
+        <button class="btn btn-muted" id="betaDiagnosticsDownloadBtn" type="button" data-i18n="beta_diagnostics_download">Download diagnostic report</button>
+      </div>
+    </section>
     <section class="logistics-section">
       <div class="trip-base-heading" data-i18n="safety_snapshot_heading">Local safety snapshot</div>
       <div id="safetySnapshotMeta" class="operations-summary"></div>
@@ -1314,7 +1341,18 @@
     <section class="logistics-section">
       <div class="trip-base-heading" data-i18n="safety_backup_heading">Portable backup</div>
       <div class="field-note" data-i18n="safety_backup_note">A downloaded backup is still the safest copy if the phone or browser storage is lost.</div>
-      <button class="btn btn-muted" id="safetyBackupDownloadBtn" type="button" data-i18n="data_backup">Backup</button>
+      <div class="safety-actions"><button class="btn btn-muted" id="safetyBackupDownloadBtn" type="button" data-i18n="data_backup">Backup</button>
+      <button class="btn btn-muted" id="safetyBackupRestoreBtn" type="button" data-i18n="data_restore">Restore</button></div>
+    </section>
+    <section class="logistics-section">
+      <div class="trip-base-heading" data-i18n="trip_transfer_heading">Single-trip transfer</div>
+      <div class="field-note" data-i18n="trip_transfer_note">Export or import one trip without replacing the other trips on this device. The file can include booking references and trip notes, so share it only with people you trust.</div>
+      <div id="tripTransferMeta" class="operations-summary"></div>
+      <div class="safety-actions trip-transfer-actions">
+        <button class="btn btn-muted" id="tripExportBtn" type="button" data-i18n="trip_export_btn">Export current trip</button>
+        <button class="btn btn-muted" id="tripShareBtn" type="button" data-i18n="trip_share_btn">Share trip file</button>
+        <button class="btn btn-primary" id="tripImportBtn" type="button" data-i18n="trip_import_btn">Import trip file</button>
+      </div>
     </section>
   </div>
 
@@ -1328,7 +1366,7 @@
     <div class="about-body">
       <!-- Overwritten at boot by app.js from APP_VERSION; the literal is only
            a pre-script fallback. -->
-      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v1700-RC1</span>
+      <span class="about-version-badge" id="aboutVersionBadge">TripMaster v3800-RC2</span>
 
       <h4 data-i18n="about_privacy_h">🔒 פרטיות</h4>
       <div>
@@ -1368,7 +1406,8 @@
        it is a polite live region. aria-atomic keeps the text and the Undo
        action from being announced as two unrelated fragments. -->
   <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
-  <input type="file" id="restoreInput" accept=".json" style="display:none">
+  <input type="file" id="restoreInput" accept=".json,application/json" style="display:none">
+  <input type="file" id="tripImportInput" accept=".json,application/json" style="display:none">
 
   <script src="./config.js"></script>
   <script src="./i18n.js"></script>
@@ -1380,6 +1419,7 @@
   <script src="./app-travel.js"></script>
   <script src="./app-today.js"></script>
   <script src="./app-operations.js"></script>
+  <script src="./app-ai-client.js"></script>
 
   <script src="./app.js"></script>
 

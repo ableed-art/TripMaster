@@ -144,9 +144,51 @@
     return out;
   }
 
+  function overnightDates(dates) {
+    if (!Array.isArray(dates)) return [];
+    const unique = Array.from(new Set(dates.map(validDate).filter(Boolean))).sort();
+    if (unique.length < 2) return [];
+    // Accommodation coverage follows the calendar span of the trip, not only
+    // the subset of itinerary-day records that happen to exist. This catches
+    // missing nights inside a sparse imported/restored itinerary. The final
+    // date is still checkout/departure and is never an extra hotel night.
+    const first = new Date(unique[0] + "T00:00:00Z");
+    const last = new Date(unique[unique.length - 1] + "T00:00:00Z");
+    const spanDays = Math.round((last - first) / 86400000);
+    if (!Number.isFinite(spanDays) || spanDays <= 0 || spanDays > 730) return unique.slice(0, -1);
+    const out = [];
+    for (let i = 0; i < spanDays; i++) {
+      const dt = new Date(first.getTime() + i * 86400000);
+      out.push(dt.toISOString().slice(0, 10));
+    }
+    return out;
+  }
+
+  function overnightJourneyCoversDate(trip, date) {
+    const d = validDate(date);
+    if (!d) return false;
+    // Every calendar night spent in a non-cancelled journey is covered, not
+    // only the departure night. A ferry/train leaving on the 9th and arriving
+    // on the 11th covers the nights of the 9th and 10th.
+    const canonicalJourney = tripJourneys(trip).some((raw) => {
+      const j = journeyInfo(raw);
+      return j.status !== "cancelled" && !!j.date && !!j.arrivalDate && j.date <= d && d < j.arrivalDate;
+    });
+    if (canonicalJourney) return true;
+    // Older trips may only have day-level travel details. Treat the explicit
+    // departure→arrival calendar span the same way.
+    return !!(trip && Array.isArray(trip.days) && trip.days.some((day) => {
+      if (!day) return false;
+      const departDate = validDate(day.date);
+      const td = day.travelDay && typeof day.travelDay === "object" ? day.travelDay : null;
+      const arrivalDate = td ? validDate(td.arrivalDate) : "";
+      return !!(departDate && arrivalDate && departDate <= d && d < arrivalDate);
+    }));
+  }
+
   function uncoveredDates(trip, dates) {
     if (!staysTrackingActive(trip) || !Array.isArray(dates)) return [];
-    return dates.map(validDate).filter(Boolean).filter((d) => effectiveStayForDate(trip, d).kind === "gap");
+    return dates.map(validDate).filter(Boolean).filter((d) => !overnightJourneyCoversDate(trip, d) && effectiveStayForDate(trip, d).kind === "gap");
   }
 
   function journeyInfo(raw) {
@@ -231,6 +273,8 @@
     staysEndingOn,
     staysStartingOn,
     stayOverlaps,
+    overnightDates,
+    overnightJourneyCoversDate,
     uncoveredDates,
     journeyInfo,
     tripJourneys,

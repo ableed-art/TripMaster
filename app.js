@@ -87,8 +87,8 @@ document.addEventListener("DOMContentLoaded", () => {
        Existing strings continue to use tf() unchanged. New/updated copy may
        define <key>_one / <key>_other (and any CLDR category) and call
        tfPlural(key, count, params). If a category-specific key is absent,
-       the legacy base key is used, so this is additive for all six active
-       languages. Amharic activation is gated on native-reviewed plural copy. */
+       the legacy base key is used, so this is additive for every active language.
+       Amharic uses Intl.PluralRules("am-ET") like the other locales. */
     function pluralCategory(count, langCode = currentLang) {
       const meta = LANG_META[langCode] || LANG_META[DEFAULT_LANG];
       try { return new Intl.PluralRules(meta.lang).select(Number(count)); }
@@ -197,8 +197,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
     let currentDayIndex  = 0;
-    let editingDayIndex  = null;
-    let editingItemIndex = null;
+    let editingDayId     = null;
+    let editingItemUid   = null;
     let isSavingActivity = false; // BUG-001 preventive guard: blocks duplicate rapid-tap saves
 
     /* ── BOOT-001 fix: safe localStorage JSON read ──
@@ -209,25 +209,84 @@ document.addEventListener("DOMContentLoaded", () => {
          pagehide/beforeunload/visibilitychange saves), warns in console,
          and returns fallback so boot can continue instead of throwing. ── */
     const _corruptBackupRaw = new Map();
+    const _unreadableStorageKeys = new Map();
+    const _storageHealth = {lastWrite:null,lastMigration:null,lastTransfer:null};
+    function findPreservedCorruptKey(key, raw) {
+      const prefix = key + "_corrupt_backup_";
+      for (let i = 0; i < localStorage.length; i++) {
+        const candidate = localStorage.key(i);
+        if (candidate && candidate.startsWith(prefix) && localStorage.getItem(candidate) === raw) return candidate;
+      }
+      return null;
+    }
+
+    function preserveCorruptRaw(key, raw) {
+      try {
+        let preservedKey = findPreservedCorruptKey(key, raw);
+        if (!preservedKey) {
+          const base = `${key}_corrupt_backup_${Date.now()}`;
+          preservedKey = base;
+          // Never overwrite an earlier payload, even in the same millisecond.
+          for (let suffix = 1; localStorage.getItem(preservedKey) !== null; suffix++) preservedKey = base + "_" + suffix;
+          localStorage.setItem(preservedKey, raw);
+        }
+        if (localStorage.getItem(preservedKey) !== raw) return false;
+        _corruptBackupRaw.set(key, raw);
+        return true;
+      } catch (_) {
+        _corruptBackupRaw.delete(key);
+        return false;
+      }
+    }
+
+    function repairStoredCollectionRows(value, key) {
+      // Only members of known arrays are repairable here. A non-array
+      // collection is left untouched so structural validation can reject it.
+      let changed = false;
+      const rows = list => {
+        if (!Array.isArray(list)) return list;
+        const filtered = list.filter(row => row && typeof row === "object" && !Array.isArray(row));
+        if (filtered.length !== list.length) changed = true;
+        return filtered;
+      };
+      const days = list => {
+        const filtered = rows(list);
+        if (Array.isArray(filtered)) filtered.forEach(day => {
+          if (Array.isArray(day.items)) day.items = rows(day.items);
+        });
+        return filtered;
+      };
+      if (key === KEY_TRIPS && Array.isArray(value)) {
+        value = rows(value);
+        value.forEach(trip => {
+          if (Array.isArray(trip.days)) trip.days = days(trip.days);
+          for (const field of ["stays", "journeys", "expenses", "documents", "tasks"]) {
+            if (Array.isArray(trip[field])) trip[field] = rows(trip[field]);
+          }
+        });
+      } else if (key === KEY_DAYS) value = days(value);
+      return {value, changed};
+    }
+
     function safeParseJSON(key, fallback) {
       const raw = localStorage.getItem(key);
-      if (raw === null || raw === undefined) return fallback;
+      if (raw === null || raw === undefined) { _unreadableStorageKeys.delete(key); return fallback; }
       try {
-        return JSON.parse(raw);
+        const repaired=repairStoredCollectionRows(JSON.parse(raw),key);
+        const value=repaired.value;
+        if(key===KEY_TRIPS && (!Array.isArray(value)||value.some(trip=>!trip||typeof trip!=="object"||Array.isArray(trip)||!Operations.portableTripShapeValid({...trip,days:trip.days==null?[]:trip.days}))))throw new Error("Invalid trip storage shape");
+        if(key===KEY_DAYS && !Operations.portableTripShapeValid({days:value}))throw new Error("Invalid legacy storage shape");
+        if(key===KEY_SETTINGS && (!value||typeof value!=="object"||Array.isArray(value)))throw new Error("Invalid settings shape");
+        // Retain the exact pre-repair bytes before a later migration/save can
+        // commit the filtered graph. If preservation fails, quarantine safely.
+        if(repaired.changed&&!preserveCorruptRaw(key,raw))throw new Error("Row preservation failed");
+        _unreadableStorageKeys.delete(key);
+        return value;
       } catch (err) {
-        // A pageshow/wake can re-read the same corrupt value more than once.
-        // Preserve each distinct corrupt payload once per session, rather than
-        // creating an unbounded trail of identical timestamped backups. If the
-        // backup write itself fails, do not mark it as preserved so a later
-        // read may retry.
-        if (_corruptBackupRaw.get(key) !== raw) {
-          try {
-            localStorage.setItem(`${key}_corrupt_backup_${Date.now()}`, raw);
-            _corruptBackupRaw.set(key, raw);
-          } catch (backupErr) {
-            console.warn("TripMaster: failed to back up corrupt value for", key, backupErr);
-          }
-        }
+        _unreadableStorageKeys.set(key,raw);
+        // Inspect persistent copies on every boot; an in-memory match alone
+        // cannot prove the preserved bytes still exist.
+        if (!preserveCorruptRaw(key,raw)) console.warn("TripMaster: corrupt raw preservation unavailable",key);
         console.warn("TripMaster: corrupt JSON in localStorage key", key, err);
         return fallback;
       }
@@ -248,16 +307,31 @@ document.addEventListener("DOMContentLoaded", () => {
     let days = normalizeDays(safeParseJSON(KEY_DAYS, []));
     let trips = normalizeTrips(safeParseJSON(KEY_TRIPS, []));
     let activeTripId = localStorage.getItem(KEY_ACTIVE_TRIP) || null;
+    let _observedTripToken = canonicalTripStorageToken();
     let currentView = activeTripId ? "planner" : "home";
     let todayPreviewDate = "";
     let todayPreviewMode = false;
     let _lastTodayModel = null;
     const _todayNotified = new Set();
+    let _externalStatePending = false;
+    // v3200: settings and theme participate in cross-window convergence
+    // independently from the trip graph. Separate pending flags let a stale
+    // preference key converge without manufacturing a trip-data conflict.
+    let _externalSettingsPending = false;
+    let _externalThemePending = false;
+    let _settingsStorageToken = null;
+    let _themeStorageToken = null;
+    let _externalSyncTimer = null;
+    let _stateWriteBlockReason = "";
+    let _reloadRequiredForVersion = false;
 
     // RC4-AI-LIFECYCLE-001: one read-only request can survive an Android
     // background/foreground cycle. A resume retry is bounded to one attempt.
     let _activeAIRequest = null;
     let _aiRequestSeq = 0;
+    // Sanitized in-memory client trace. Never stores prompt text, trip/entity
+    // names, booking references, Access details or other trip content.
+    let _lastAIClientTrace = null;
 
     /* ══════════════════════════════════════════════════════════════════
        STORE-001 (v1040 / A7): one guarded persistence path
@@ -278,22 +352,43 @@ document.addEventListener("DOMContentLoaded", () => {
        Nothing renders success and no toast claims success unless the write
        actually landed. Simulate with QuotaExceededError during QA.
        ══════════════════════════════════════════════════════════════════ */
-    function writeAll(entries) {
+    function writeAll(entries, options = {}) {
       const previous = [];
+      const started=Date.now();
+      // A fallback empty graph must never overwrite unreadable source data.
+      // Only a validated explicit Restore can replace it, after raw preservation.
+      for(const [key] of entries){
+        if(!_unreadableStorageKeys.has(key))continue;
+        let preserved=false;
+        try{preserved=!!findPreservedCorruptKey(key,_unreadableStorageKeys.get(key));}catch(_){}
+        if(options.recovery!==true||!preserved){
+          _storageHealth.lastWrite={at:new Date().toISOString(),result:"recovery_required",durationMs:0,changedKeys:0};
+          return false;
+        }
+      }
       try {
         for (let i = 0; i < entries.length; i++) {
           const key = entries[i][0];
-          previous.push([key, localStorage.getItem(key)]);
+          const oldValue = localStorage.getItem(key);
+          if (oldValue === entries[i][1]) continue;
+          previous.push([key, oldValue]);
           localStorage.setItem(key, entries[i][1]);
         }
+        if(options.recovery===true)entries.forEach(([key])=>_unreadableStorageKeys.delete(key));
+        _storageHealth.lastWrite={at:new Date().toISOString(),result:"saved",durationMs:Math.max(0,Date.now()-started),changedKeys:previous.length};
+        if (entries.some(([key]) => key === KEY_TRIPS || key === KEY_ACTIVE_TRIP)) _observedTripToken = canonicalTripStorageToken();
         return true;
       } catch (err) {
+        _storageHealth.lastWrite={at:new Date().toISOString(),result:err&&err.name==="QuotaExceededError"?"quota":"failed",durationMs:Math.max(0,Date.now()-started),changedKeys:previous.length};
+        recordLifecycleEvent("storage_write",{result:_storageHealth.lastWrite.result});
         console.warn("TripMaster: localStorage write failed", err);
         for (let i = previous.length - 1; i >= 0; i--) {
           try {
             if (previous[i][1] === null) localStorage.removeItem(previous[i][0]);
             else localStorage.setItem(previous[i][0], previous[i][1]);
           } catch (rollbackErr) {
+            _storageHealth.lastWrite.result="rollback_failed";
+            recordLifecycleEvent("storage_write",{result:"rollback_failed"});
             console.warn("TripMaster: rollback failed for", previous[i][0], rollbackErr);
           }
         }
@@ -301,7 +396,19 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    function reportStorageFailure() { showToast(t("toast_storage_failed")); }
+    function reportStorageFailure() {
+      if(_storageHealth.lastWrite&&_storageHealth.lastWrite.result==="rollback_failed"){
+        _stateWriteBlockReason="";
+        showToast(t("toast_storage_partial"),t("safety_center_title"),openSafetyCenter);
+        return;
+      }
+      if(_stateWriteBlockReason==="external"||_stateWriteBlockReason==="update"){_stateWriteBlockReason="";return;}
+      showToast(t("toast_storage_failed"));
+    }
+
+    function failedWriteWasExternal() {
+      return _stateWriteBlockReason === "external";
+    }
 
     /* ── SCHEMA-001 (v1040) ──
        Every field v1040 adds is optional and is read through an accessor, so
@@ -316,7 +423,10 @@ document.addEventListener("DOMContentLoaded", () => {
         trip.days = normalizeDays(trip.days);
         if (typeof trip.name !== "string") trip.name = String(trip.name == null ? "" : trip.name);
       });
-      return raw.filter((trip) => trip && typeof trip === "object" && trip.id);
+      // Keep structurally valid trip objects even when a historical writer
+      // omitted trip.id. The stable-ID migration runs before first use and can
+      // repair the missing identity; filtering here would irreversibly hide it.
+      return raw.filter((trip) => trip && typeof trip === "object");
     }
 
     function itemLocation(item)   { return (item && typeof item.location   === "string") ? item.location.trim()   : ""; }
@@ -362,8 +472,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const info = dayTravelInfo(day);
       const parts = [];
       if (info.mode) parts.push(travelDayModeLabel(info.mode));
-      if (info.origin || info.destination) parts.push((info.origin || t("overview_fact_unset")) + " → " + (info.destination || t("overview_fact_unset")));
-      if (info.departureTime || info.arrivalTime) parts.push((info.departureTime || "…") + " → " + (info.arrivalTime || "…"));
+      if (info.origin || info.destination) parts.push(flowPairText(info.origin || t("overview_fact_unset"), info.destination || t("overview_fact_unset")));
+      if (info.departureTime || info.arrivalTime) parts.push(flowPairText(info.departureTime || "…", info.arrivalTime || "…"));
       if (info.arrivalDate) parts.push(t("travel_day_arrival_date_short") + ": " + info.arrivalDate);
       if (info.reference) parts.push(info.reference);
       return parts;
@@ -397,6 +507,10 @@ document.addEventListener("DOMContentLoaded", () => {
     function stayInfo(stay) { return Logistics.stayInfo(stay); }
     function journeyInfo(journey) { return Logistics.journeyInfo(journey); }
     function itemBookingInfo(item) { return Logistics.bookingInfo(item && item.booking); }
+    function scheduleRelevantItems(day) {
+      const items = day && Array.isArray(day.items) ? day.items : [];
+      return items.filter((item) => itemBookingInfo(item).status !== "cancelled");
+    }
     function itemPaymentStatus(item) { return Finance.paymentStatus(item && item.booking && item.booking.paymentStatus); }
     function tripExpenses(trip) { return Finance.tripExpenses(trip); }
     function tripDocuments(trip) { return Finance.tripDocuments(trip); }
@@ -417,7 +531,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function formatMoneyAmount(amount, currency) {
       if (!Number.isFinite(amount) || !currency) return "";
       let number="";
-      try { number = new Intl.NumberFormat(currentLang || undefined, { maximumFractionDigits:2 }).format(amount); }
+      try { const meta = LANG_META[currentLang] || LANG_META[DEFAULT_LANG]; number = new Intl.NumberFormat(meta.lang, { maximumFractionDigits:2 }).format(amount); }
       catch (err) { number = String(Math.round((amount + Number.EPSILON) * 100) / 100); }
       return number + " " + currency;
     }
@@ -533,9 +647,13 @@ document.addEventListener("DOMContentLoaded", () => {
     function tripPlanningStats(trip) {
       const tripDays = trip && Array.isArray(trip.days) ? trip.days : [];
       const allItems = tripDays.flatMap(d => Array.isArray(d.items) ? d.items : []);
+      const validDayDates = tripDays.map(day => day && day.date).filter(date => Logistics.validDate(date));
+      const invalidDayDates = tripDays.filter(day => !Logistics.validDate(day && day.date)).length;
+      const duplicateDayDates = validDayDates.length - new Set(validDayDates).size;
+      const missingDayDates = tripDays.length === 0 ? 1 : 0;
       let conflicts = 0, invalidTimes = 0, travelUnknown = 0, insufficientTravel = 0;
       tripDays.forEach(day => {
-        const a = DayIntel.analyzeDay(day.items || []);
+        const a = DayIntel.analyzeDay(scheduleRelevantItems(day));
         conflicts += a.conflicts.length;
         invalidTimes += a.invalidRangeCount + a.malformedCount;
         travelUnknown += a.travelUnresolved;
@@ -553,7 +671,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const stayOverlaps = staysActive ? Logistics.stayOverlaps(trip).length : 0;
       const stayGapDates = staysActive ? Logistics.uncoveredDates(
         trip,
-        tripDays.filter(day => dayType(day) !== "departure").map(day => day && day.date)
+        Logistics.overnightDates(tripDays.map(day => day && day.date))
       ).length : 0;
       const stayDateProblems = stays.filter(raw => {
         const st = stayInfo(raw);
@@ -561,10 +679,29 @@ document.addEventListener("DOMContentLoaded", () => {
         const any = !!(st.name || st.location || st.startDate || st.endDate || st.confirmation || st.provider || st.note);
         return any && (!st.name || !st.startDate || !st.endDate || st.startDate >= st.endDate);
       }).length;
+      const journeyDataProblems = journeys.filter(raw => {
+        const j = journeyInfo(raw);
+        if (j.status === "cancelled") return false;
+        const src = raw && typeof raw === "object" ? raw : {};
+        const rawDate = typeof src.date === "string" ? src.date.trim() : "";
+        const rawArrivalDate = typeof src.arrivalDate === "string" ? src.arrivalDate.trim() : "";
+        const rawDepartureTime = typeof src.departureTime === "string" ? src.departureTime.trim() : "";
+        const rawArrivalTime = typeof src.arrivalTime === "string" ? src.arrivalTime.trim() : "";
+        const any = !!(rawDate || rawArrivalDate || rawDepartureTime || rawArrivalTime || j.mode || j.origin || j.destination || j.provider || j.serviceNumber || j.confirmation || j.note || j.status);
+        if (!any) return false;
+        if (!j.date || (rawArrivalDate && !j.arrivalDate) || (rawDepartureTime && !j.departureTime) || (rawArrivalTime && !j.arrivalTime)) return true;
+        if (j.arrivalDate && j.arrivalDate < j.date) return true;
+        const sameDate = !j.arrivalDate || j.arrivalDate === j.date;
+        return !!(sameDate && j.departureTime && j.arrivalTime && j.arrivalTime < j.departureTime);
+      }).length;
       const plannedStays = stays.filter(raw => stayInfo(raw).status === "planned").length;
       const plannedJourneys = journeys.filter(raw => journeyInfo(raw).status === "planned").length;
       const plannedActivityBookings = allItems.filter(item => itemBookingInfo(item).status === "planned").length;
       const bookingRows = Finance.bookingEntries(trip, Logistics);
+      // v2600: one operational booking row = one action, even when the same
+      // booking is both Planned and unpaid/partial. Booking Center owns the
+      // detailed reason; Readiness must not inflate the traveller's workload.
+      const bookingAttention = Finance.bookingAttentionEntries(trip, Logistics).length;
       const paymentAttention = bookingRows.filter(row => row.bookingStatus !== "cancelled" && (row.paymentStatus === "unpaid" || row.paymentStatus === "partial")).length;
       const documentNeeds = Finance.documentNeedsAttention(trip).length;
       const budgetSummary = Finance.budgetSummary(trip);
@@ -572,6 +709,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       return {
         conflicts, invalidTimes, travelUnknown, insufficientTravel,
+        missingDayDates, invalidDayDates, duplicateDayDates,
         accessActive, accessNeedsCheck, accessIssues, accessVerified,
         missingDestination: !tripDestination(trip),
         missingBase: !(tripBase(trip).name || tripBase(trip).location) && !staysActive,
@@ -588,9 +726,11 @@ document.addEventListener("DOMContentLoaded", () => {
         stayOverlaps,
         stayGapDates,
         stayDateProblems,
+        journeyDataProblems,
         plannedStays,
         plannedJourneys,
         plannedActivityBookings,
+        bookingAttention,
         paymentAttention,
         documentNeeds,
         budgetExceeded: budgetSummary.active && budgetSummary.exceeded,
@@ -610,27 +750,31 @@ document.addEventListener("DOMContentLoaded", () => {
       const st = tripPlanningStats(trip);
       const rows = [];
       const add = (level, text, area) => rows.push({ level, text, area: area || "setup" });
+      /* v2600 Readiness 3.0
+         Readiness has only two top-level states: real issue, or looks good.
+         Operational follow-ups stay useful as neutral `action` rows but never
+         turn the whole trip orange. Optional metadata and research TripMaster
+         should eventually do itself are excluded entirely. */
+      if (st.missingDayDates) add("issue", t("readiness_missing_trip_dates"), "setup");
+      if (st.invalidDayDates) add("issue", tf("readiness_invalid_trip_dates", { n: st.invalidDayDates }), "setup");
+      if (st.duplicateDayDates) add("issue", tf("readiness_duplicate_trip_dates", { n: st.duplicateDayDates }), "setup");
       if (st.conflicts) add("issue", tf("day_health_conflicts", { n: st.conflicts }), "schedule");
       if (st.invalidTimes) add("issue", tf("day_health_invalid_time", { n: st.invalidTimes }), "schedule");
       if (st.insufficientTravel) add("issue", tf("overview_travel_insufficient", { n: st.insufficientTravel }), "schedule");
       if (st.stayOverlaps) add("issue", tf("readiness_stay_overlap", { n: st.stayOverlaps }), "logistics");
       if (st.stayDateProblems) add("issue", tf("readiness_stay_date_problem", { n: st.stayDateProblems }), "logistics");
-      if (st.accessIssues) add("issue", tf("overview_access_issues", { n: st.accessIssues }), "access");
-      if (st.travelUnknown) add("check", tf("overview_travel_unknown", { n: st.travelUnknown }), "schedule");
-      if (st.stayGapDates) add("check", tf("readiness_stay_gaps", { n: st.stayGapDates }), "logistics");
-      if (st.plannedStays) add("check", tf("readiness_planned_stays", { n: st.plannedStays }), "logistics");
-      if (st.plannedJourneys) add("check", tf("readiness_planned_journeys", { n: st.plannedJourneys }), "logistics");
-      if (st.plannedActivityBookings) add("check", tf("readiness_planned_activity_bookings", { n: st.plannedActivityBookings }), "bookings");
-      if (st.paymentAttention) add("check", tf("readiness_payment_attention", { n: st.paymentAttention }), "bookings");
-      if (st.documentNeeds) add("check", tf("readiness_documents_needed", { n: st.documentNeeds }), "documents");
-      if (st.budgetExceeded) add("check", t("readiness_budget_exceeded"), "money");
+      if (st.journeyDataProblems) add("issue", tf("readiness_journey_data_problem", { n: st.journeyDataProblems }), "logistics");
+      // Once stay tracking exists, an uncovered non-departure trip date is a
+      // concrete accommodation gap rather than optional metadata.
+      if (st.stayGapDates) add("issue", tf("readiness_stay_gaps", { n: st.stayGapDates }), "logistics");
+      if (st.budgetExceeded) add("issue", t("readiness_budget_exceeded"), "money");
       if (st.taskOverdue) add("issue", tf("readiness_overdue_tasks", { n: st.taskOverdue }), "tasks");
-      if (st.taskDueToday) add("check", tf("readiness_tasks_due_today", { n: st.taskDueToday }), "tasks");
-      if (st.taskOtherOpen) add("check", tf("readiness_open_tasks", { n: st.taskOtherOpen }), "tasks");
-      if (st.accessNeedsCheck) add("check", tf("overview_access_to_check", { n: st.accessNeedsCheck }), "access");
-      if (st.missingDestination) add("check", t("overview_missing_destination"), "setup");
-      if (st.missingTimezone) add("check", t("overview_missing_timezone"), "setup");
-      if (st.missingBase) add("check", t("overview_missing_base"), "logistics");
+
+      // Follow-ups: visible and actionable, but not a degraded Readiness state.
+      if (st.travelUnknown) add("action", tf("overview_travel_unknown", { n: st.travelUnknown }), "schedule");
+      if (st.bookingAttention) add("action", tf("readiness_booking_actions", { n: st.bookingAttention }), "bookings");
+      if (st.documentNeeds) add("action", tf("readiness_documents_needed", { n: st.documentNeeds }), "documents");
+      if (st.taskDueToday) add("action", tf("readiness_tasks_due_today", { n: st.taskDueToday }), "tasks");
       return rows;
     }
 
@@ -644,20 +788,93 @@ document.addEventListener("DOMContentLoaded", () => {
       return t(key);
     }
 
+    function closeReadinessSourceSheets() {
+      ["overviewSheet", "tripBoardSheet"].forEach((id) => {
+        const el = $(id);
+        if (el && el.classList.contains("open")) closeSheetEl(id);
+      });
+    }
+
+    function openAccessProfile(trip) {
+      if (trip && trip.id !== activeTripId && !switchTrip(trip.id, { silent:true })) return;
+      closeReadinessSourceSheets();
+      openMenuSheet();
+      const head = $("accessHead");
+      if (head && head.getAttribute("aria-expanded") !== "true") head.click();
+      window.setTimeout(() => {
+        try { if (head) head.scrollIntoView({ block:"start", behavior:preferredScrollBehavior() }); } catch (_) {}
+      }, 90);
+    }
+
+    function nextISODate(date) {
+      const d = Logistics.validDate(date);
+      if (!d) return "";
+      const dt = new Date(d + "T00:00:00Z");
+      dt.setUTCDate(dt.getUTCDate() + 1);
+      return dt.toISOString().slice(0, 10);
+    }
+
+    function missingStayDates(trip) {
+      if (!trip || !tripStays(trip).length) return [];
+      const dates = Logistics.overnightDates((trip.days || []).map(day => day && day.date));
+      return Logistics.uncoveredDates(trip, dates).sort();
+    }
+
+    function missingStayRange(trip, preferredDate) {
+      const gaps = missingStayDates(trip);
+      if (!gaps.length) return null;
+      let startIndex = preferredDate ? gaps.indexOf(preferredDate) : 0;
+      if (startIndex < 0) startIndex = 0;
+      let first = gaps[startIndex], last = first;
+      for (let i = startIndex + 1; i < gaps.length; i++) {
+        if (gaps[i] !== nextISODate(last)) break;
+        last = gaps[i];
+      }
+      return { startDate:first, endDate:nextISODate(last) };
+    }
+
+    function openMissingStayEditor(trip, preferredDate) {
+      const range = missingStayRange(trip, preferredDate);
+      if (!range) return false;
+      closeReadinessSourceSheets();
+      if (trip.id !== activeTripId && !switchTrip(trip.id, { silent:true })) return false;
+      _logisticsTripId = trip.id;
+      renderLogisticsHub();
+      openStaySheet(null);
+      $("stayStartDate").value = range.startDate;
+      $("stayEndDate").value = range.endDate;
+      window.setTimeout(() => {
+        const name = $("stayName");
+        try { if (name && $("staySheet").classList.contains("open")) name.focus(); } catch (_) {}
+      }, 90);
+      return true;
+    }
+
     function openReadinessArea(area, trip) {
       if (!trip) return;
-      if (area === "schedule") { closeOverviewSheet(); continuePlanning(trip.id); return; }
-      if (area === "logistics") { openLogisticsSheet(trip.id); return; }
-      if (area === "bookings") { openBookingCenterSheet(trip.id); return; }
-      if (area === "money") { openMoneySheet(trip.id); return; }
-      if (area === "documents") { openDocumentsSheet(trip.id); return; }
-      if (area === "tasks") { openTripBoardSheet(trip.id, "tasks"); return; }
-      if (area === "access") {
-        openMenuSheet();
-        const head = $("accessHead");
-        if (head && head.getAttribute("aria-expanded") !== "true") head.click();
-        window.setTimeout(() => { try { if (head) head.scrollIntoView({ block:"start", behavior:"smooth" }); } catch (_) {} }, 90);
-        return;
+      if (area === "schedule") { closeReadinessSourceSheets(); continuePlanning(trip.id); return; }
+      if (area === "logistics") {
+        if (openMissingStayEditor(trip)) return;
+        closeReadinessSourceSheets(); openLogisticsSheet(trip.id); return;
+      }
+      if (area === "bookings") { closeReadinessSourceSheets(); openBookingCenterSheet(trip.id); return; }
+      if (area === "money") { closeReadinessSourceSheets(); openMoneySheet(trip.id); return; }
+      if (area === "documents") { closeReadinessSourceSheets(); openDocumentsSheet(trip.id); return; }
+      if (area === "tasks") { closeReadinessSourceSheets(); openTripBoardSheet(trip.id, "tasks"); return; }
+      if (area === "access") { openAccessProfile(trip); return; }
+      if (area === "setup") {
+        const stats = tripPlanningStats(trip);
+        if (stats.missingDayDates) {
+          closeReadinessSourceSheets();
+          if (trip.id !== activeTripId && !switchTrip(trip.id, { silent:true })) return;
+          currentView = "planner";
+          days = trip.days || [];
+          currentDayIndex = 0;
+          renderCurrentView();
+          updateHeaderInfo();
+          openFirstDaySheet();
+          return;
+        }
       }
       openTripDetailsSheet(trip.id);
     }
@@ -665,13 +882,14 @@ document.addEventListener("DOMContentLoaded", () => {
     function tripReadiness(trip) {
       const rows = readinessEntries(trip);
       const issues = rows.filter(r => r.level === "issue").length;
-      const checks = rows.filter(r => r.level === "check").length;
-      const level = issues ? "issue" : checks ? "check" : "ready";
-      return { level, rows, issues, checks };
+      const actions = rows.filter(r => r.level === "action").length;
+      // Neutral actions never downgrade the trip into a warning state.
+      const level = issues ? "issue" : "ready";
+      return { level, rows, issues, actions };
     }
 
     function readinessLabel(level) {
-      return level === "issue" ? t("readiness_issue") : level === "check" ? t("readiness_check") : t("readiness_ready");
+      return level === "issue" ? t("readiness_issue") : t("readiness_ready");
     }
 
     function planningIssueLabels(trip) {
@@ -713,7 +931,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!el) return;
       el.innerHTML = "";
       if (!day || !Array.isArray(day.items)) { el.style.display = "none"; return; }
-      const a = DayIntel.analyzeDay(day.items);
+      const a = DayIntel.analyzeDay(scheduleRelevantItems(day));
       const chips = document.createElement("div"); chips.className = "day-health-chips";
       const addChip = (label, cls) => { const c=document.createElement("span"); c.className="day-health-chip"+(cls?" "+cls:""); c.textContent=label; chips.appendChild(c); };
       if (isTravelDay(day)) addChip(dayTypeIcon(dayType(day)) + " " + dayTypeLabel(dayType(day)), "travel-day");
@@ -725,12 +943,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const insufficientTravel = a.pairs.filter(pair => pair.status === "insufficient").length;
       if (insufficientTravel) addChip(tf("day_health_travel_insufficient", { n: insufficientTravel }), "warn");
       if (a.travelUnresolved) addChip(tf("day_health_travel_unknown", { n: a.travelUnresolved }), "neutral");
-      if (hasAccessPlanningNeeds()) {
-        const n = day.items.filter(item => !itemAccessStatus(item) || itemAccessStatus(item) === "needscheck").length;
-        const issues = day.items.filter(item => itemAccessStatus(item) === "problem").length;
-        if (n) addChip(tf("day_health_access_checks", { n }), "neutral");
-        if (issues) addChip(tf("day_health_access_issues", { n: issues }), "warn");
-      }
       const flow = dayBaseFlow(day);
       if (flow.startsAtBase) addChip(t("day_starts_at_base"), "neutral");
       if (flow.returnsToBase) addChip(t("day_returns_to_base"), "neutral");
@@ -782,8 +994,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const j = journeyInfo(raw);
         const bits = [];
         if (j.mode) bits.push(journeyModeLabel(j.mode));
-        if (j.origin || j.destination) bits.push((j.origin || "…") + " → " + (j.destination || "…"));
-        if (j.departureTime || j.arrivalTime) bits.push((j.departureTime || "…") + " → " + (j.arrivalTime || "…"));
+        if (j.origin || j.destination) bits.push(flowPairText(j.origin || "…", j.destination || "…"));
+        if (j.departureTime || j.arrivalTime) bits.push(flowPairText(j.departureTime || "…", j.arrivalTime || "…"));
         if (j.status) bits.push(bookingStatusLabel(j.status));
         const pay=Finance.paymentStatus(raw&&raw.paymentStatus); if(pay)bits.push(paymentStatusLabel(pay));
         rows.push({ cls:"journey", text:"🚆 " + bits.join(" · ") });
@@ -849,7 +1061,6 @@ document.addEventListener("DOMContentLoaded", () => {
     function snapshotState() {
       return JSON.stringify({
         trips: trips,
-        days: days,
         activeTripId: activeTripId,
         currentView: currentView,
         currentDayIndex: currentDayIndex,
@@ -876,6 +1087,150 @@ document.addEventListener("DOMContentLoaded", () => {
       return snap;
     }
 
+    /* BETA-CANONICAL-STATE-001 (v2400 RC2): safety/readout flows must
+       read the persisted source of truth, not a potentially stale window copy.
+       This intentionally does NOT clear _externalStatePending: a user may still
+       have an editor open whose eventual save must be conflict-guarded. */
+    function readCanonicalTripState() {
+      try {
+        const canonical = {
+          trips: normalizeTrips(safeParseJSON(KEY_TRIPS, [])),
+          activeTripId: localStorage.getItem(KEY_ACTIVE_TRIP) || null
+        };
+        return _unreadableStorageKeys.has(KEY_TRIPS)?null:canonical;
+      } catch (err) {
+        console.warn("TripMaster: canonical trip state read failed", err);
+        return null;
+      }
+    }
+
+    function canonicalTripStorageToken() {
+      try {
+        return (localStorage.getItem(KEY_TRIPS) || "[]") + "\n" + (localStorage.getItem(KEY_ACTIVE_TRIP) || "");
+      } catch (_) { return "__unavailable__"; }
+    }
+
+    function openSheetHasStaleTripToken() {
+      const current = canonicalTripStorageToken();
+      const open = Array.from(document.querySelectorAll(".sheet.open"));
+      return open.some((sheet) => {
+        const token = sheet.dataset ? sheet.dataset.tripStateToken : "";
+        return !!token && token !== current;
+      });
+    }
+
+    function guardExternalStateBeforeWrite() {
+      const swStatus = window.__TM_SW_STATUS__;
+      if (_reloadRequiredForVersion || (swStatus && swStatus.reloadRequired === true && swStatus.controllerMatchesApp === false)) {
+        _reloadRequiredForVersion = true;
+        _stateWriteBlockReason = "update";
+        recordLifecycleEvent("write_blocked",{scope:"trip",reason:"update"});
+        showUpdateBanner(true);
+        showToast(t("toast_update_reload_required"));
+        return false;
+      }
+      // While a controlled page is still proving controller identity, fail
+      // closed for this write WITHOUT latching a permanent reload requirement.
+      // A matching reply clears the short proof window and the next tap works.
+      if (swStatus && swStatus.reloadRequired === true && swStatus.controllerMatchesApp == null) {
+        _stateWriteBlockReason = "update";
+        recordLifecycleEvent("write_blocked",{scope:"trip",reason:"update"});
+        showToast(t("toast_update_reload_required"));
+        return false;
+      }
+
+      // CROSS-WINDOW-EDITOR-002 (v3000 RC2): storage events are normally the
+      // first signal, but a frozen/discarded tab can miss one. Every sheet
+      // remembers the canonical trip-state token from the moment it opened,
+      // so an editor can still detect that its backing arrays are stale.
+      if (canonicalTripStorageToken() !== _observedTripToken || openSheetHasStaleTripToken()) _externalStatePending = true;
+
+      if(!_externalStatePending){_stateWriteBlockReason="";return true;}
+      _stateWriteBlockReason="external";
+      recordLifecycleEvent("write_blocked",{scope:"trip",reason:"external"});
+
+      // Never adopt external state underneath an open editor. Keep the
+      // pending flag set; closeSheetEl() schedules a safe reload immediately
+      // after the modal closes. Repeated Save taps therefore remain blocked.
+      if (topOpenSheet()) {
+        showToast(t("toast_external_state_pending"));
+        return false;
+      }
+
+      reloadStateAfterWake();
+      showToast(t("toast_external_state_blocked"));
+      return false;
+    }
+
+    function canonicalPreferenceTokens() {
+      try {
+        return {
+          settings: localStorage.getItem(KEY_SETTINGS) || "",
+          theme: localStorage.getItem(KEY_THEME) || ""
+        };
+      } catch (_) { return null; }
+    }
+
+    function detectMissedPreferenceChanges() {
+      const token = canonicalPreferenceTokens();
+      if (!token) return;
+      if (_settingsStorageToken !== null && token.settings !== _settingsStorageToken) _externalSettingsPending = true;
+      if (_themeStorageToken !== null && token.theme !== _themeStorageToken) _externalThemePending = true;
+    }
+
+    function updatePreferenceStorageTokens() {
+      const token = canonicalPreferenceTokens();
+      if (!token) return;
+      _settingsStorageToken = token.settings;
+      _themeStorageToken = token.theme;
+    }
+
+    function guardPreferenceWrite(kind) {
+      const swStatus = window.__TM_SW_STATUS__;
+      if (_reloadRequiredForVersion || (swStatus && swStatus.reloadRequired === true && swStatus.controllerMatchesApp === false)) {
+        _reloadRequiredForVersion = true;
+        _stateWriteBlockReason = "update";
+        recordLifecycleEvent("write_blocked",{scope:kind,reason:"update"});
+        showUpdateBanner(true);
+        showToast(t("toast_update_reload_required"));
+        return false;
+      }
+      if (swStatus && swStatus.reloadRequired === true && swStatus.controllerMatchesApp == null) {
+        _stateWriteBlockReason = "update";
+        recordLifecycleEvent("write_blocked",{scope:kind,reason:"update"});
+        showToast(t("toast_update_reload_required"));
+        return false;
+      }
+      detectMissedPreferenceChanges();
+      if (kind === "settings" && _externalSettingsPending) {
+        recordLifecycleEvent("write_blocked",{scope:"settings",reason:"external"});
+        adoptExternalSettingsFromStorage();
+        showToast(t("toast_external_state_blocked"));
+        return false;
+      }
+      if (kind === "theme" && _externalThemePending) {
+        recordLifecycleEvent("write_blocked",{scope:"theme",reason:"external"});
+        adoptExternalThemeFromStorage();
+        showToast(t("toast_external_state_blocked"));
+        return false;
+      }
+      _stateWriteBlockReason = "";
+      return true;
+    }
+
+    function guardPreferenceStateBeforeDestructiveWrite() {
+      detectMissedPreferenceChanges();
+      if (!_externalSettingsPending && !_externalThemePending) return true;
+      recordLifecycleEvent("write_blocked",{scope:"destructive",reason:"external"});
+      // Reset/Restore write both preference keys. Never snapshot or preserve a
+      // stale language/theme after another window changed them. Converge first
+      // and require a fresh explicit destructive confirmation.
+      if (_externalSettingsPending) adoptExternalSettingsFromStorage();
+      if (_externalThemePending) adoptExternalThemeFromStorage();
+      showToast(t("toast_external_state_blocked"));
+      return false;
+    }
+
     /* ACTIVE-TRIP-001 (v1040 / A4): KEY_TRIPS is written on EVERY commit,
        including while Home is selected. Before v1040, deleting the active
        trip filtered trips[] in memory and then called goHome(), which wrote
@@ -883,19 +1238,32 @@ document.addEventListener("DOMContentLoaded", () => {
        reload, and only the pagehide/visibilitychange handler happened to
        rescue it later. Writing trips unconditionally costs one small write
        and makes that class of bug structurally impossible. */
+    function restampOpenSheetsAfterOwnTripWrite(previousToken) {
+      const nextToken = canonicalTripStorageToken();
+      const datasets = Array.from(document.querySelectorAll(".sheet.open")).map(sheet => sheet.dataset).filter(Boolean);
+      // Only advance sheets that were current immediately before OUR write.
+      // A sheet that was already stale must retain its evidence and remain
+      // blocked until it closes and canonical state is adopted.
+      Operations.restampMatchingStateTokens(datasets, previousToken, nextToken);
+    }
+
     function persistState() {
+      const previousToken = canonicalTripStorageToken();
       const active = getActiveTrip();
-      if (active) active.days = JSON.parse(JSON.stringify(days));
+      if (active) active.days = days;
       const entries = [
         [KEY_TRIPS, JSON.stringify(trips)],
         [KEY_ACTIVE_TRIP, activeTripId || ""]
       ];
       // KEY_DAYS is a legacy migration inbox only. RC2 never writes planner
       // content back into it, which prevents Home from becoming a second data path.
-      return writeAll(entries);
+      const ok = writeAll(entries);
+      if (ok) restampOpenSheetsAfterOwnTripWrite(previousToken);
+      return ok;
     }
 
     function commitState(mutate, undoRecord) {
+      if(!guardExternalStateBeforeWrite())return false;
       const before = snapshotState();
       try {
         mutate();
@@ -920,10 +1288,14 @@ document.addEventListener("DOMContentLoaded", () => {
        `days` still holds the PREVIOUS trip's days. */
     function saveDays()  { return persistState(); }
     function saveTrips() {
-      return writeAll([
+      if(!guardExternalStateBeforeWrite())return false;
+      const previousToken = canonicalTripStorageToken();
+      const ok = writeAll([
         [KEY_TRIPS, JSON.stringify(trips)],
         [KEY_ACTIVE_TRIP, activeTripId || ""]
       ]);
+      if (ok) restampOpenSheetsAfterOwnTripWrite(previousToken);
+      return ok;
     }
 
     /* ── UNDO-001 (v1040 / A5) ──
@@ -934,17 +1306,52 @@ document.addEventListener("DOMContentLoaded", () => {
        settings and theme. ── */
     let _undo = null;
 
+    function undoStorageSignature() {
+      try {
+        return JSON.stringify([
+          localStorage.getItem(KEY_TRIPS) || "",
+          localStorage.getItem(KEY_ACTIVE_TRIP) || "",
+          localStorage.getItem(KEY_DAYS) || "",
+          localStorage.getItem(KEY_SETTINGS) || "",
+          localStorage.getItem(KEY_THEME) || ""
+        ]);
+      } catch (_) { return null; }
+    }
+
     function setUndo(stateJson, record) {
       _undo = {
         state: stateJson,
         settings: (record && record.settings) || null,
-        theme: (record && record.theme) || null
+        theme: (record && record.theme) || null,
+        validAgainst: undoStorageSignature()
       };
     }
     function clearUndo() { _undo = null; }
+    function invalidateUndoAfterExternalState() {
+      if (!_undo) return;
+      clearUndo();
+      const toast = $("toast");
+      if (toast && toast.querySelector(".toast-action")) {
+        clearTimeout(showToast._t);
+        toast.classList.remove("visible");
+      }
+    }
 
     function performUndo() {
       if (!_undo) { showToast(t("toast_nothing_to_undo")); return; }
+      // A whole-state undo is valid only against the exact persisted state
+      // that existed immediately after the undoable action. This remains safe
+      // even after an external change has already auto-synced and cleared the
+      // pending flag, or when a backgrounded page resumes later.
+      const currentUndoSignature = undoStorageSignature();
+      if (!currentUndoSignature || !_undo.validAgainst || currentUndoSignature !== _undo.validAgainst) {
+        clearUndo();
+        reloadStateAfterWake();
+        showToast(t("toast_undo_expired_external"));
+        return;
+      }
+      if(_externalStatePending){ clearUndo(); guardExternalStateBeforeWrite(); return; }
+      if(!guardExternalStateBeforeWrite())return;
       const record = _undo;
       _undo = null;
       const fallbackState = snapshotState();
@@ -975,6 +1382,7 @@ document.addEventListener("DOMContentLoaded", () => {
         reportStorageFailure();
         return;
       }
+      if (record.settings || record.theme) updatePreferenceStorageTokens();
       if (record.theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
       else if (record.theme)       document.documentElement.removeAttribute("data-theme");
       if (record.settings) {
@@ -982,8 +1390,6 @@ document.addEventListener("DOMContentLoaded", () => {
         applyLanguage();
         renderPrefsAndAccess();
         renderTools();
-        const keyField = $("global-apikey");
-        if (keyField) keyField.value = "";
       }
       resetAIForTripContextChange();
       renderCurrentView();
@@ -1003,17 +1409,38 @@ document.addEventListener("DOMContentLoaded", () => {
        recovery path behind it. This is a single overwritten snapshot, not
        version history, and it never leaves the device. ── */
     function writeSafetySnapshot(reason) {
+      // Keep an earlier usable snapshot intact during recovery. The exact raw
+      // corrupt values are already preserved independently before replacement.
+      if(reason==="restore"&&_unreadableStorageKeys.size){
+        // Other keys may still be healthy. Preserve ALL replacement targets,
+        // not only the corrupt key, and leave the earlier good snapshot intact.
+        try{
+          const rawEntries=[KEY_TRIPS,KEY_DAYS,KEY_ACTIVE_TRIP,KEY_SETTINGS,KEY_THEME].map(key=>{
+            const raw=localStorage.getItem(key);
+            if(!_unreadableStorageKeys.has(key))return [key,raw];
+            const preservedKey=findPreservedCorruptKey(key,raw);
+            if(!preservedKey)throw new Error("Preserved source unavailable");
+            return [key,{corruptBackupKey:preservedKey}];
+          });
+          const previous=localStorage.getItem("tm_recovery_raw_snapshot");
+          if(previous){try{if(JSON.stringify(JSON.parse(previous).rawEntries)===JSON.stringify(rawEntries))return true;}catch(_){}}
+          return writeAll([["tm_recovery_raw_snapshot",JSON.stringify({snapshotVersion:2,at:new Date().toISOString(),rawEntries})]]);
+        }catch(_){return false;}
+      }
+      const canonical = readCanonicalTripState();
+      if(!canonical)return false;
       let payload;
       try {
+        const canonicalSettings = normalizeSettings(safeParseJSON(KEY_SETTINGS, null));
         payload = JSON.stringify({
           app: "TripMaster",
           snapshotVersion: 1,
           reason: reason,
           createdAt: new Date().toISOString(),
-          trips: trips,
-          activeTripId: activeTripId,
+          trips: canonical.trips,
+          activeTripId: canonical.activeTripId,
           homeDays: normalizeDays(safeParseJSON(KEY_DAYS, [])),
-          settings: settingsForStorage(),
+          settings: settingsForStorage(canonicalSettings),
           theme: localStorage.getItem(KEY_THEME) || "light"
         });
       } catch (err) {
@@ -1041,6 +1468,211 @@ document.addEventListener("DOMContentLoaded", () => {
       const key="__tm_probe__"+Date.now();
       try{localStorage.setItem(key,"1");localStorage.removeItem(key);return true;}catch(_){try{localStorage.removeItem(key);}catch(e){}return false;}
     }
+    const RUNTIME_DIAG_KEY = "tm_runtime_diag";
+    const LIFECYCLE_DIAG_KEY = "tm_lifecycle_diag";
+    const LIFECYCLE_DIAG_LIMIT = 40;
+    const LIFECYCLE_EVENT_TYPES = new Set([
+      "boot_ready","online","offline","visibility","pageshow","pagehide",
+      "sw_status","update_ready","reload_required","update_apply_failed",
+      "write_blocked","storage_change","state_sync","storage_write","migration","transfer"
+    ]);
+    let _lastBetaAudit = null;
+    let _lifecycleDiagArmed = false;
+
+    function readLifecycleDiagnostics() {
+      try {
+        const raw=sessionStorage.getItem(LIFECYCLE_DIAG_KEY);
+        const rows=raw?JSON.parse(raw):[];
+        return Array.isArray(rows)?rows.filter(x=>x&&LIFECYCLE_EVENT_TYPES.has(x.type)&&safeDiagnosticTimestamp(x.at)).slice(-LIFECYCLE_DIAG_LIMIT).map(x=>({at:safeDiagnosticTimestamp(x.at),type:x.type,detail:sanitizeLifecycleDetail(x.type,x.detail)})):[];
+      } catch (_) { return []; }
+    }
+    function sanitizeLifecycleDetail(type, detail) {
+      const d=detail&&typeof detail==="object"?detail:{};
+      const out={};
+      const bool=(key)=>{if(typeof d[key]==="boolean")out[key]=d[key];};
+      const smallNum=(key,max)=>{const n=Number(d[key]);if(Number.isFinite(n)&&n>=0)out[key]=Math.min(Math.round(n),max);};
+      if(type==="boot_ready") smallNum("durationMs",120000);
+      else if(type==="visibility") out.state=d.state==="hidden"?"hidden":"visible";
+      else if(type==="pageshow"||type==="pagehide") bool("persisted");
+      else if(type==="sw_status") {
+        for(const key of ["controlled","waiting","installing","applying","reloadRequired","controllerMatchesApp","controllerCheckTimedOut"])bool(key);
+        smallNum("controllerCheckDurationMs",10000);smallNum("controllerCheckAttempts",4);
+      }
+      else if(type==="write_blocked") {
+        if(["trip","settings","theme","destructive"].includes(d.scope))out.scope=d.scope;
+        if(["update","external"].includes(d.reason))out.reason=d.reason;
+      }
+      else if(type==="storage_change") { if(["trip","settings","theme"].includes(d.scope))out.scope=d.scope; }
+      else if(type==="state_sync") { for(const key of ["trips","settings","theme"])bool(key); }
+      else if(type==="storage_write"){if(["quota","failed","rollback_failed","recovery_required"].includes(d.result))out.result=d.result;}
+      else if(type==="migration"){if(["unchanged","repaired","persist_failed"].includes(d.result))out.result=d.result;smallNum("repairs",100000);smallNum("linkRepairs",100000);}
+      else if(type==="transfer"){if(["restore","import"].includes(d.operation))out.operation=d.operation;if(["passed","invalid","storage","external"].includes(d.result))out.result=d.result;}
+      return out;
+    }
+    function recordLifecycleEvent(type, detail) {
+      if(!LIFECYCLE_EVENT_TYPES.has(type))return;
+      try {
+        const rows=readLifecycleDiagnostics();
+        const safe=sanitizeLifecycleDetail(type,detail);
+        const next={at:new Date().toISOString(),type};
+        if(Object.keys(safe).length)next.detail=safe;
+        const prior=rows.length?rows[rows.length-1]:null;
+        const same=prior&&prior.type===next.type&&JSON.stringify(prior.detail||{})===JSON.stringify(next.detail||{});
+        if(same&&Date.now()-Date.parse(prior.at||0)<250)return;
+        rows.push(next);
+        sessionStorage.setItem(LIFECYCLE_DIAG_KEY,JSON.stringify(rows.slice(-LIFECYCLE_DIAG_LIMIT)));
+      } catch (_) {}
+    }
+    function armLifecycleDiagnostics() {
+      if(_lifecycleDiagArmed)return;
+      _lifecycleDiagArmed=true;
+      const boot=window.__TM_BOOT_STATE__;
+      if(boot&&Number.isFinite(boot.startedAt))recordLifecycleEvent("boot_ready",{durationMs:Math.max(0,Date.now()-boot.startedAt)});
+      window.addEventListener("online",()=>recordLifecycleEvent("online"));
+      window.addEventListener("offline",()=>recordLifecycleEvent("offline"));
+      document.addEventListener("visibilitychange",()=>recordLifecycleEvent("visibility",{state:document.hidden?"hidden":"visible"}));
+      window.addEventListener("pageshow",e=>recordLifecycleEvent("pageshow",{persisted:!!(e&&e.persisted)}));
+      window.addEventListener("pagehide",e=>recordLifecycleEvent("pagehide",{persisted:!!(e&&e.persisted)}));
+      window.addEventListener("tripmaster:sw-status",e=>{
+        const x=e&&e.detail&&typeof e.detail==="object"?e.detail:{};
+        recordLifecycleEvent("sw_status",{
+          controlled:!!x.controlled,waiting:!!x.waiting,installing:!!x.installing,applying:!!x.applying,
+          reloadRequired:x.reloadRequired===true,controllerMatchesApp:typeof x.controllerMatchesApp==="boolean"?x.controllerMatchesApp:undefined,
+          controllerCheckTimedOut:x.controllerCheckTimedOut===true,controllerCheckDurationMs:x.controllerCheckDurationMs,controllerCheckAttempts:x.controllerCheckAttempts
+        });
+      });
+      window.addEventListener("tripmaster:update-ready",()=>recordLifecycleEvent("update_ready"));
+      window.addEventListener("tripmaster:reload-required",()=>recordLifecycleEvent("reload_required"));
+      window.addEventListener("tripmaster:update-apply-failed",()=>recordLifecycleEvent("update_apply_failed"));
+    }
+
+    function safeDiagnosticTimestamp(value) {
+      return typeof value==="string"&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)&&Number.isFinite(Date.parse(value))?value:null;
+    }
+    function safeDiagnosticError(value) {
+      return ["Error","TypeError","RangeError","SyntaxError","ReferenceError","SecurityError","QuotaExceededError","NetworkError","AbortError","TimeoutError"].includes(value)?value:"Error";
+    }
+    function safeRuntimeFault(row) {
+      if(!row||!safeDiagnosticTimestamp(row.at))return null;
+      const files=new Set(["app.js","config.js","i18n.js","app-operations.js","app-finance.js","app-logistics.js","app-intelligence.js","app-travel.js","app-today.js","app-ai-client.js","sw-register.js","boot-watchdog.js","boot-guard.js","dir-boot.js"]);
+      const candidate=typeof row.source==="string"?row.source.split(/[?#]/)[0].split(/[\\/]/).pop():"";
+      const number=v=>Number.isFinite(v)&&v>=0?Math.min(1000000,Math.floor(v)):0;
+      return {at:row.at,kind:row.kind==="unhandledrejection"?"unhandledrejection":"error",type:safeDiagnosticError(row.type),source:files.has(candidate)?candidate:"unknown",line:number(row.line),col:number(row.col)};
+    }
+    function clearBetaDiagnostics() {
+      try{sessionStorage.removeItem(LIFECYCLE_DIAG_KEY);sessionStorage.removeItem(RUNTIME_DIAG_KEY);sessionStorage.removeItem("tm_boot_diag");}
+      catch(_){showToast(t("toast_storage_failed"));return;}
+      _storageHealth.lastWrite=null;_storageHealth.lastMigration=null;_storageHealth.lastTransfer=null;
+    }
+    function storageDiagnostics() {
+      let estimatedUtf16Bytes=0,safetySnapshotBytes=0;
+      try{for(const key of [KEY_TRIPS,KEY_DAYS,KEY_ACTIVE_TRIP,KEY_SETTINGS,KEY_THEME,KEY_SAFETY_SNAPSHOT,"tm_recovery_raw_snapshot"]){const value=localStorage.getItem(key);if(value!==null){const n=2*(key.length+value.length);estimatedUtf16Bytes+=n;if(key===KEY_SAFETY_SNAPSHOT)safetySnapshotBytes=n;}}}
+      catch(_){return {readable:false,recoveryRequired:true};}
+      return {readable:true,recoveryRequired:_unreadableStorageKeys.size>0,estimatedUtf16Bytes,safetySnapshotBytes,lastWrite:_storageHealth.lastWrite,lastMigration:_storageHealth.lastMigration,lastTransfer:_storageHealth.lastTransfer};
+    }
+    function diagnosticCacheGeneration(value) {
+      const match=typeof value==="string"&&value.match(/(v\d{4,}(?:-rc\d+)?(?:-fix\d+)?-[a-f0-9]{16})$/);
+      return match?match[1]:null;
+    }
+    function readRuntimeDiagnostics() {
+      try {
+        const raw=sessionStorage.getItem(RUNTIME_DIAG_KEY);
+        const rows=raw?JSON.parse(raw):[];
+        return Array.isArray(rows)?rows.map(safeRuntimeFault).filter(Boolean).slice(-8):[];
+      } catch (_) { return []; }
+    }
+    function recordRuntimeFault(kind, event) {
+      try {
+        const rows=readRuntimeDiagnostics();
+        const source=String(event&&event.filename||"").split(/[\\/]/).pop().slice(0,80);
+        const reason=event&&event.reason;
+        const error=event&&event.error;
+        const type=String((error&&error.name)||(reason&&reason.name)||(reason&&reason.constructor&&reason.constructor.name)||typeof reason||"Error").slice(0,50);
+        rows.push({at:new Date().toISOString(),kind:String(kind||"error").slice(0,30),type,source,line:Number(event&&event.lineno)||0,col:Number(event&&event.colno)||0});
+        sessionStorage.setItem(RUNTIME_DIAG_KEY,JSON.stringify(rows.map(safeRuntimeFault).filter(Boolean).slice(-8)));
+      } catch (_) {}
+    }
+    function armRuntimeDiagnostics() {
+      armLifecycleDiagnostics();
+      if(window.__tmRuntimeDiagArmed)return;
+      window.__tmRuntimeDiagArmed=true;
+      window.addEventListener("error",e=>recordRuntimeFault("error",e));
+      window.addEventListener("unhandledrejection",e=>recordRuntimeFault("unhandledrejection",e));
+    }
+    function readBootDiagnosticSafe() {
+      try {
+        const raw=sessionStorage.getItem("tm_boot_diag");if(!raw)return null;
+        const x=JSON.parse(raw);if(!x||typeof x!=="object")return null;
+        return {at:safeDiagnosticTimestamp(x.at),phase:["watchdog-loaded","dom-init","modules-ready","state-ready","initial-render","core-ready","post-boot-complete","ready","app-init","startup-error","window-error","promise-rejection"].includes(x.phase)?x.phase:"unknown",reason:["startup-error","startup-error-timeout","startup-stalled"].includes(x.reason)?x.reason:"unknown"};
+      } catch (_) { return null; }
+    }
+    function betaAuditStatusText(audit){
+      if(!audit)return t("beta_health_not_run");
+      if(audit.status==="error")return tf("beta_health_error_summary",{errors:audit.errors.length,warnings:audit.warnings.length});
+      if(audit.status==="warning")return tf("beta_health_warning_summary",{warnings:audit.warnings.length});
+      return t("beta_health_ok_summary");
+    }
+    function renderBetaHealthAudit(audit){
+      const summary=$("betaHealthSummary"),details=$("betaHealthDetails");if(!summary||!details)return;
+      summary.textContent=betaAuditStatusText(audit);summary.className="operations-summary"+(audit&&audit.status==="error"?" readiness-issue":audit&&audit.status==="warning"?" readiness-check":"");
+      details.innerHTML="";
+      if(!audit)return;
+      const add=(label,value,tone)=>{const row=document.createElement("div");row.className="beta-health-chip "+tone;const a=document.createElement("span");a.textContent=label;const b=document.createElement("strong");b.textContent=value;row.append(a,b);details.appendChild(row);};
+      add(t("beta_health_structure"),audit.errors.length?tf("beta_health_issue_count",{n:audit.errors.length}):t("beta_health_ok"),audit.errors.length?"issue":"ok");
+      add(t("beta_health_warnings"),audit.warnings.length?tf("beta_health_warning_count",{n:audit.warnings.length}):t("beta_health_none"),audit.warnings.length?"warn":"ok");
+      const c=audit.counts||{};add(t("beta_health_records"),tf("beta_health_records_value",{trips:c.trips||0,days:c.days||0,items:c.activities||0}),"ok");
+    }
+    function runBetaHealthAudit(showToastAfter){
+      const canonical=readCanonicalTripState();
+      _lastBetaAudit=Operations.auditTripGraph(canonical?canonical.trips:trips,canonical?canonical.activeTripId:activeTripId);
+      if(!canonical||_unreadableStorageKeys.size){
+        if(!_lastBetaAudit.errors.includes("storage_read_failed"))_lastBetaAudit.errors.push("storage_read_failed");
+        _lastBetaAudit.status="error";
+      }
+      renderBetaHealthAudit(_lastBetaAudit);
+      if(showToastAfter)showToast(_lastBetaAudit.status==="ok"?t("beta_health_toast_ok"):_lastBetaAudit.status==="warning"?t("beta_health_toast_warning"):t("beta_health_toast_error"));
+      return _lastBetaAudit;
+    }
+    function betaDiagnosticsObject(){
+      const canonical=readCanonicalTripState();
+      const diagTrips=canonical?canonical.trips:trips;
+      const diagActiveId=canonical?canonical.activeTripId:activeTripId;
+      const audit=Operations.auditTripGraph(diagTrips,diagActiveId);
+      if(!canonical||_unreadableStorageKeys.size){audit.errors.push("storage_read_failed");audit.status="error";}
+      const swControlled=!!(navigator.serviceWorker&&navigator.serviceWorker.controller);
+      const archived=diagTrips.filter(x=>x&&x.archived===true).length;
+      return {
+        app:"TripMaster",reportVersion:5,generatedAt:new Date().toISOString(),appVersion:APP_VERSION,buildId:APP_BUILD_ID,
+        locale:{language:currentLang,locale:(LANG_META[currentLang]||LANG_META[DEFAULT_LANG]).lang,direction:document.documentElement.dir||""},
+        runtime:{
+          online:!!navigator.onLine,
+          displayMode:((window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true)?"standalone":"browser",
+          serviceWorkerControlled:swControlled,
+          serviceWorkerLifecycle:(()=>{const x=window.__TM_SW_STATUS__;return x&&typeof x==="object"?{supported:!!x.supported,registered:!!x.registered,controlled:!!x.controlled,waiting:!!x.waiting,installing:!!x.installing,applying:!!x.applying,hasScope:typeof x.scopePath==="string",controllerCacheName:diagnosticCacheGeneration(x.controllerCacheName),controllerMatchesApp:typeof x.controllerMatchesApp==="boolean"?x.controllerMatchesApp:null,reloadRequired:x.reloadRequired===true,controllerCheckDurationMs:Number.isFinite(x.controllerCheckDurationMs)?x.controllerCheckDurationMs:null,controllerCheckAttempts:Number.isFinite(x.controllerCheckAttempts)?x.controllerCheckAttempts:0,controllerCheckTimedOut:x.controllerCheckTimedOut===true,lastCheckAt:safeDiagnosticTimestamp(x.lastCheckAt),lastError:x.lastError?safeDiagnosticError(x.lastError):null}:null;})(),
+          storageWritable:storageWritableCheck(),
+          storage:storageDiagnostics(),
+          visibility:document.visibilityState||"unknown",
+          navigation:{canonicalPath:/\/index\.html$/.test(location.pathname)||/\/$/.test(location.pathname),hasQuery:!!location.search,hasFragment:!!location.hash},
+          writeSafety:{reloadRequiredForVersion:_reloadRequiredForVersion===true,externalTripPending:_externalStatePending===true,externalSettingsPending:_externalSettingsPending===true,externalThemePending:_externalThemePending===true,lastBlockReason:_stateWriteBlockReason||null,openSheetCount:document.querySelectorAll(".sheet.open").length},
+          lifecycleTimeline:readLifecycleDiagnostics(),
+          runtimeFaults:readRuntimeDiagnostics(),lastBootFailure:readBootDiagnosticSafe()
+        },
+        state:{tripCount:diagTrips.length,archivedTripCount:archived,activeTripPresent:!!diagTrips.find(x=>x&&x.id===diagActiveId),counts:audit.counts},
+        aiClient:{contractVersion:AI_CLIENT_CONTRACT_VERSION,v2TransportEnabled:AI_V2_TRANSPORT_ENABLED,lastRequest:_lastAIClientTrace?{requestId:_lastAIClientTrace.requestId,intent:_lastAIClientTrace.intent,scopes:_lastAIClientTrace.scopes.slice(),researchLikely:_lastAIClientTrace.researchLikely,liveDataLikely:_lastAIClientTrace.liveDataLikely,entityHintCount:_lastAIClientTrace.entityHintCount,attempt:_lastAIClientTrace.attempt,status:_lastAIClientTrace.status,durationMs:_lastAIClientTrace.durationMs,evidenceGate:_lastAIClientTrace.evidenceGate}:null},
+        audit:{status:audit.status,errors:audit.errors.slice(),warnings:audit.warnings.slice()}
+      };
+    }
+    function betaDiagnosticsText(){return JSON.stringify(betaDiagnosticsObject(),null,2);}
+    async function copyBetaDiagnostics(){
+      const text=betaDiagnosticsText();
+      try{await navigator.clipboard.writeText(text);showToast(t("beta_diagnostics_copied"));}
+      catch(err){console.warn("TripMaster: diagnostics copy failed",err);showToast(t("toast_copy_manual"));}
+    }
+    function downloadBetaDiagnostics(){
+      const text=betaDiagnosticsText(),blob=new Blob([text],{type:"application/json;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");
+      a.href=url;a.download=`tripmaster-diagnostics-${todayISO()}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),0);showToast(t("beta_diagnostics_downloaded"));
+    }
+
     function safetyHealthRow(label,value,tone){
       const row=document.createElement("div");row.className="safety-health-row "+(tone||"");
       const l=document.createElement("span");l.textContent=label;const v=document.createElement("strong");v.textContent=value;row.appendChild(l);row.appendChild(v);return row;
@@ -1048,13 +1680,19 @@ document.addEventListener("DOMContentLoaded", () => {
     async function renderSafetyCenter(){
       const grid=$("safetyHealthGrid"),meta=$("safetySnapshotMeta"),restoreBtn=$("safetySnapshotRestoreBtn");if(!grid||!meta)return;
       grid.innerHTML="";
+      const storageOk=storageWritableCheck()&&!_unreadableStorageKeys.size;
+      const canonical=readCanonicalTripState();
+      const safetyTrips=canonical?canonical.trips:trips;
+      const safetyActiveId=canonical?canonical.activeTripId:activeTripId;
+      const audit=runBetaHealthAudit(false);
       grid.appendChild(safetyHealthRow(t("safety_health_version"),APP_VERSION,"ok"));
-      grid.appendChild(safetyHealthRow(t("safety_health_network"),navigator.onLine?t("safety_online"):t("safety_offline"),navigator.onLine?"ok":"warn"));
-      grid.appendChild(safetyHealthRow(t("safety_health_storage"),storageWritableCheck()?t("safety_storage_ok"):t("safety_storage_problem"),storageWritableCheck()?"ok":"issue"));
-      const swControlled=!!(navigator.serviceWorker&&navigator.serviceWorker.controller);
+      grid.appendChild(safetyHealthRow(t("safety_health_network"),navigator.onLine?t("safety_online"):t("safety_offline"),navigator.onLine?"ok":""));
+      grid.appendChild(safetyHealthRow(t("safety_health_storage"),storageOk?t("safety_storage_ok"):t("safety_storage_problem"),storageOk?"ok":"issue"));
+      const swControlled=!!(navigator.serviceWorker&&navigator.serviceWorker.controller)&&!!(window.__TM_SW_STATUS__&&window.__TM_SW_STATUS__.controllerMatchesApp===true);
       grid.appendChild(safetyHealthRow(t("safety_health_offline"),swControlled?t("safety_offline_ready"):t("safety_offline_not_controlled"),swControlled?"ok":"warn"));
-      grid.appendChild(safetyHealthRow(t("safety_health_trips"),String(trips.length),""));
-      const active=getActiveTrip();grid.appendChild(safetyHealthRow(t("safety_health_active"),active?(active.name||t("menu_new_trip")):t("safety_none"),""));
+      grid.appendChild(safetyHealthRow(t("beta_health_grid_label"),audit.status==="ok"?t("beta_health_ok"):audit.status==="warning"?t("beta_health_review"):t("beta_health_problem"),audit.status==="ok"?"ok":audit.status==="warning"?"warn":"issue"));
+      grid.appendChild(safetyHealthRow(t("safety_health_trips"),String(safetyTrips.length),""));
+      const active=safetyTrips.find(x=>x&&x.id===safetyActiveId)||null;grid.appendChild(safetyHealthRow(t("safety_health_active"),active?(active.name||t("menu_new_trip")):t("safety_none"),""));
       const snap=readSafetySnapshot();
       if(snap){
         let when=snap.createdAt||"";try{when=new Date(when).toLocaleString(dateLocale());}catch(_){}
@@ -1065,7 +1703,7 @@ document.addEventListener("DOMContentLoaded", () => {
         try{const est=await navigator.storage.estimate();if(est&&Number.isFinite(est.usage)&&Number.isFinite(est.quota)&&est.quota>0){const pct=Math.round(est.usage/est.quota*100);grid.appendChild(safetyHealthRow(t("safety_health_usage"),tf("safety_usage_value",{pct}),pct>85?"warn":""));}}catch(_){}
       }
     }
-    function openSafetyCenter(){renderSafetyCenter();openSheetEl("safetyCenterSheet");}
+    function openSafetyCenter(){renderSafetyCenter();renderTripTransferMeta();openSheetEl("safetyCenterSheet");}
     function closeSafetyCenter(){closeSheetEl("safetyCenterSheet");}
     function createManualSafetySnapshot(){if(!writeSafetySnapshot("manual")){showToast(t("toast_snapshot_failed"));return;}renderSafetyCenter();showToast(t("safety_snapshot_created"));}
     function restoreLocalSafetySnapshot(){const snap=readSafetySnapshot();if(!snap){showToast(t("safety_snapshot_none"));return;}confirmRestore(()=>{closeSafetyCenter();doRestore(snap);});}
@@ -1244,12 +1882,37 @@ document.addEventListener("DOMContentLoaded", () => {
       if (item && typeof item.uid === "string" && item.uid) return item.uid;
       const uid = newActivityUid();
       if (item) {
+        // Export/calendar helpers must never turn a stale tab into an
+        // unguarded whole-state writer. If another window changed state,
+        // return an ephemeral UID for this export and leave canonical state
+        // untouched; the normal stable-ID migration will persist one later.
+        if (!guardExternalStateBeforeWrite()) return uid;
         item.uid = uid;
         // Best effort: a failed write only costs UID stability, never data,
         // so this must not block the export the user just asked for.
         if (!persistState()) console.warn("TripMaster: could not persist activity UID");
       }
       return uid;
+    }
+
+
+    /* v3200 RC3 — stable-ID repair for both live state and restored legacy
+       payloads. Duplicate IDs produced by older builds are repaired before
+       editing or Restore persistence. Ambiguous old links keep resolving to
+       the first occurrence; we never guess that they meant a later duplicate. */
+    function repairStableTripGraphIds(targetTrips) {
+      const prefixFor = {trip:"trip",day:"day",activity:"activity",stay:"stay",journey:"journey",expense:"expense",document:"doc",task:"task"};
+      const result = Operations.repairTripGraphIds(targetTrips, (kind) => kind === "activity" ? newActivityUid() : newTripId(prefixFor[kind] || kind));
+      _storageHealth.lastMigration={at:new Date().toISOString(),result:result.changed?"repaired":"unchanged",repairs:result.repairs,linkRepairs:result.linkRepairs};
+      if(result.changed)recordLifecycleEvent("migration",_storageHealth.lastMigration);
+      return !!(result && result.changed);
+    }
+
+    function ensureStableTripGraphIds() {
+      const changed = repairStableTripGraphIds(trips);
+      if (!changed) return true;
+      if (!saveTrips()) { _storageHealth.lastMigration.result="persist_failed";recordLifecycleEvent("migration",_storageHealth.lastMigration); console.warn("TripMaster: stable-ID migration could not be persisted"); return false; }
+      return true;
     }
 
     /* ── A11Y-001 (v1040 / D6): one open/close path for every sheet ──
@@ -1270,6 +1933,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function armBackGuard() {
       if (!window.history || typeof history.pushState !== "function") return;
       try {
+        if(history.state&&history.state.tripmasterGuard===1){_backGuardArmed=true;return;}
         history.replaceState({ tripmasterRoot: 1 }, "");
         history.pushState({ tripmasterGuard: 1 }, "");
         _backGuardArmed = true;
@@ -1280,16 +1944,73 @@ document.addEventListener("DOMContentLoaded", () => {
       try { history.pushState({ tripmasterGuard: 1 }, ""); } catch (_) {}
     }
 
+    function preferredScrollBehavior() {
+      return window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth";
+    }
+    function syncKeyboardViewport() {
+      const viewport=window.visualViewport;
+      if(!viewport)return;
+      const style=document.documentElement.style;
+      // Pinch zoom is user-controlled magnification, not a keyboard inset.
+      if(Math.abs(viewport.scale-1)>0.05){style.removeProperty("--tm-visible-height");style.removeProperty("--tm-keyboard-bottom");return;}
+      style.setProperty("--tm-visible-height",Math.max(1,viewport.height)+"px");
+      style.setProperty("--tm-keyboard-bottom",Math.max(0,window.innerHeight-viewport.height-viewport.offsetTop)+"px");
+      const focused=document.activeElement,top=topOpenSheet();
+      if(top&&focused&&top.contains(focused)&&/^(INPUT|TEXTAREA|SELECT)$/.test(focused.tagName)){
+        const rect=focused.getBoundingClientRect(),sheetRect=top.getBoundingClientRect();
+        if(rect.bottom>Math.min(viewport.offsetTop+viewport.height,sheetRect.bottom)-16||rect.top<Math.max(viewport.offsetTop,sheetRect.top)+16)focused.scrollIntoView({block:"nearest",behavior:"auto"});
+      }
+    }
+    function armKeyboardViewport() {
+      if(!window.visualViewport)return;
+      let frame=null;
+      const schedule=()=>{if(frame!==null)return;frame=window.requestAnimationFrame(()=>{frame=null;syncKeyboardViewport();});};
+      window.visualViewport.addEventListener("resize",schedule);
+      window.visualViewport.addEventListener("scroll",schedule);
+      document.addEventListener("focusin",schedule);
+      window.addEventListener("pageshow",schedule);
+      syncKeyboardViewport();
+    }
+
+    function setInert(el, on) {
+      if (!el) return;
+      if (on) el.setAttribute("inert", "");
+      else el.removeAttribute("inert");
+    }
+
+    /* v3000 A11Y-MODAL-001: aria-modal alone does not stop TalkBack from
+       swiping into content behind a bottom sheet. Keep the app surface and
+       every non-top sheet inert while a modal sheet is open. This also makes
+       stacked confirmations behave as one true modal layer at a time. */
+    function syncModalInert() {
+      const top = topOpenSheet();
+      const blocked = !!top;
+      setInert($("mainHeader"), blocked);
+      setInert(document.querySelector(".container"), blocked);
+      setInert(document.querySelector(".bottom-bar"), blocked);
+      document.querySelectorAll(".sheet").forEach((sheet) => {
+        setInert(sheet, blocked && sheet !== top);
+      });
+    }
+
     function openSheetEl(id) {
       const el = $(id);
       if (!el) return;
       const trigger = document.activeElement;
       const already = el.classList.contains("open");
+      if (!already) {
+        // MOBILE-SHEET-001 (v3400): every freshly-opened sheet starts at its
+        // top. Long hubs/forms must not reopen halfway down because the same
+        // DOM node retained scrollTop from a previous visit.
+        el.scrollTop = 0;
+        if (el.dataset) el.dataset.tripStateToken = canonicalTripStorageToken();
+      }
       el.classList.add("open");
       $("sheetBackdrop").classList.add("open");
       // Re-rendering an open sheet (deleteTrip re-opens the trip list) must
       // not push a second return-focus record for the same sheet.
       if (!already) _focusReturn.push({ id: id, trigger: (trigger && trigger.focus) ? trigger : null });
+      syncModalInert();
       // FIX1-FOCUS-001: a sheet can be closed before this delayed focus runs.
       // Cancel any older timer for this sheet and re-check that it is still
       // open before moving focus, otherwise focus can jump back into a closed
@@ -1298,7 +2019,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (previousTimer) window.clearTimeout(previousTimer);
       const focusTimer = window.setTimeout(() => {
         _sheetFocusTimers.delete(id);
-        if (!el.classList.contains("open")) return;
+        if (!el.classList.contains("open") || topOpenSheet() !== el) return;
         const target = el.querySelector(".sheet-close") || el;
         try { target.focus(); } catch (err) {}
       }, 60);
@@ -1323,16 +2044,32 @@ document.addEventListener("DOMContentLoaded", () => {
         _sheetFocusTimers.delete(id);
       }
       const wasOpen = el.classList.contains("open");
+      // v3100 CROSS-WINDOW-CLOSE-001: a frozen/discarded tab can miss the
+      // storage event while a confirmation/editor is open. Preserve the
+      // sheet's stale-token evidence BEFORE removing the token, otherwise a
+      // close-then-confirm callback could immediately write through an old
+      // positional reference after the only proof of staleness was erased.
+      if (wasOpen && el.dataset && el.dataset.tripStateToken) {
+        const currentToken = canonicalTripStorageToken();
+        if (el.dataset.tripStateToken !== currentToken) _externalStatePending = true;
+      }
       el.classList.remove("open");
+      if (el.dataset) delete el.dataset.tripStateToken;
       syncBackdrop();
       const ids = _focusReturn.map((r) => r.id);
       const idx = ids.lastIndexOf(id);
-      if (idx === -1) return;
-      const rec = _focusReturn.splice(idx, 1)[0];
-      if (wasOpen && rec.trigger && document.contains(rec.trigger)) {
+      const rec = idx === -1 ? null : _focusReturn.splice(idx, 1)[0];
+      // Remove inert before returning focus so an underlying sheet/button is
+      // focusable again synchronously.
+      syncModalInert();
+      if (wasOpen && rec && rec.trigger && document.contains(rec.trigger)) {
         try { rec.trigger.focus(); } catch (err) {}
       }
-      if (_pendingUpdateReady && !topOpenSheet()) { _pendingUpdateReady=false; const banner=$("updateBanner"); if(banner)banner.hidden=false; }
+      // Deferred update/external-state hooks are sheet-state concerns, not
+      // focus-return concerns. They must run even for a sheet without a
+      // matching focus record.
+      if (_pendingUpdateReady && !topOpenSheet()) { _pendingUpdateReady=false; showUpdateBanner(_reloadRequiredForVersion); }
+      if ((_externalStatePending || _externalSettingsPending || _externalThemePending) && !topOpenSheet()) scheduleExternalStateSync();
     }
 
     function getActiveTrip() {
@@ -1360,9 +2097,12 @@ document.addEventListener("DOMContentLoaded", () => {
       activeTripId = newTrip.id;
       currentView = "planner";
       if (!saveTrips()) {
-        trips = previousTrips;
-        activeTripId = previousActive;
-        currentView = previousActive ? "planner" : "home";
+        const externalConflict = failedWriteWasExternal();
+        if (!externalConflict) {
+          trips = previousTrips;
+          activeTripId = previousActive;
+          currentView = previousActive ? "planner" : "home";
+        }
         reportStorageFailure();
         return null;
       }
@@ -1371,26 +2111,19 @@ document.addEventListener("DOMContentLoaded", () => {
       return newTrip;
     }
 
+    function cloneTripGraphForDevice(sourceTrip, name) {
+      return Operations.cloneTripGraph(sourceTrip, (kind) => {
+        if (kind === "activity") return newActivityUid();
+        return newTripId(kind === "document" ? "doc" : kind);
+      }, { name, unarchive:true });
+    }
+
     function duplicateTrip(sourceTrip) {
       if (!sourceTrip) return null;
-      const copy = JSON.parse(JSON.stringify(sourceTrip));
-      const oldTripId = copy.id;
-      copy.id = newTripId("trip");
-      copy.name = tf("trip_copy_name", { name: sourceTrip.name || t("menu_new_trip") });
-      delete copy.migrationSource; delete copy.legacyHomeSignature; delete copy.archived; delete copy.archivedAt;
-      const idMap = new Map(); idMap.set(oldTripId, copy.id);
-      (copy.days || []).forEach(day => (day.items || []).forEach(item => {
-        const old = item && item.uid; const fresh = newActivityUid();
-        if (old) idMap.set(old, fresh); if (item) item.uid = fresh;
-      }));
-      const remapCollection = (rows, prefix) => (Array.isArray(rows) ? rows : []).forEach(row => {
-        if (!row || typeof row !== "object") return; const old=row.id; const fresh=newTripId(prefix); if(old)idMap.set(old,fresh); row.id=fresh;
-      });
-      remapCollection(copy.stays,"stay"); remapCollection(copy.journeys,"journey"); remapCollection(copy.expenses,"expense"); remapCollection(copy.documents,"doc"); remapCollection(copy.tasks,"task");
-      const remapLink = row => { if(!row||typeof row!=="object"||!row.linkedId)return; if(idMap.has(row.linkedId))row.linkedId=idMap.get(row.linkedId); };
-      (copy.expenses||[]).forEach(remapLink); (copy.documents||[]).forEach(remapLink);
+      const copy = cloneTripGraphForDevice(sourceTrip, tf("trip_copy_name", { name: sourceTrip.name || t("menu_new_trip") }));
+      if (!copy) return null;
       const previous=snapshotState(); trips.push(copy); activeTripId=copy.id; days=copy.days||[]; currentDayIndex=0; currentView="home";
-      if(!saveTrips()){restoreStateFrom(previous);reportStorageFailure();return null;}
+      if(!saveTrips()){const externalConflict=failedWriteWasExternal();if(!externalConflict)restoreStateFrom(previous);reportStorageFailure();return null;}
       resetAIForTripContextChange(); renderCurrentView(); updateHeaderInfo(); showToast(t("toast_trip_duplicated")); return copy;
     }
 
@@ -1403,7 +2136,7 @@ document.addEventListener("DOMContentLoaded", () => {
       days = activeTrip.days || [];
       currentDayIndex = 0;
       currentView = opts.stayHome ? "home" : "planner";
-      if (!saveTrips()) { restoreStateFrom(previous); reportStorageFailure(); return false; }
+      if (!saveTrips()) { const externalConflict=failedWriteWasExternal(); if(!externalConflict)restoreStateFrom(previous); reportStorageFailure(); return false; }
       resetAIForTripContextChange();
       renderCurrentView();
       updateHeaderInfo();
@@ -1513,6 +2246,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!target || !today) return null;
       return Math.round((target.getTime() - today.getTime()) / 86400000);
     }
+    function dateDiffDays(fromDate, toDate) {
+      const a=parseDateOnly(fromDate),b=parseDateOnly(toDate);
+      if(!a||!b)return null;
+      return Math.round((b.getTime()-a.getTime())/86400000);
+    }
 
     function upcomingTrip() {
       const today = todayISO();
@@ -1538,8 +2276,16 @@ document.addEventListener("DOMContentLoaded", () => {
       const parts = [];
       if (dest) parts.push(dest);
       if (range) parts.push((formatDateOnly(range.first, {day:"numeric",month:"short"}) || range.first) + (range.last !== range.first ? " – " + (formatDateOnly(range.last, {day:"numeric",month:"short"}) || range.last) : ""));
-      if (count != null && count > 0) parts.push(tf("home_days_until", { n: count }));
-      else if (count === 0) parts.push(t("home_starts_today"));
+      const today= todayISO();
+      if (range && today < range.first && count != null) parts.push(tf("home_days_until", { n: count }));
+      else if (range && today === range.first && range.first === range.last) parts.push(t("home_trip_ends_today"));
+      else if (range && today >= range.first && today <= range.last) {
+        const current=(dateDiffDays(range.first,today)||0)+1,total=(dateDiffDays(range.first,range.last)||0)+1;
+        parts.push(tf("home_trip_day_progress",{current,total}));
+        if(today===range.last)parts.push(t("home_trip_ends_today"));
+      } else if (range && today > range.last) {
+        const ended=dateDiffDays(range.last,today);if(ended!=null)parts.push(tf("home_trip_ended_days",{n:ended}));
+      } else if (count === 0) parts.push(t("home_starts_today"));
       meta.textContent = parts.join(" · ") || t("home_no_dates");
       card.appendChild(meta);
       const homeRefDate = range && range.first > todayISO() ? range.first : todayISO();
@@ -1558,7 +2304,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const nextJourneyRaw = Logistics.nextJourney(trip, homeRefDate);
       if (nextJourneyRaw) {
         const j=journeyInfo(nextJourneyRaw); const b=document.createElement("div"); b.className="home-review home-logistics-next";
-        b.textContent="🚆 " + t("home_next_journey") + ": " + (j.date ? j.date + " · " : "") + (j.origin || "…") + " → " + (j.destination || "…");
+        b.textContent="🚆 " + t("home_next_journey") + ": " + (j.date ? j.date + " · " : "") + flowPairText(j.origin || "…", j.destination || "…");
         card.appendChild(b);
       }
       const mobility = mobilitySummaryLabels(trip);
@@ -1570,7 +2316,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const readiness = tripReadiness(trip);
       const review = document.createElement("div");
       review.className = "home-review home-readiness readiness-" + readiness.level;
-      review.textContent = readinessLabel(readiness.level) + (readiness.rows.length ? " · " + readiness.rows[0].text : "");
+      if (readiness.issues) review.textContent = readinessLabel(readiness.level) + " · " + readiness.rows.find(r => r.level === "issue").text;
+      else if (readiness.actions) review.textContent = readinessLabel(readiness.level) + " · " + tf("readiness_open_actions", { n: readiness.actions });
+      else review.textContent = readinessLabel(readiness.level);
       card.appendChild(review);
       const travelCount = (trip.days || []).filter(isTravelDay).length;
       if (travelCount) {
@@ -1696,7 +2444,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return {activity:"📍",journey:"🚆",checkin:"🏨",checkout:"🧳",travel:"➡️",travelday:"🧭"}[kind]||"•";
     }
     function todayAttentionText(code) {
-      const map={overlap:"today_issue_overlap",travel_insufficient:"today_issue_travel_insufficient",stay_conflict:"today_issue_stay_conflict",travel_unresolved:"today_check_travel_unresolved",booking_planned:"today_check_booking_planned",payment_attention:"today_check_payment",access_needs_check:"today_check_access",document_needed:"today_check_document",confirmation_available:"today_info_confirmation"};
+      const map={overlap:"today_issue_overlap",travel_insufficient:"today_issue_travel_insufficient",stay_conflict:"today_issue_stay_conflict",travel_unresolved:"today_check_travel_unresolved",booking_planned:"today_check_booking_planned",payment_attention:"today_check_payment",document_needed:"today_check_document",confirmation_available:"today_info_confirmation"};
       return t(map[code]||code);
     }
     function todayEventTime(event) {
@@ -1722,8 +2470,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (event.bookingStatus) bits.push(bookingStatusLabel(event.bookingStatus));
       if (event.paymentStatus) bits.push(paymentStatusLabel(event.paymentStatus));
-      if (accessActive && event.kind==="activity" && event.accessStatus) {
-        const a=event.accessStatus==="problem"?t("access_badge_problem"):(event.accessStatus==="needscheck"?t("access_badge_needscheck"):t("access_badge_verified"));
+      if (accessActive && event.kind==="activity" && event.accessStatus && event.accessStatus!=="needscheck") {
+        const a=event.accessStatus==="problem"?t("access_badge_problem"):t("access_badge_verified");
         bits.push("♿ "+a);
       }
       if (event.temporal==="started_uncertain") bits.push(t("today_started_uncertain"));
@@ -1781,7 +2529,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const add=(label,fn)=>{const b=document.createElement("button");b.type="button";b.className="today-action";b.textContent=label;b.addEventListener("click",fn);wrap.appendChild(b);};
       if(event&&event.kind==="activity"&&event.source)add(event.completed?t("today_mark_open"):t("today_mark_done"),()=>toggleTodayActivityCompleted(event,trip));
       if (event && event.source) add(event.kind==="travel"?t("today_edit_travel"):t("today_details"),()=>todayOpenDetails(event,trip));
-      if (event && event.location) add(t("today_maps"),()=>window.open(mapsUrl({location:event.location,title:event.title}),"_blank"));
+      if (event && event.location) add(t("today_maps"),()=>window.open(mapsUrl({location:event.location,title:event.title}),"_blank","noopener"));
       if (event && event.hasBooking && event.source && ["activity","stay","journey"].includes(event.source.kind)) add(t("today_booking_details"),()=>todayOpenBooking(event,trip));
       if (event && event.documentIndices && event.documentIndices.length) add(t("today_view_document"),()=>{setOperationsTrip(trip.id);openDocumentSheet(event.documentIndices[0]);});
       return wrap;
@@ -1814,7 +2562,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderTodayAttention(model) {
       if (!model.attention.length) return null;
       const section=document.createElement("section");section.className="today-section";section.innerHTML=`<div class="today-section-title">${escapeHtml(t("today_attention"))}</div>`;
-      model.attention.forEach(a=>{const row=document.createElement("div");row.className="today-attention-row "+a.level;row.innerHTML=`<span class="today-attention-level">${escapeHtml(a.level==="issue"?t("today_level_issue"):a.level==="check"?t("today_level_check"):t("today_level_info"))}</span><span>${escapeHtml(todayAttentionText(a.code))}</span>`;section.appendChild(row);});return section;
+      model.attention.forEach(a=>{const row=document.createElement("div");row.className="today-attention-row "+a.level;row.innerHTML=`<span class="today-attention-level">${escapeHtml(a.level==="issue"?t("today_level_issue"):a.level==="action"?t("today_level_action"):t("today_level_info"))}</span><span>${escapeHtml(todayAttentionText(a.code))}</span>`;section.appendChild(row);});return section;
     }
     function renderTodayTasks(trip, model) {
       if(!trip||!model||!model.date)return null;
@@ -1897,7 +2645,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if(model.preview){const note=document.createElement("div");note.className="today-preview-banner";note.textContent=t("today_preview_notice");body.appendChild(note);}
       if(!model.date){const empty=document.createElement("section");empty.className="today-section";empty.textContent=t("today_preview_empty");body.appendChild(empty);return;}
       if(model.dayType!=="normal"){
-        const travel=document.createElement("section");travel.className="today-section";const parts=[];if(model.travelDay){if(model.travelDay.origin||model.travelDay.destination)parts.push((model.travelDay.origin||"…")+" → "+(model.travelDay.destination||"…"));if(model.travelDay.departureTime||model.travelDay.arrivalTime)parts.push((model.travelDay.departureTime||"…")+" → "+(model.travelDay.arrivalTime||"…"));if(model.travelDay.arrivalDate)parts.push(t("travel_day_arrival_date_short")+": "+model.travelDay.arrivalDate);}
+        const travel=document.createElement("section");travel.className="today-section";const parts=[];if(model.travelDay){if(model.travelDay.origin||model.travelDay.destination)parts.push(flowPairText(model.travelDay.origin||"…", model.travelDay.destination||"…"));if(model.travelDay.departureTime||model.travelDay.arrivalTime)parts.push(flowPairText(model.travelDay.departureTime||"…", model.travelDay.arrivalTime||"…"));if(model.travelDay.arrivalDate)parts.push(t("travel_day_arrival_date_short")+": "+model.travelDay.arrivalDate);}
         travel.innerHTML=`<div class="today-section-title">${escapeHtml(dayTypeIcon(model.dayType)+" "+dayTypeLabel(model.dayType))}</div>${parts.length?`<div class="today-section-note">${escapeHtml(parts.join(" · "))}</div>`:""}`;body.appendChild(travel);
       }
       const progress=renderTodayProgress(model);if(progress)body.appendChild(progress);
@@ -1961,8 +2709,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const readiness=tripReadiness(trip),readinessBtn=$("plannerReadinessBtn"),readinessMeta=$("plannerReadinessMeta"),readinessTitle=$("plannerReadinessTitle"),readinessIcon=$("plannerReadinessIcon");
       if(readinessBtn){readinessBtn.classList.remove("is-ready","is-check","is-issue");readinessBtn.classList.add("is-"+readiness.level);}
       if(readinessTitle)readinessTitle.textContent=t("planner_readiness_title")+" · "+readinessLabel(readiness.level);
-      if(readinessMeta)readinessMeta.textContent=readiness.rows.length?tf("planner_readiness_meta",{issues:readiness.issues,checks:readiness.checks}):t("planner_readiness_clear");
-      if(readinessIcon)readinessIcon.textContent=readiness.level==="issue"?"!":readiness.level==="check"?"?":"✓";
+      if(readinessMeta)readinessMeta.textContent=readiness.issues
+        ? tf("planner_readiness_issue_meta",{issues:readiness.issues,actions:readiness.actions})
+        : readiness.actions ? tf("planner_readiness_actions_meta",{actions:readiness.actions}) : t("planner_readiness_clear");
+      if(readinessIcon)readinessIcon.textContent=readiness.level==="issue"?"!":"✓";
     }
 
     function renderCurrentView() {
@@ -2018,7 +2768,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const first = days[0].date;
         const last  = days[days.length - 1].date;
         // DATEONLY-001: calendar date, formatted in UTC.
-        const fmt = (d) => formatDateOnly(d, { day: "numeric", month: "numeric" }) || d;
+        const fmt = (d) => formatDateOnly(d, { day: "numeric", month: "short" }) || d;
         dateLine.innerText = first === last ? fmt(first) : `${fmt(first)}–${fmt(last)}`;
       } else {
         dateLine.innerText = "";
@@ -2062,6 +2812,11 @@ document.addEventListener("DOMContentLoaded", () => {
            meant to stop relying on. commitState() persists both keys inside
            the same transaction, or rolls the deletion back entirely. */
         const wasActive = activeTripId === tripId;
+        // The guard must run BEFORE the single-slot safety snapshot is
+        // overwritten. A refused stale delete must never consume the user's
+        // previous recovery snapshot. commitState() keeps its own second guard
+        // as defense-in-depth.
+        if (!guardExternalStateBeforeWrite()) return;
         if (!writeSafetySnapshot("trip-delete")) { showToast(t("toast_snapshot_failed")); return; }
         const ok = commitState(() => {
           trips = trips.filter(x => x.id !== tripId);
@@ -2094,7 +2849,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // fields, so they are absent here. They are NOT purged from stored data:
       // normalizeSettings() spreads the incoming object over these defaults, so
       // any legacy value in an older backup is preserved untouched.
-      defaultReminderMin: 30, apiKey: "",
+      defaultReminderMin: 30,
       // I18N-001 (v1030): UI language only. Never applied to user content.
       // Absent from every pre-v1030 backup, so normalizeSettings() supplies
       // the "he" default and old backups keep restoring unchanged.
@@ -2144,36 +2899,76 @@ document.addEventListener("DOMContentLoaded", () => {
       ["transport", "food", "attractions"].forEach((k) => {
         out.prefs[k] = Array.isArray(out.prefs[k]) ? out.prefs[k].slice() : [];
       });
+      // AI-SECRET-002 (v2800): API credentials are server-side only. Legacy
+      // backups/settings may still contain this historical field, but it is
+      // discarded during normalization and never becomes active app state.
+      delete out.apiKey;
       return out;
     }
 
     const _hadStoredSettingsAtBoot = localStorage.getItem(KEY_SETTINGS) !== null;
     const _storedSettingsAtBoot = safeParseJSON(KEY_SETTINGS, null);
+    const _hadLegacyClientApiKeyField = !!(_storedSettingsAtBoot && typeof _storedSettingsAtBoot === "object" && Object.prototype.hasOwnProperty.call(_storedSettingsAtBoot, "apiKey"));
     let settings = normalizeSettings(_storedSettingsAtBoot);
     const _shouldPersistFirstRunLanguage = !_hadStoredSettingsAtBoot;
-    if (_shouldPersistFirstRunLanguage) settings.language = detectFirstRunLanguage();
+    if (_shouldPersistFirstRunLanguage || _unreadableStorageKeys.has(KEY_SETTINGS)) settings.language = detectFirstRunLanguage();
     // I18N-001 / I18N-FIRST-RUN-001: adopt the stored language immediately;
     // on a true first run this is the supported device language, or English
     // when the device language is not currently supported.
     currentLang = settings.language;
+    updatePreferenceStorageTokens();
 
-    /* ── AI-SECRET-001 (v1040 / E8) ──
-       The hidden AI helper wrote settings.apiKey straight into
-       localStorage and exportBackup() copied `settings` verbatim, so a
-       backup FILE could carry a live Anthropic key off the device. AI stays
-       hidden and inactive, and the field, its input and its listener are all
-       left in place so re-enabling AI later behind a proxy needs no
-       reconstruction — but the secret is now redacted on every path that
-       leaves memory: saveSettings(), exportBackup() and the safety snapshot.
-       Any key already stored by an earlier build is purged once, below. ── */
+    /* ── AI-SECRET-002 (v2800) ──
+       Provider/API credentials do not belong in the PWA. The old hidden
+       Anthropic field and listener are removed. For backward compatibility,
+       normalizeSettings() accepts old settings objects but drops `apiKey`,
+       and every outbound/persisted settings copy defensively deletes it. ── */
     function settingsForStorage(source) {
       const copy = JSON.parse(JSON.stringify(source === undefined ? settings : source));
-      copy.apiKey = "";
+      delete copy.apiKey;
       return copy;
     }
 
     function saveSettings() {
-      return writeAll([[KEY_SETTINGS, JSON.stringify(settingsForStorage())]]);
+      const value = JSON.stringify(settingsForStorage());
+      const ok = writeAll([[KEY_SETTINGS, value]]);
+      if (ok) _settingsStorageToken = value;
+      return ok;
+    }
+
+    function adoptExternalSettingsFromStorage() {
+      let raw = "";
+      try { raw = localStorage.getItem(KEY_SETTINGS) || ""; } catch (_) {}
+      const storedSettings = safeParseJSON(KEY_SETTINGS, null);
+      if (!storedSettings || typeof storedSettings !== "object") {
+        _settingsStorageToken = raw;
+        _externalSettingsPending = false;
+        return false;
+      }
+      settings = normalizeSettings(storedSettings);
+      currentLang = settings.language;
+      _settingsStorageToken = raw;
+      _externalSettingsPending = false;
+      applyLanguage();
+      renderPrefsAndAccess();
+      renderCurrentView();
+      updateHeaderInfo();
+      return true;
+    }
+
+    function normalizedStoredTheme() {
+      try { return localStorage.getItem(KEY_THEME) === "dark" ? "dark" : "light"; }
+      catch (_) { return "light"; }
+    }
+
+    function adoptExternalThemeFromStorage() {
+      const next = normalizedStoredTheme();
+      const token = canonicalPreferenceTokens();
+      if (token) _themeStorageToken = token.theme;
+      _externalThemePending = false;
+      if (next === "dark") document.documentElement.setAttribute("data-theme", "dark");
+      else document.documentElement.removeAttribute("data-theme");
+      return true;
     }
 
     // Lock in the automatically selected first-run language so a later device
@@ -2183,6 +2978,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function commitSettings(mutate) {
+      // SETTINGS-SYNC-003 (v3200): preference writes obey the same stale-code
+      // safety boundary as trip writes, and they detect missed storage events
+      // before mutating the whole settings object.
+      if (!guardPreferenceWrite("settings")) return false;
       const before = JSON.stringify(settings);
       try { mutate(); }
       catch (err) { console.warn("TripMaster: settings mutation failed", err); reportStorageFailure(); return false; }
@@ -2193,11 +2992,10 @@ document.addEventListener("DOMContentLoaded", () => {
       return false;
     }
 
-    // One-time purge of a key persisted by v1030 or earlier.
-    if (settings.apiKey) {
-      settings.apiKey = "";
-      saveSettings();
-    }
+    // One-time purge of the historical client API-key property, including an
+    // empty placeholder left by older releases. This rewrites settings using
+    // the normalized secret-free shape.
+    if (_hadLegacyClientApiKeyField) saveSettings();
 
     /* ── Toast ──
        UNDO-001 (v1040 / A5): the toast can now carry one action button.
@@ -2256,10 +3054,14 @@ document.addEventListener("DOMContentLoaded", () => {
       closeConfirmSheet("aboutSheet");
     }
     function buildFeedbackTemplate() {
+      const audit=_lastBetaAudit||Operations.auditTripGraph(trips,activeTripId);
+      const faults=readRuntimeDiagnostics();
       return [
         t("fb_head"),
         t("fb_version") + APP_VERSION,
         t("fb_device"),
+        t("fb_health") + `${audit.status} · E${audit.errors.length} · W${audit.warnings.length}`,
+        t("fb_runtime_faults") + String(faults.length),
         t("fb_desc"),
         t("fb_steps")
       ].join("\n");
@@ -2463,6 +3265,14 @@ document.addEventListener("DOMContentLoaded", () => {
       catch (e) { return dateOnlyToISO(dt); }
     }
 
+    function flowPairText(fromValue, toValue) {
+      const from = String(fromValue == null || fromValue === "" ? "…" : fromValue);
+      const to = String(toValue == null || toValue === "" ? "…" : toValue);
+      const isolate = (value) => "\u2068" + value + "\u2069";
+      const rtl = document.documentElement.getAttribute("dir") === "rtl";
+      return isolate(from) + (rtl ? " ← " : " → ") + isolate(to);
+    }
+
     function dateOnlyWeekday(dateString) {
       const dt = parseDateOnly(dateString);
       return dt ? dt.getUTCDay() : -1;
@@ -2490,12 +3300,10 @@ document.addEventListener("DOMContentLoaded", () => {
        traveller entered. There is no state that means "TripMaster checked". */
     function accessBadgeHtml(item) {
       const status = itemAccessStatus(item);
-      if (!status) return "";
+      if (!status || status === "needscheck") return "";
       const verified = status === "verified" || status === "stepfree";
-      const label = verified ? t("access_badge_verified")
-                  : status === "problem" ? t("access_badge_problem")
-                  : t("access_badge_needscheck");
-      const icon  = verified ? "✓" : status === "problem" ? "⚠️" : "🔎";
+      const label = verified ? t("access_badge_verified") : t("access_badge_problem");
+      const icon  = verified ? "✓" : "⚠️";
       const cls = verified ? "verified" : status;
       return `<span class="access-badge access-${cls}">${icon} ${escapeHtml(label)}</span>`;
     }
@@ -2551,7 +3359,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
        The smallest honest fix was to give the existing structured field a
        picker (see #addCategory) rather than grow the heuristic into a
-       six-language keyword table that would still be wrong for the seventh.
+       language-specific keyword table that would keep becoming incomplete as more locales are added.
        The guess is kept, unchanged, as the "automatic" fallback so no
        existing activity changes its icon. ── */
     function getCategoryIcon(item) {
@@ -2732,7 +3540,7 @@ document.addEventListener("DOMContentLoaded", () => {
       $("confirmDeleteDayMsg").innerText = count > 0
         ? tf("confirm_del_day_msg_n", { n: count })
         : t("confirm_del_day_msg_empty");
-      _pendingDeleteDay = () => deleteDay(index);
+      _pendingDeleteDay = () => { const currentIndex = days.findIndex(x => x && x.id === day.id); if (currentIndex >= 0) deleteDay(currentIndex); };
       openConfirmSheet("confirmDeleteDaySheet");
     }
 
@@ -2747,6 +3555,25 @@ document.addEventListener("DOMContentLoaded", () => {
       renderActivities(currentDayIndex);
       if (currentView === "today") renderTodayView();
       showUndoToast(t("toast_day_deleted"));
+    }
+
+    function findActivityPositionByStableId(dayId, itemUid) {
+      if (typeof itemUid !== "string" || !itemUid) return null;
+      const preferred = typeof dayId === "string" && dayId ? days.findIndex((day) => day && day.id === dayId) : -1;
+      const order = preferred >= 0 ? [preferred, ...days.map((_,i)=>i).filter((i)=>i!==preferred)] : days.map((_,i)=>i);
+      for (const dayIndex of order) {
+        const day = days[dayIndex];
+        if (!day || !Array.isArray(day.items)) continue;
+        const itemIndex = day.items.findIndex((item) => item && item.uid === itemUid);
+        if (itemIndex >= 0) return { dayIndex, itemIndex, day, item:day.items[itemIndex] };
+      }
+      return null;
+    }
+
+    function deleteActivityByStableId(dayId, itemUid) {
+      const pos = findActivityPositionByStableId(dayId, itemUid);
+      if (!pos) { showToast(t("toast_activity_not_found")); return; }
+      deleteActivity(pos.dayIndex, pos.itemIndex);
     }
 
     function deleteActivity(dayIndex, itemIndex) {
@@ -2777,7 +3604,7 @@ document.addEventListener("DOMContentLoaded", () => {
            write the day is rolled back instead of sitting in the strip until
            the next reload silently drops it. */
         if (!commitState(() => {
-          days.push({ date: nextDate, items: [] });
+          days.push({ id:newTripId("day"), date: nextDate, items: [] });
           currentDayIndex = days.length - 1;
         })) return;
         renderDays();
@@ -2795,6 +3622,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if(!targetDate){showToast(t("toast_day_duplicate_failed"));return;}
       const copy=JSON.parse(JSON.stringify(source));
       const sourceDate=source.date;
+      copy.id=newTripId("day");
       copy.date=targetDate;
       (copy.items||[]).forEach(item=>{
         if(!item||typeof item!=="object")return;
@@ -3006,7 +3834,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // hero card event listeners
       document.getElementById("heroNavBtn").addEventListener("click", () => {
-        window.open(navUrl, "_blank");
+        window.open(navUrl, "_blank", "noopener");
       });
       document.getElementById("heroDoneBtn").addEventListener("click", () => {
         if (!commitState(() => { heroItem.completed = !heroItem.completed; })) return;
@@ -3022,7 +3850,7 @@ document.addEventListener("DOMContentLoaded", () => {
         openEditSheet(dayIndex, heroOriginalIndex);
       });
       attachLongPressDelete(document.getElementById("heroTapArea"), () => {
-        confirmDeleteActivity(() => deleteActivity(dayIndex, heroOriginalIndex));
+        confirmDeleteActivity(() => deleteActivityByStableId(day.id, heroItem.uid));
       });
 
       // Show timeline for the rest of activities
@@ -3095,6 +3923,15 @@ document.addEventListener("DOMContentLoaded", () => {
         const div = document.createElement("div");
         div.className = `item ${item.completed ? "completed" : ""} ${isNow ? "now-item" : ""}`;
         div.dataset.index = originalIndex;
+        const a11yBooking=itemBookingInfo(item),a11yPayment=itemPaymentStatus(item);
+        const activityA11yLabel=[
+          t("sheet_edit_title") + ": " + (item.title || ""),
+          item.time || "",
+          itemEndTime(item) || "",
+          itemLocation(item) || "",
+          a11yBooking.status ? bookingStatusLabel(a11yBooking.status) : "",
+          a11yPayment ? paymentStatusLabel(a11yPayment) : ""
+        ].filter(Boolean).join(" · ");
 
         div.innerHTML = `
           <div class="item-time-col">
@@ -3107,7 +3944,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="item-dot"></div>
             <div class="item-line-bottom" style="${isLastItem(arrIdx) ? "flex:0 0 0" : ""}"></div>
           </div>
-          <div class="item-body" role="button" tabindex="0" aria-label="${escapeHtml(t("sheet_edit_title") + ": " + (item.title || ""))}">
+          <div class="item-body" role="button" tabindex="0" aria-label="${escapeHtml(activityA11yLabel)}">
             ${isNow ? `<div class="now-badge-inline">${escapeHtml(t("item_now_badge"))}</div>` : ""}
             <div class="item-category-icon">${catIcon}</div>
             <div class="item-title">${escapeHtml(item.title)}</div>
@@ -3170,7 +4007,7 @@ document.addEventListener("DOMContentLoaded", () => {
        RC1 and no stored field can be dropped by the section being closed.
        ADVANCED_FIELD_IDS is also what drives the badge, which is the reason
        a user can tell an activity carries hidden detail without opening it. */
-    const ADVANCED_FIELD_IDS = ["addEndTime", "addAccessStatus", "addAccessNote",
+    const ADVANCED_FIELD_IDS = ["addEndTime",
       "addTravelMode", "addTravelDuration", "addTravelNote", "addBookingStatus", "addBookingPaymentStatus",
       "addBookingReference", "addBookingProvider", "addBookingNote"];
 
@@ -3211,20 +4048,6 @@ document.addEventListener("DOMContentLoaded", () => {
       updateMoreBadge();
     }
 
-    function updateAccessQuickButton(item) {
-      const btn = $("editAccessQuick"), text = $("editAccessQuickText");
-      if (!btn || !text) return;
-      const status = item ? itemAccessStatus(item) : "";
-      const visible = !!item && (hasAccessPlanningNeeds() || !!status || !!itemAccessNote(item));
-      btn.style.display = visible ? "flex" : "none";
-      if (!visible) return;
-      const label = isAccessVerified(item) ? t("access_badge_verified")
-        : status === "problem" ? t("access_badge_problem")
-        : status === "needscheck" ? t("access_badge_needscheck")
-        : t("access_status_unknown");
-      text.textContent = t("access_quick_open") + " · " + label;
-    }
-
     function activityFormTimesValid() {
       const startRaw = $("addTime").value;
       const endRaw = $("addEndTime").value;
@@ -3241,8 +4064,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const loc = $("addLocation").value.trim();
       const end = $("addEndTime").value;
       const cat = $("addCategory").value;
-      const st  = $("addAccessStatus").value;
-      const anote = $("addAccessNote").value.trim();
       const travelMode = $("addTravelMode").value;
       const travelDurRaw = $("addTravelDuration").value;
       const travelNote = $("addTravelNote").value.trim();
@@ -3253,11 +4074,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (/^[0-9]{2}:[0-9]{2}$/.test(end || "")) item.endTime = end; else delete item.endTime;
       if (item.endTime && $("addEndNextDay") && $("addEndNextDay").checked) item.endNextDay = true; else delete item.endNextDay;
       if (CATEGORY_ORDER.indexOf(cat) !== -1) item.category = cat; else delete item.category;
-      if (st === "verified") item.accessStatus = item.accessStatus === "stepfree" ? "stepfree" : "verified";
-      else if (st === "problem" || st === "needscheck") item.accessStatus = st;
-      else if (st === "stepfree") item.accessStatus = st; // legacy value accepted from restored/hand-edited data
-      else delete item.accessStatus;
-      if (anote) item.accessNote = anote; else delete item.accessNote;
+      // v2500: accessStatus/accessNote are intentionally untouched here. They
+      // may exist on older/restored activities and must survive normal edits,
+      // but travellers no longer maintain venue accessibility manually.
       const travel = (item.travelFromPrevious && typeof item.travelFromPrevious === "object")
         ? Object.assign({}, item.travelFromPrevious) : {};
       if (DayIntel.MODES.indexOf(travelMode) !== -1) travel.mode = travelMode; else delete travel.mode;
@@ -3299,7 +4118,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const ok = commitState(() => {
         let day = days.find(d => d.date === date);
         if (!day) {
-          day = { date, items: [] };
+          day = { id:newTripId("day"), date, items: [] };
           days.push(day);
           days.sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
         }
@@ -3317,15 +4136,14 @@ document.addEventListener("DOMContentLoaded", () => {
       return { day: target, item: item };
     }
 
-    function editItem(dayIndex, itemIndex) {
+    function editItem() {
       const title = $("addTitle").value.trim();
       if (!title) { showToast(t("toast_missing_title")); return null; }
       if (!activityFormTimesValid()) return null;
 
-      const oldDay = days[dayIndex];
-      if (!oldDay || !oldDay.items[itemIndex]) { showToast(t("toast_activity_not_found")); closeSheet(); return null; }
-
-      const item = oldDay.items[itemIndex];
+      const pos = findActivityPositionByStableId(editingDayId, editingItemUid);
+      if (!pos) { showToast(t("toast_activity_not_found")); closeSheet(); return null; }
+      const { dayIndex, itemIndex, day:oldDay, item } = pos;
       const newDate = $("addDate").value || oldDay.date;
       let target = null;
 
@@ -3341,7 +4159,7 @@ document.addEventListener("DOMContentLoaded", () => {
           oldDay.items.splice(itemIndex, 1);
           let newDay = days.find(d => d.date === newDate);
           if (!newDay) {
-            newDay = { date: newDate, items: [] };
+            newDay = { id:newTripId("day"), date: newDate, items: [] };
             days.push(newDay);
             days.sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
           }
@@ -3365,8 +4183,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function duplicateEditingActivity() {
-      if(editingDayIndex===null||editingItemIndex===null)return;
-      const day=days[editingDayIndex],source=day&&day.items&&day.items[editingItemIndex];if(!source)return;
+      const pos=findActivityPositionByStableId(editingDayId,editingItemUid);if(!pos)return;
+      const {dayIndex,day,item:source}=pos;
       const copy=JSON.parse(JSON.stringify(source));copy.uid=newActivityUid();copy.completed=false;
       if(copy.booking&&typeof copy.booking==="object"){
         const booking=Object.assign({},copy.booking);delete booking.reference;delete booking.paymentStatus;
@@ -3374,15 +4192,15 @@ document.addEventListener("DOMContentLoaded", () => {
         if(Object.keys(booking).length)copy.booking=booking;else delete copy.booking;
       }
       const ok=commitState(()=>{day.items.push(copy);day.items.sort((a,b)=>String(a.time||"").localeCompare(String(b.time||"")));});if(!ok)return;
-      const newIndex=day.items.indexOf(copy);renderDays();renderActivities(editingDayIndex);showToast(t("toast_activity_duplicated"));openEditSheet(editingDayIndex,newIndex,{expandMore:false});
+      const newIndex=day.items.indexOf(copy);renderDays();renderActivities(dayIndex);showToast(t("toast_activity_duplicated"));openEditSheet(dayIndex,newIndex,{expandMore:false});
     }
 
     function openSheet() {
       isSavingActivity = false;
       $("addSaveBtn").disabled = false;
       $("addWithReminderBtn").disabled = false;
-      editingDayIndex = null;
-      editingItemIndex = null;
+      editingDayId = null;
+      editingItemUid = null;
       $("sheetTitle").innerText = t("sheet_add_title");
       $("addSaveBtn").innerText = t("btn_save");
       $("addWithReminderBtn").innerText = t("btn_save_cal_add");
@@ -3401,8 +4219,6 @@ document.addEventListener("DOMContentLoaded", () => {
       $("addEndNextDay").checked = false;
       $("addLocation").value = "";
       $("addCategory").value = "";
-      $("addAccessStatus").value = "";
-      $("addAccessNote").value = "";
       $("addTravelMode").value = "";
       $("addTravelDuration").value = "";
       $("addTravelNote").value = "";
@@ -3413,7 +4229,6 @@ document.addEventListener("DOMContentLoaded", () => {
       $("addBookingNote").value = "";
       $("addDeleteBtn").style.display = "none";
       $("addDuplicateBtn").style.display = "none";
-      updateAccessQuickButton(null);
       // ADDUX-001: a new activity starts as the simple form.
       setMoreExpanded(false);
       // CAL-AFTER-SAVE-001: calendar hand-off is offered from Edit, once the
@@ -3427,10 +4242,11 @@ document.addEventListener("DOMContentLoaded", () => {
       isSavingActivity = false;
       $("addSaveBtn").disabled = false;
       $("addWithReminderBtn").disabled = false;
-      editingDayIndex  = dayIndex;
-      editingItemIndex = itemIndex;
       const day  = days[dayIndex];
-      const item = day.items[itemIndex];
+      const item = day && Array.isArray(day.items) ? day.items[itemIndex] : null;
+      if (!day || !item) { showToast(t("toast_activity_not_found")); return; }
+      editingDayId = typeof day.id === "string" ? day.id : null;
+      editingItemUid = typeof item.uid === "string" ? item.uid : null;
       $("sheetTitle").innerText = t("sheet_edit_title");
       $("addSaveBtn").innerText = t("btn_update");
       $("addWithReminderBtn").innerText = t("btn_save_cal_edit");
@@ -3445,8 +4261,6 @@ document.addEventListener("DOMContentLoaded", () => {
       $("addEndNextDay").checked = itemEndsNextDay(item);
       $("addLocation").value = itemLocation(item);
       $("addCategory").value = itemCategory(item);
-      $("addAccessStatus").value = isAccessVerified(item) ? "verified" : itemAccessStatus(item);
-      $("addAccessNote").value = itemAccessNote(item);
       const travel = itemTravelFromPrevious(item);
       $("addTravelMode").value = travel.mode || "";
       $("addTravelDuration").value = travel.durationMin == null ? "" : String(travel.durationMin);
@@ -3459,7 +4273,6 @@ document.addEventListener("DOMContentLoaded", () => {
       $("addBookingNote").value = booking.note || "";
       $("addDeleteBtn").style.display = "flex";
       $("addDuplicateBtn").style.display = "flex";
-      updateAccessQuickButton(item);
       // Collapsed by default here too, but the badge reports exactly how many
       // optional fields this activity already carries, so nothing the user
       // stored is silently invisible.
@@ -3467,9 +4280,11 @@ document.addEventListener("DOMContentLoaded", () => {
       $("addCalendarActions").style.display = "";
       openSheetEl("sheet");
       if (openOpts.expandMore) {
-        // Arrived from a travel segment: land on the field that was tapped.
+        // Advanced-entry shortcuts can choose the exact field they are fixing
+        // (travel segment, booking, etc.). Travel remains the
+        // default for older call sites.
         window.setTimeout(() => {
-          const el = $("addTravelMode");
+          const el = $(openOpts.focusField || "addTravelMode");
           const sheet = $("sheet");
           if (el && sheet && sheet.classList.contains("open")) {
             try { el.focus(); } catch (err) {}
@@ -3486,8 +4301,8 @@ document.addEventListener("DOMContentLoaded", () => {
       $("addSaveBtn").disabled = true;
       $("addWithReminderBtn").disabled = true;
 
-      if (editingDayIndex !== null && editingItemIndex !== null) {
-        editItem(editingDayIndex, editingItemIndex);
+      if (editingItemUid !== null) {
+        editItem();
       } else {
         addItem();
       }
@@ -3507,12 +4322,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (note) parts.push(note);
       const status = itemAccessStatus(item);
       const anote  = itemAccessNote(item);
-      if (status || anote) {
+      if ((status && status !== "needscheck") || anote) {
         const label = (status === "verified" || status === "stepfree") ? t("access_badge_verified")
-                    : status === "problem"  ? t("access_badge_problem")
-                    : status === "needscheck" ? t("access_badge_needscheck")
-                    : t("access_status_unknown");
-        parts.push(t("export_access_line") + ": " + label + (anote ? " - " + anote : ""));
+                    : status === "problem" ? t("access_badge_problem") : "";
+        parts.push(t("export_access_line") + ": " + [label, anote].filter(Boolean).join(" - "));
       }
       const travel = itemTravelFromPrevious(item);
       if (travel.known) {
@@ -3574,8 +4387,9 @@ document.addEventListener("DOMContentLoaded", () => {
       function downloadIcsFallback() {
         const url = URL.createObjectURL(blob);
         const a   = document.createElement("a");
-        a.href = url; a.download = `${title}.ics`; a.click();
-        URL.revokeObjectURL(url);
+        a.href = url; a.download = `${title}.ics`;
+        document.body.appendChild(a);a.click();a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),0);
         showToast(t("toast_ics_downloaded"));
       }
 
@@ -3885,26 +4699,79 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* ── Backup / Restore ── */
     function exportBackup() {
+      const canonical=readCanonicalTripState();
+      if(!canonical){reportStorageFailure();return;}
       /* backupVersion stays 2 (A8). Every v1040 field rides inside the
          existing trips/days/items objects, so a v1040 backup restores into
          v1030 with the new keys simply ignored, and a v1030 backup restores
-         here unchanged. AI-SECRET-001 (E8): settingsForStorage() redacts
-         settings.apiKey, so a backup FILE can no longer carry a live key. */
+         here unchanged. AI-SECRET-002: settingsForStorage() drops any
+         historical client API-key property, so backup files cannot carry it. */
+      const storedSettings = safeParseJSON(KEY_SETTINGS, null);
+      const canonicalSettings = (storedSettings && typeof storedSettings === "object") ? normalizeSettings(storedSettings) : settings;
       const backup = {
         app: "TripMaster", backupVersion: 2, exportedAt: new Date().toISOString(),
-        trips, activeTripId,
+        trips: canonical.trips, activeTripId: canonical.activeTripId,
         homeDays: normalizeDays(safeParseJSON(KEY_DAYS, [])),
-        settings: settingsForStorage(), theme: localStorage.getItem(KEY_THEME) || "light"
+        settings: settingsForStorage(canonicalSettings), theme: localStorage.getItem(KEY_THEME) || "light"
       };
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8" });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
-      a.href = url; a.download = `tripmaster-backup-${todayISO()}.json`; a.click();
-      URL.revokeObjectURL(url);
+      a.href = url; a.download = `tripmaster-backup-${todayISO()}.json`;
+      document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),0);
       showToast(t("toast_backup_downloaded"));
     }
 
+
+    /* v1800 — single-trip portability. Imports always create a new trip. */
+    function activeTripPackage() {
+      const trip=getActiveTrip();
+      return trip ? Operations.portableTripEnvelope(trip,{appVersion:APP_VERSION,exportedAt:new Date().toISOString()}) : null;
+    }
+    function safeTripFilename(trip) {
+      const raw=String((trip&&trip.name)||"trip");
+      const base=typeof raw.normalize==="function"?raw.normalize("NFKD"):raw;
+      const cleaned=base.replace(/[^\p{L}\p{N}._-]+/gu,"-").replace(/^-+|-+$/g,"").slice(0,60)||"trip";
+      return `tripmaster-${cleaned}-${todayISO()}.json`;
+    }
+    function tripPackageBlob(pkg){return new Blob([JSON.stringify(pkg,null,2)],{type:"application/json;charset=utf-8"});}
+    function downloadTripPackageFile(trip,pkg){
+      const blob=tripPackageBlob(pkg),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=safeTripFilename(trip);document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),0);
+    }
+    function downloadTripPackage(){
+      const trip=getActiveTrip(),pkg=activeTripPackage();if(!trip||!pkg){showToast(t("trip_transfer_no_active"));return;}downloadTripPackageFile(trip,pkg);showToast(t("toast_trip_exported"));
+    }
+    async function shareTripPackage(){
+      const trip=getActiveTrip(),pkg=activeTripPackage();if(!trip||!pkg){showToast(t("trip_transfer_no_active"));return;}
+      const blob=tripPackageBlob(pkg),name=safeTripFilename(trip);
+      try{
+        if(typeof File==="function"&&navigator.share){const file=new File([blob],name,{type:"application/json"}),data={files:[file],title:trip.name||"TripMaster"};if(!navigator.canShare||navigator.canShare(data)){await navigator.share(data);showToast(t("toast_trip_shared"));return;}}
+      }catch(err){if(err&&err.name==="AbortError")return;console.warn("TripMaster: trip file share unavailable",err);}
+      downloadTripPackageFile(trip,pkg);showToast(t("toast_trip_share_fallback"));
+    }
+    function recordTransferResult(operation,result){
+      _storageHealth.lastTransfer={at:new Date().toISOString(),operation,result};
+      recordLifecycleEvent("transfer",_storageHealth.lastTransfer);
+    }
+    function importPortableTripPayload(payload){
+      if(!guardExternalStateBeforeWrite())return{ok:false,reason:"external"};
+      const source=Operations.tripFromPortableEnvelope(payload);if(!source)return{ok:false,reason:"invalid"};
+      const copy=cloneTripGraphForDevice(source,typeof source.name==="string"&&source.name.trim()?source.name.trim():t("menu_new_trip"));if(!copy)return{ok:false,reason:"invalid"};
+      const previous=snapshotState();trips.push(copy);activeTripId=copy.id;days=copy.days||[];currentDayIndex=0;currentView="planner";
+      if(!saveTrips()){const externalConflict=failedWriteWasExternal();if(!externalConflict)restoreStateFrom(previous);reportStorageFailure();return{ok:false,reason:externalConflict?"external":"storage"};}
+      resetAIForTripContextChange();renderCurrentView();updateHeaderInfo();return{ok:true,trip:copy};
+    }
+    function renderTripTransferMeta(){
+      const el=$("tripTransferMeta"),exportBtn=$("tripExportBtn"),shareBtn=$("tripShareBtn");if(!el)return;const trip=getActiveTrip();
+      el.textContent=trip?tf("trip_transfer_ready",{name:trip.name||t("menu_new_trip")}):t("trip_transfer_no_active");if(exportBtn)exportBtn.disabled=!trip;if(shareBtn)shareBtn.disabled=!trip;
+    }
+
     function doRestore(backup) {
+      if(!guardExternalStateBeforeWrite())return;
+      if(!guardPreferenceStateBeforeDestructiveWrite())return;
+      const backupReport=Operations.backupPayloadReport(backup);
+      if(!backupReport.valid){recordTransferResult("restore","invalid");console.warn("TripMaster: restore payload rejected",backupReport.errors);showToast(t("toast_bad_backup"));return;}
       /* ── I18N-RESTORE-001 (v1030 RC3) ──
          UI language is an APP-level preference, not trip data, so a restore
          must not change it — matching the Reset rule from RC2. Captured here,
@@ -3917,7 +4784,7 @@ document.addEventListener("DOMContentLoaded", () => {
          Restore replaces everything on the device. A recoverable local copy
          is written FIRST and the whole operation is abandoned if that write
          fails, so the destructive step can never run without a way back. */
-      if (!writeSafetySnapshot("restore")) { showToast(t("toast_snapshot_failed")); return; }
+      if (!writeSafetySnapshot("restore")) { recordTransferResult("restore","storage");showToast(t("toast_snapshot_failed")); return; }
       const undoState    = snapshotState();
       const undoSettings = JSON.stringify(settings);
       const undoTheme    = localStorage.getItem(KEY_THEME) || "light";
@@ -3925,7 +4792,8 @@ document.addEventListener("DOMContentLoaded", () => {
       let nextTrips, nextActiveId, nextHomeDays, nextDays, nextSettings;
       if (backup.trips && Array.isArray(backup.trips)) {
         nextTrips = normalizeTrips(JSON.parse(JSON.stringify(backup.trips)));
-        const requestedActiveId = backup.activeTripId || null;
+        const requestedActiveId = typeof backup.activeTripId === "string" ? backup.activeTripId.trim() : null;
+        repairStableTripGraphIds(nextTrips);
         const restoredActive = nextTrips.filter((x) => x.id === requestedActiveId)[0] || null;
         nextActiveId = restoredActive ? restoredActive.id : null;
         nextHomeDays = normalizeDays(JSON.parse(JSON.stringify(Array.isArray(backup.homeDays) ? backup.homeDays : (Array.isArray(backup.days) ? backup.days : []))));
@@ -3949,10 +4817,15 @@ document.addEventListener("DOMContentLoaded", () => {
         nextHomeDays = [];
         nextSettings = normalizeSettings(backup.settings);
       }
+      // Legacy backups from pre-v3100 may contain duplicate/missing IDs.
+      // Repair the detached restore graph BEFORE its first storage write so a
+      // backup exported by an older TripMaster is never persisted in an
+      // ambiguous state and can round-trip through current builds.
+      repairStableTripGraphIds(nextTrips);
+
       nextSettings.language = preservedLang;
-      // AI-SECRET-001 (v1040 / E8): an older backup may still contain a key.
-      // It is never adopted into this session and never re-persisted.
-      nextSettings.apiKey = "";
+      // AI-SECRET-002: normalizeSettings() already discarded any historical
+      // client-side provider credential from this backup.
       const nextTheme = backup.theme === "dark" ? "dark" : "light";
 
       /* STORE-001 (v1040 / A7): one guarded batch. A half-written restore —
@@ -3964,8 +4837,9 @@ document.addEventListener("DOMContentLoaded", () => {
         [KEY_DAYS, JSON.stringify(nextHomeDays)],
         [KEY_SETTINGS, JSON.stringify(settingsForStorage(nextSettings))],
         [KEY_THEME, nextTheme]
-      ]);
-      if (!restored) { reportStorageFailure(); return; }
+      ], {recovery:true});
+      if (!restored) { recordTransferResult("restore","storage");reportStorageFailure(); return; }
+      recordTransferResult("restore","passed");
 
       trips = nextTrips;
       activeTripId = nextActiveId;
@@ -3974,6 +4848,7 @@ document.addEventListener("DOMContentLoaded", () => {
       currentView = activeTripId ? "planner" : "home";
       settings = nextSettings;
       const migrationAfterRestore = migrateLegacyHomeDays();
+      ensureStableTripGraphIds();
       if (migrationAfterRestore.error) {
         // Restored data is still intact under KEY_DAYS; do not claim it was migrated.
         console.warn("TripMaster: legacy Home migration deferred after restore");
@@ -3986,9 +4861,9 @@ document.addEventListener("DOMContentLoaded", () => {
          favour of the language the user is actually looking at. The backup
          SCHEMA is unchanged: language is still read, still exported, just no
          longer allowed to drive the UI. Re-persisted so a refresh agrees. */
+      updatePreferenceStorageTokens();
       if (nextTheme === "dark") document.documentElement.setAttribute("data-theme", "dark");
       else document.documentElement.removeAttribute("data-theme");
-      $("global-apikey").value = "";
       renderPrefsAndAccess();   // v1020: repaint from the merged settings
       // I18N-RESTORE-001 (v1030 RC3): settings.language now holds the
       // PRESERVED language, so this keeps currentLang in sync and is a no-op
@@ -4042,32 +4917,113 @@ document.addEventListener("DOMContentLoaded", () => {
       return text;
     }
 
-    function buildAgentTripContext(trip) {
-      const context = Finance.buildTripContext(trip, { includeSensitive:false });
-      const access = (settings && settings.access) || {};
-      const prefs = (settings && settings.prefs) || {};
-      context.access = {
-        active: hasAccessPlanningNeeds(),
-        stepFree: !!access.stepFree,
-        avoidStairs: !!access.avoidStairs,
-        elevatorNeeded: !!access.elevatorNeeded,
-        shortWalks: !!access.shortWalks,
-        companion: !!access.companion,
-        quietPreference: !!access.quietPreference,
-        wheelchair: ["none","manual","electric"].indexOf(access.wheelchair) !== -1 ? access.wheelchair : "none"
-      };
-      context.mobility = {
-        noSelfDrive: !!prefs.noSelfDrive,
-        transport: (Array.isArray(prefs.transport) ? prefs.transport : []).filter((x) => ["walk","public","taxi","train"].indexOf(x) !== -1).slice(0,4),
-        maxWalkKm: (typeof prefs.maxWalkKm === "number" && Number.isFinite(prefs.maxWalkKm) && prefs.maxWalkKm >= 0) ? prefs.maxWalkKm : null
-      };
-      try {
-        const model = Today.buildToday(trip, { preview:false, accessActive:hasAccessPlanningNeeds() });
-        context.today = Today.sanitizedContext(model);
-      } catch (_) {
-        context.today = null;
+    function aiLocaleDescriptor() {
+      const meta = LANG_META[currentLang] || LANG_META[DEFAULT_LANG] || { lang:"en", dir:"ltr" };
+      return { language:currentLang || DEFAULT_LANG, locale:meta.lang || currentLang || "en", direction:meta.dir === "rtl" ? "rtl" : "ltr" };
+    }
+
+    function aiQuestionPolicy(prompt, intentHint) {
+      const client = window.TripMasterAIClient;
+      if (client && typeof client.questionPolicy === "function") return client.questionPolicy(prompt, intentHint);
+      return { intent:"GENERAL_TRIP", includeToday:false, includeBookingSummary:false, includeMoney:false, includeMobility:false, includeAccess:false, includeActivityAccess:false, researchLikely:false, liveDataLikely:false, scopes:["core"] };
+    }
+
+    function buildAgentTripContext(trip, policy, settingsSource) {
+      const p = policy || aiQuestionPolicy("", "GENERAL_TRIP");
+      // The legacy server still receives tripmaster-context-v1 until the
+      // October backend merge. Privacy-sensitive optional scopes are selected
+      // here so a hotel/research question does not receive Access/Mobility data.
+      const context = Finance.buildTripContext(trip, { includeSensitive:false, includeActivityAccess:p.includeActivityAccess === true });
+      // Budget/totals are personal trip data and are unnecessary for most AI
+      // questions. Keep them out of the existing legacy transport unless the
+      // question is explicitly money-related; V2 applies the same policy.
+      if (p.includeMoney !== true) delete context.money;
+      if (p.includeBookingSummary !== true) {
+        delete context.bookingAttentionCount;
+        delete context.documentAttentionCount;
+      }
+      const sourceSettings = settingsSource && typeof settingsSource === "object" ? settingsSource : settings;
+      const access = (sourceSettings && sourceSettings.access) || {};
+      const prefs = (sourceSettings && sourceSettings.prefs) || {};
+      if (p.includeAccess === true) {
+        const hasCustomRequirements = typeof access.notes === "string" && !!access.notes.trim();
+        context.access = {
+          active: !!(access.stepFree || access.avoidStairs || access.elevatorNeeded || access.shortWalks || access.companion || access.quietPreference || (access.wheelchair && access.wheelchair !== "none") || hasCustomRequirements),
+          hasCustomRequirements,
+          stepFree: !!access.stepFree,
+          avoidStairs: !!access.avoidStairs,
+          elevatorNeeded: !!access.elevatorNeeded,
+          shortWalks: !!access.shortWalks,
+          companion: !!access.companion,
+          quietPreference: !!access.quietPreference,
+          wheelchair: ["none","manual","electric"].indexOf(access.wheelchair) !== -1 ? access.wheelchair : "none"
+        };
+      }
+      if (p.includeMobility === true) {
+        context.mobility = {
+          noSelfDrive: !!prefs.noSelfDrive,
+          transport: (Array.isArray(prefs.transport) ? prefs.transport : []).filter((x) => ["walk","public","taxi","train"].indexOf(x) !== -1).slice(0,4),
+          maxWalkKm: (typeof prefs.maxWalkKm === "number" && Number.isFinite(prefs.maxWalkKm) && prefs.maxWalkKm >= 0) ? prefs.maxWalkKm : null
+        };
+      }
+      if (p.includeToday === true) {
+        try {
+          const accessActive = !!(context.access && context.access.active);
+          const model = Today.buildToday(trip, { preview:false, accessActive });
+          context.today = Today.sanitizedContext(model, { includeAccess:p.includeAccess === true });
+        } catch (_) {
+          context.today = null;
+        }
       }
       return context;
+    }
+
+    function buildAIClientSnapshot(trip, prompt, intentHint, requestId, idempotencyKey, settingsSource) {
+      const policy = aiQuestionPolicy(prompt, intentHint);
+      const legacyContext = buildAgentTripContext(trip, policy, settingsSource);
+      const client = window.TripMasterAIClient;
+      if (!client || typeof client.buildContextV2 !== "function" || typeof client.buildUserQuestionEnvelope !== "function") {
+        return { policy, legacyContext, v2Context:null, envelope:null, fingerprint:"" };
+      }
+      const v2Context = client.buildContextV2(legacyContext, {
+        today:legacyContext.today || null,
+        mobility:legacyContext.mobility || null,
+        access:legacyContext.access || null
+      }, policy);
+      const envelope = client.buildUserQuestionEnvelope({
+        prompt,
+        intentHint,
+        policy,
+        context:v2Context,
+        requestId:requestId || "",
+        idempotencyKey:idempotencyKey || requestId || "",
+        appVersion:APP_VERSION,
+        locale:aiLocaleDescriptor(),
+        v2TransportExpected:AI_V2_TRANSPORT_ENABLED === true
+      });
+      return { policy, legacyContext, v2Context, envelope, fingerprint:(envelope.trip && envelope.trip.contextFingerprint) || "" };
+    }
+
+    function currentAIContextFingerprint(req) {
+      if (!req) return "";
+      let trip = getActiveTrip();
+      let settingsSource = settings;
+      // Cross-window changes may be intentionally deferred while the AI sheet
+      // is open. Compare against persisted canonical state so a stale answer
+      // cannot render merely because this window has not repainted yet.
+      try {
+        const canonical = readCanonicalTripState();
+        if (canonical && Array.isArray(canonical.trips)) trip = canonical.trips.find((row) => row && row.id === req.tripId) || null;
+        const rawSettings = safeParseJSON(KEY_SETTINGS, null);
+        if (rawSettings && typeof rawSettings === "object") settingsSource = normalizeSettings(rawSettings);
+      } catch (_) {}
+      if (!trip || trip.id !== req.tripId) return "";
+      return buildAIClientSnapshot(trip, req.prompt, req.intentHint, "", req.baseRequestId, settingsSource).fingerprint;
+    }
+
+    function aiRequestContextStillCurrent(req) {
+      if (!req || !req.sentContextFingerprint) return true;
+      return currentAIContextFingerprint(req) === req.sentContextFingerprint;
     }
 
     function renderAgentResult(payload) {
@@ -4101,6 +5057,19 @@ document.addEventListener("DOMContentLoaded", () => {
           if (reason) lines.push(`  ${reason}`);
         });
       }
+      const aiClient = window.TripMasterAIClient;
+      if (aiClient && typeof aiClient.responseEvidenceView === "function") {
+        const evidence = aiClient.responseEvidenceView(payload);
+        if (evidence && evidence.sources && evidence.sources.length) {
+          lines.push("", t("ai_sources_heading"));
+          evidence.sources.slice(0, 6).forEach((source) => {
+            let label = source.provider || source.sourceClass || "";
+            if (!label && source.locator) { try { label = new URL(source.locator).hostname; } catch (_) {} }
+            label = humanizeAgentText(label);
+            if (label) lines.push(`• ${label}`);
+          });
+        }
+      }
       if (result.advisoryOnly === true) lines.push("", t("ai_advisory_footer"));
       out.classList.remove("loading");
       out.style.fontStyle = "normal";
@@ -4116,6 +5085,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (status === 422 || code === "invalid_context" || code === "invalid_request") return t("ai_error_context");
       if (status === 503 || code === "agent_unavailable" || code === "openai_rate_limited") return t("ai_error_unavailable");
       if (status === 502 || status === 504 || code === "agent_timeout" || code === "agent_error") return t("ai_error_temporary");
+      if (err && err.message === "invalid_ai_v2_evidence") return t("ai_error_evidence");
       if (err && err.message === "invalid_agent_response") return t("ai_error_response");
       return t("ai_error_network");
     }
@@ -4149,13 +5119,29 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       setAIRequestUi(false, "");
       const input = $("aiPromptInput");
-      if (input) input.value = "";
+      if (input) { input.value = ""; delete input.dataset.aiIntentHint; }
       const out = $("aiOutput");
       if (out) {
         out.classList.remove("loading");
         out.style.fontStyle = "normal";
         out.textContent = t("ai_output_empty");
       }
+    }
+
+    function beginAIClientTrace(req, snapshot) {
+      const now=Date.now(),policy=snapshot&&snapshot.policy||{};
+      _lastAIClientTrace={
+        requestId:req.baseRequestId,intent:policy.intent||"GENERAL_TRIP",scopes:Array.isArray(policy.scopes)?policy.scopes.slice():["core"],
+        researchLikely:policy.researchLikely===true,liveDataLikely:policy.liveDataLikely===true,
+        entityHintCount:snapshot&&snapshot.envelope&&Array.isArray(snapshot.envelope.entityHints)?snapshot.envelope.entityHints.length:0,
+        attempt:req.attempt,status:"running",durationMs:null,evidenceGate:"not_applicable",startedAtMs:now
+      };
+    }
+    function finishAIClientTrace(status, evidenceGate) {
+      if(!_lastAIClientTrace)return;
+      _lastAIClientTrace.status=String(status||"unknown").slice(0,80);
+      _lastAIClientTrace.durationMs=Math.max(0,Date.now()-(_lastAIClientTrace.startedAtMs||Date.now()));
+      if(evidenceGate)_lastAIClientTrace.evidenceGate=String(evidenceGate).slice(0,80);
     }
 
     async function executeAIRequest(req, isRetry) {
@@ -4174,7 +5160,11 @@ document.addEventListener("DOMContentLoaded", () => {
       req.inFlight = true;
       const attemptNumber = req.attempt;
       const requestId = req.baseRequestId + "-a" + req.attempt;
-      const tripContext = buildAgentTripContext(trip);
+      const aiSnapshot = buildAIClientSnapshot(trip, req.prompt, req.intentHint, requestId, req.baseRequestId);
+      const tripContext = aiSnapshot.legacyContext;
+      req.sentContextFingerprint = aiSnapshot.fingerprint;
+      req.v2Envelope = aiSnapshot.envelope;
+      beginAIClientTrace(req, aiSnapshot);
       setAIRequestUi(true, isRetry ? t("ai_state_retrying") : t("ai_state_working"));
 
       // The visible-page budget is intentionally longer than RC3. When the
@@ -4215,8 +5205,24 @@ document.addEventListener("DOMContentLoaded", () => {
           resetAIForTripContextChange();
           return;
         }
+        if (!aiRequestContextStillCurrent(req)) {
+          req.settled = true; _activeAIRequest = null; setAIRequestUi(false, "");
+          finishAIClientTrace("discarded_stale_context", "not_applicable");
+          out.classList.remove("loading"); out.style.fontStyle = "normal"; out.innerText = t("ai_context_changed");
+          return;
+        }
+        const aiClient = window.TripMasterAIClient;
+        if (aiClient && req.v2Envelope && typeof aiClient.validateV2Response === "function") {
+          const validation = aiClient.validateV2Response(data, req.v2Envelope);
+          if (validation.applicable && !validation.ok) {
+            finishAIClientTrace("blocked_evidence", validation.code);
+            const evidenceErr = new Error("invalid_ai_v2_evidence"); evidenceErr.code = validation.code; throw evidenceErr;
+          }
+          if (validation.applicable) finishAIClientTrace("validated", validation.code);
+        }
         req.settled = true;
         renderAgentResult(data);
+        if(!_lastAIClientTrace || _lastAIClientTrace.status === "running") finishAIClientTrace("success", "legacy_or_unknown");
         setAIRequestUi(false, "");
         _activeAIRequest = null;
       } catch (err) {
@@ -4227,7 +5233,8 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         const resumeAbort = req.abortReason === "resume_retry";
         const hiddenFailure = document.hidden || req.backgrounded;
-        const retryableNetwork = !status && (err && (err.name === "TypeError" || err.name === "AbortError"));
+        const timedOut = req.abortReason === "timeout";
+        const retryableNetwork = !timedOut && !status && (err && (err.name === "TypeError" || err.name === "AbortError"));
         if (req.attempt < 2 && (resumeAbort || hiddenFailure || retryableNetwork)) {
           req.abortReason = "";
           if (document.hidden) {
@@ -4239,6 +5246,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
         req.settled = true; _activeAIRequest = null; setAIRequestUi(false, "");
+        if(!_lastAIClientTrace || !["blocked_evidence","discarded_stale_context"].includes(_lastAIClientTrace.status)) finishAIClientTrace(status?"http_"+status:"network_error",err&&err.code||"");
         out.classList.remove("loading"); out.style.fontStyle = "normal";
         out.innerText = aiErrorText(status, data, err);
         console.warn("TripMaster Agent request failed", { status, code:data && data.error && data.error.code || "", error:err && err.name || "Error" });
@@ -4276,8 +5284,10 @@ document.addEventListener("DOMContentLoaded", () => {
       }, 900);
     }
 
-    function runAI(promptOverride) {
-      const prompt = String(promptOverride || $("aiPromptInput").value || "").trim();
+    function runAI(promptOverride, intentHintOverride) {
+      const input = $("aiPromptInput");
+      const prompt = String(promptOverride || input.value || "").trim();
+      const intentHint = String(intentHintOverride || input.dataset.aiIntentHint || "").trim();
       if (!prompt) { showToast(t("ai_prompt_required")); return; }
       const trip = getActiveTrip();
       if (!trip) { showToast(t("ai_no_trip")); return; }
@@ -4288,7 +5298,7 @@ document.addEventListener("DOMContentLoaded", () => {
       $("aiImportBtn").style.display = "none";
       if (!navigator.onLine) { out.classList.remove("loading"); out.innerText = t("ai_error_offline"); return; }
       const req = {
-        seq: ++_aiRequestSeq, tripId:trip.id, prompt, attempt:0, settled:false,
+        seq: ++_aiRequestSeq, tripId:trip.id, prompt, intentHint, attempt:0, settled:false,
         backgrounded:false, resumeRetryScheduled:false, timeoutId:null, controller:null, abortReason:"", inFlight:false,
         baseRequestId:"tm-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,10)
       };
@@ -4413,11 +5423,22 @@ document.addEventListener("DOMContentLoaded", () => {
        used as the effective base whenever the trip has no stays[].
        ══════════════════════════════════════════════════════════════════ */
     let _logisticsTripId = null;
-    let _editingStayIndex = null;
-    let _editingJourneyIndex = null;
+    let _editingStayId = null;
+    let _editingJourneyId = null;
 
     function logisticsTrip() {
       return trips.find((x) => x.id === _logisticsTripId) || null;
+    }
+
+    function rowIndexByStableId(rows, id) {
+      if (!Array.isArray(rows) || typeof id !== "string" || !id) return -1;
+      return rows.findIndex((row) => row && String(row.id || "") === id);
+    }
+    function rowFromEditorRef(rows, ref) {
+      if (!Array.isArray(rows)) return null;
+      if (Number.isInteger(ref)) return rows[ref] || null;
+      if (typeof ref === "string" && ref) return rows.find((row) => row && String(row.id || "") === ref) || null;
+      return null;
     }
 
 
@@ -4444,7 +5465,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const title=document.createElement("div"); title.className="logistics-row-title"; title.textContent="🏨 " + (info.name || t("stay_unnamed"));
             const meta=document.createElement("div"); meta.className="logistics-row-meta";
             const bits=[];
-            if (info.startDate || info.endDate) bits.push((info.startDate || "…") + " → " + (info.endDate || "…"));
+            if (info.startDate || info.endDate) bits.push(flowPairText(info.startDate || "…", info.endDate || "…"));
             if (info.location) bits.push(info.location);
             if (info.status) bits.push(bookingStatusLabel(info.status));
             const pay=Finance.paymentStatus(info && trip.stays && trip.stays[index] && trip.stays[index].paymentStatus); if(pay) bits.push(paymentStatusLabel(pay));
@@ -4461,10 +5482,10 @@ document.addEventListener("DOMContentLoaded", () => {
           .forEach(({index,info})=>{
             const row=document.createElement("button"); row.type="button"; row.className="logistics-row";
             const title=document.createElement("div"); title.className="logistics-row-title";
-            title.textContent="🚆 " + ((info.origin || "…") + " → " + (info.destination || "…"));
+            title.textContent="🚆 " + flowPairText(info.origin || "…", info.destination || "…");
             const meta=document.createElement("div"); meta.className="logistics-row-meta";
-            const bits=[]; if (info.date) bits.push(info.arrivalDate&&info.arrivalDate!==info.date ? info.date+" → "+info.arrivalDate : info.date); if (info.mode) bits.push(journeyModeLabel(info.mode));
-            if (info.departureTime || info.arrivalTime) bits.push((info.departureTime||"…")+" → "+(info.arrivalTime||"…"));
+            const bits=[]; if (info.date) bits.push(info.arrivalDate&&info.arrivalDate!==info.date ? flowPairText(info.date, info.arrivalDate) : info.date); if (info.mode) bits.push(journeyModeLabel(info.mode));
+            if (info.departureTime || info.arrivalTime) bits.push(flowPairText(info.departureTime||"…", info.arrivalTime||"…"));
             if (info.status) bits.push(bookingStatusLabel(info.status));
             const pay=Finance.paymentStatus(trip.journeys && trip.journeys[index] && trip.journeys[index].paymentStatus); if(pay) bits.push(paymentStatusLabel(pay));
             meta.textContent=bits.join(" · ") || t("overview_fact_unset");
@@ -4482,23 +5503,23 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     function closeLogisticsSheet() { _logisticsTripId = null; closeSheetEl("logisticsSheet"); }
 
-    function openStaySheet(index) {
+    function openStaySheet(ref) {
       const trip=logisticsTrip(); if (!trip) return;
-      _editingStayIndex = Number.isInteger(index) ? index : null;
-      const raw = _editingStayIndex !== null && Array.isArray(trip.stays) ? trip.stays[_editingStayIndex] : null;
+      const raw = rowFromEditorRef(trip.stays, ref);
+      _editingStayId = raw && typeof raw.id === "string" ? raw.id : null;
       const info = stayInfo(raw);
-      $("staySheetHead").textContent = _editingStayIndex === null ? t("stay_add_title") : t("stay_edit_title");
+      $("staySheetHead").textContent = _editingStayId === null ? t("stay_add_title") : t("stay_edit_title");
       $("stayName").value=info.name; $("stayLocation").value=info.location;
       $("stayStartDate").value=info.startDate; $("stayEndDate").value=info.endDate;
       $("stayCheckInTime").value=info.checkInTime; $("stayCheckOutTime").value=info.checkOutTime;
       $("stayStatus").value=info.status; $("stayPaymentStatus").value=Finance.paymentStatus(raw && raw.paymentStatus); $("stayConfirmation").value=info.confirmation;
       $("stayProvider").value=info.provider; $("stayBookingUrl").value=info.bookingUrl; $("stayNote").value=info.note;
-      $("stayDeleteBtn").hidden = _editingStayIndex === null;
+      $("stayDeleteBtn").hidden = _editingStayId === null;
       const more=$("staySheet").querySelector("details.logistics-more");
       if (more) more.open=!!(info.checkInTime||info.checkOutTime||info.status||Finance.paymentStatus(raw && raw.paymentStatus)||info.confirmation||info.provider||info.bookingUrl||info.note);
       openSheetEl("staySheet");
     }
-    function closeStaySheet() { _editingStayIndex=null; closeSheetEl("staySheet"); }
+    function closeStaySheet() { _editingStayId=null; closeSheetEl("staySheet"); }
 
     function readStayForm(existing) {
       const name=$("stayName").value.trim(), location=$("stayLocation").value.trim();
@@ -4534,38 +5555,40 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function saveStay() {
       const trip=logisticsTrip(); if (!trip) return;
-      const existing=_editingStayIndex!==null && Array.isArray(trip.stays) ? trip.stays[_editingStayIndex] : null;
+      const index=rowIndexByStableId(trip.stays,_editingStayId);
+      const existing=index>=0 ? trip.stays[index] : null;
+      if (_editingStayId && !existing) return;
       const next=readStayForm(existing); if (!next) return;
       const ok=commitState(()=>{
         if (!Array.isArray(trip.stays)) trip.stays=[];
-        if (_editingStayIndex===null) trip.stays.push(next); else trip.stays[_editingStayIndex]=next;
+        if (_editingStayId===null) trip.stays.push(next); else trip.stays[index]=next;
       });
       if (!ok) return;
       closeStaySheet(); refreshAfterLogisticsChange(trip); showToast(t("toast_stay_saved"));
     }
     function deleteStay() {
-      const trip=logisticsTrip(); if (!trip || _editingStayIndex===null || !Array.isArray(trip.stays) || !trip.stays[_editingStayIndex]) return;
-      const index=_editingStayIndex;
+      const trip=logisticsTrip(); if (!trip || _editingStayId===null || !Array.isArray(trip.stays)) return;
+      const index=rowIndexByStableId(trip.stays,_editingStayId); if(index<0)return;
       if (!commitState(()=>{ trip.stays.splice(index,1); if (!trip.stays.length) delete trip.stays; }, {})) return;
       closeStaySheet(); refreshAfterLogisticsChange(trip); showUndoToast(t("toast_stay_deleted"));
     }
 
-    function openJourneySheet(index) {
+    function openJourneySheet(ref) {
       const trip=logisticsTrip(); if (!trip) return;
-      _editingJourneyIndex = Number.isInteger(index) ? index : null;
-      const raw = _editingJourneyIndex !== null && Array.isArray(trip.journeys) ? trip.journeys[_editingJourneyIndex] : null;
+      const raw = rowFromEditorRef(trip.journeys, ref);
+      _editingJourneyId = raw && typeof raw.id === "string" ? raw.id : null;
       const info=journeyInfo(raw);
-      $("journeySheetHead").textContent = _editingJourneyIndex===null ? t("journey_add_title") : t("journey_edit_title");
+      $("journeySheetHead").textContent = _editingJourneyId===null ? t("journey_add_title") : t("journey_edit_title");
       $("journeyDate").value=info.date; $("journeyMode").value=info.mode; $("journeyOrigin").value=info.origin; $("journeyDestination").value=info.destination;
       $("journeyDepartureTime").value=info.departureTime; $("journeyArrivalTime").value=info.arrivalTime; $("journeyArrivalDate").value=info.arrivalDate||"";
       $("journeyProvider").value=info.provider; $("journeyServiceNumber").value=info.serviceNumber;
       $("journeyStatus").value=info.status; $("journeyPaymentStatus").value=Finance.paymentStatus(raw && raw.paymentStatus); $("journeyConfirmation").value=info.confirmation; $("journeyNote").value=info.note;
-      $("journeyDeleteBtn").hidden = _editingJourneyIndex===null;
+      $("journeyDeleteBtn").hidden = _editingJourneyId===null;
       const more=$("journeySheet").querySelector("details.logistics-more");
       if (more) more.open=!!(info.departureTime||info.arrivalTime||info.arrivalDate||info.provider||info.serviceNumber||info.status||Finance.paymentStatus(raw && raw.paymentStatus)||info.confirmation||info.note);
       openSheetEl("journeySheet");
     }
-    function closeJourneySheet() { _editingJourneyIndex=null; closeSheetEl("journeySheet"); }
+    function closeJourneySheet() { _editingJourneyId=null; closeSheetEl("journeySheet"); }
 
     function readJourneyForm(existing) {
       const date=$("journeyDate").value, origin=$("journeyOrigin").value.trim(), destination=$("journeyDestination").value.trim();
@@ -4594,18 +5617,20 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     function saveJourney() {
       const trip=logisticsTrip(); if (!trip) return;
-      const existing=_editingJourneyIndex!==null && Array.isArray(trip.journeys) ? trip.journeys[_editingJourneyIndex] : null;
+      const index=rowIndexByStableId(trip.journeys,_editingJourneyId);
+      const existing=index>=0 ? trip.journeys[index] : null;
+      if (_editingJourneyId && !existing) return;
       const next=readJourneyForm(existing); if (!next) return;
       const ok=commitState(()=>{
         if (!Array.isArray(trip.journeys)) trip.journeys=[];
-        if (_editingJourneyIndex===null) trip.journeys.push(next); else trip.journeys[_editingJourneyIndex]=next;
+        if (_editingJourneyId===null) trip.journeys.push(next); else trip.journeys[index]=next;
       });
       if (!ok) return;
       closeJourneySheet(); refreshAfterLogisticsChange(trip); showToast(t("toast_journey_saved"));
     }
     function deleteJourney() {
-      const trip=logisticsTrip(); if (!trip || _editingJourneyIndex===null || !Array.isArray(trip.journeys) || !trip.journeys[_editingJourneyIndex]) return;
-      const index=_editingJourneyIndex;
+      const trip=logisticsTrip(); if (!trip || _editingJourneyId===null || !Array.isArray(trip.journeys)) return;
+      const index=rowIndexByStableId(trip.journeys,_editingJourneyId); if(index<0)return;
       if (!commitState(()=>{ trip.journeys.splice(index,1); if (!trip.journeys.length) delete trip.journeys; }, {})) return;
       closeJourneySheet(); refreshAfterLogisticsChange(trip); showUndoToast(t("toast_journey_deleted"));
     }
@@ -4617,8 +5642,8 @@ document.addEventListener("DOMContentLoaded", () => {
        never a second booking database and never a network integration.
        ══════════════════════════════════════════════════════════════════ */
     let _operationsTripId = null;
-    let _editingExpenseIndex = null;
-    let _editingDocumentIndex = null;
+    let _editingExpenseId = null;
+    let _editingDocumentId = null;
     let _bookingCenterFilter = "all";
     let _documentsFilter = "all";
     let _moneyFilter = "all";
@@ -4639,7 +5664,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const resolved = Finance.resolveLinkedEntity(trip, type, id, Logistics);
       if (resolved.state !== "resolved") return t("link_unresolved");
       if (type === "stay") { const x=stayInfo(resolved.entity); return "🏨 " + (x.name || x.location || t("stay_unnamed")); }
-      if (type === "journey") { const x=journeyInfo(resolved.entity); return "🚆 " + ((x.origin||"…") + " → " + (x.destination||"…")); }
+      if (type === "journey") { const x=journeyInfo(resolved.entity); return "🚆 " + flowPairText(x.origin||"…", x.destination||"…"); }
       if (type === "activity") return "🎟️ " + ((resolved.entity && resolved.entity.title) || t("expense_link_activity"));
       return t("link_unresolved");
     }
@@ -4651,10 +5676,11 @@ document.addEventListener("DOMContentLoaded", () => {
       add("", t("link_none"));
       add("trip|" + trip.id, "🧳 " + (trip.name || t("link_trip_level")));
       tripStays(trip).forEach((raw,index)=>{ const id=Finance.cleanString(raw.id); if(!id)return; const x=stayInfo(raw); add("stay|"+id,"🏨 "+(x.name||x.location||t("stay_unnamed"))); });
-      tripJourneys(trip).forEach((raw,index)=>{ const id=Finance.cleanString(raw.id); if(!id)return; const x=journeyInfo(raw); add("journey|"+id,"🚆 "+((x.origin||"…")+" → "+(x.destination||"…"))); });
+      tripJourneys(trip).forEach((raw,index)=>{ const id=Finance.cleanString(raw.id); if(!id)return; const x=journeyInfo(raw); add("journey|"+id,"🚆 "+flowPairText(x.origin||"…", x.destination||"…")); });
       Finance.activityRows(trip).forEach((row)=>{
         const uid=Finance.cleanString(row.item.uid);
-        const value=uid ? "activity|"+uid : "activitypos|"+row.dayIndex+"|"+row.itemIndex;
+        if(!uid)return; // Unpersisted legacy identity is not a safe link target.
+        const value="activity|"+uid;
         add(value,"🎟️ "+(row.item.title||t("expense_link_activity"))+(row.day.date?" · "+row.day.date:""));
       });
       if (currentType && currentId) {
@@ -4816,15 +5842,15 @@ document.addEventListener("DOMContentLoaded", () => {
       renderMoneyHub();renderCurrentView();if($("overviewSheet").classList.contains("open")&&trip.id===activeTripId)renderOverview();showToast(t("toast_budget_saved"));
     }
 
-    function openExpenseSheet(index) {
-      const trip=operationsTrip();if(!trip)return;_editingExpenseIndex=Number.isInteger(index)?index:null;
-      const raw=_editingExpenseIndex!==null&&Array.isArray(trip.expenses)?trip.expenses[_editingExpenseIndex]:null, info=Finance.expenseInfo(raw);
-      $("expenseSheetHead").textContent=_editingExpenseIndex===null?t("expense_add_title"):t("expense_edit_title");
+    function openExpenseSheet(ref) {
+      const trip=operationsTrip();if(!trip)return;const raw=rowFromEditorRef(trip.expenses,ref);_editingExpenseId=raw&&typeof raw.id==="string"?raw.id:null;
+      const info=Finance.expenseInfo(raw);
+      $("expenseSheetHead").textContent=_editingExpenseId===null?t("expense_add_title"):t("expense_edit_title");
       $("expenseTitle").value=info.title;$("expenseAmount").value=info.amount==null?"":String(info.amount);populateCurrencySelect($("expenseCurrency"),info.currency||Finance.preferredCurrency(trip)||"",trip);$("expenseCategory").value=info.category||"other";$("expenseDate").value=info.date;$("expensePaymentStatus").value=info.paymentStatus;$("expensePaidBy").value=info.paidBy;$("expenseNote").value=info.note;
-      populateEntityLinkSelect($("expenseLink"),trip,info.linkedType,info.linkedId);$("expenseDeleteBtn").hidden=_editingExpenseIndex===null;
+      populateEntityLinkSelect($("expenseLink"),trip,info.linkedType,info.linkedId);$("expenseDeleteBtn").hidden=_editingExpenseId===null;
       const more=$("expenseSheet").querySelector("details.logistics-more");if(more)more.open=!!(info.date||info.paymentStatus||info.paidBy||info.linkedType||info.note);openSheetEl("expenseSheet");
     }
-    function closeExpenseSheet(){_editingExpenseIndex=null;closeSheetEl("expenseSheet");}
+    function closeExpenseSheet(){_editingExpenseId=null;closeSheetEl("expenseSheet");}
 
     function readExpenseForm(existing) {
       const title=$("expenseTitle").value.trim(),amount=Finance.validPositiveAmount($("expenseAmount").value),currency=Finance.currencyCode($("expenseCurrency").value);
@@ -4835,8 +5861,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if(Finance.validDate(date))next.date=date;else delete next.date;if(Finance.PAYMENT_STATUSES.indexOf(pay)!==-1)next.paymentStatus=pay;else delete next.paymentStatus;if(paidBy)next.paidBy=paidBy;else delete next.paidBy;if(note)next.note=note;else delete next.note;
       return {next,linkSpec:readLinkSelection($("expenseLink").value)};
     }
-    function saveExpense(){const trip=operationsTrip();if(!trip)return;const existing=_editingExpenseIndex!==null&&Array.isArray(trip.expenses)?trip.expenses[_editingExpenseIndex]:null;const read=readExpenseForm(existing);if(!read)return;const ok=commitState(()=>{applyLinkToRecord(read.next,read.linkSpec,trip);if(!Array.isArray(trip.expenses))trip.expenses=[];if(_editingExpenseIndex===null)trip.expenses.push(read.next);else trip.expenses[_editingExpenseIndex]=read.next;const cs=(trip.currencySettings&&typeof trip.currencySettings==="object")?Object.assign({},trip.currencySettings):{};if(!Finance.currencyCode(cs.primaryCurrency))cs.primaryCurrency=read.next.currency;trip.currencySettings=cs;});if(!ok)return;closeExpenseSheet();renderMoneyHub();renderCurrentView();if($("overviewSheet").classList.contains("open")&&trip.id===activeTripId)renderOverview();showToast(t("toast_expense_saved"));}
-    function deleteExpense(){const trip=operationsTrip();if(!trip||_editingExpenseIndex===null||!Array.isArray(trip.expenses)||!trip.expenses[_editingExpenseIndex])return;const index=_editingExpenseIndex;if(!commitState(()=>{trip.expenses.splice(index,1);if(!trip.expenses.length)delete trip.expenses;}))return;closeExpenseSheet();renderMoneyHub();renderCurrentView();showUndoToast(t("toast_expense_deleted"));}
+    function saveExpense(){const trip=operationsTrip();if(!trip)return;const index=rowIndexByStableId(trip.expenses,_editingExpenseId),existing=index>=0?trip.expenses[index]:null;if(_editingExpenseId&&!existing)return;const read=readExpenseForm(existing);if(!read)return;const ok=commitState(()=>{applyLinkToRecord(read.next,read.linkSpec,trip);if(!Array.isArray(trip.expenses))trip.expenses=[];if(_editingExpenseId===null)trip.expenses.push(read.next);else trip.expenses[index]=read.next;const cs=(trip.currencySettings&&typeof trip.currencySettings==="object")?Object.assign({},trip.currencySettings):{};if(!Finance.currencyCode(cs.primaryCurrency))cs.primaryCurrency=read.next.currency;trip.currencySettings=cs;});if(!ok)return;closeExpenseSheet();renderMoneyHub();renderCurrentView();if($("overviewSheet").classList.contains("open")&&trip.id===activeTripId)renderOverview();showToast(t("toast_expense_saved"));}
+    function deleteExpense(){const trip=operationsTrip();if(!trip||_editingExpenseId===null||!Array.isArray(trip.expenses))return;const index=rowIndexByStableId(trip.expenses,_editingExpenseId);if(index<0)return;if(!commitState(()=>{trip.expenses.splice(index,1);if(!trip.expenses.length)delete trip.expenses;}))return;closeExpenseSheet();renderMoneyHub();renderCurrentView();showUndoToast(t("toast_expense_deleted"));}
 
     function openDocumentsSheet(tripId){const trip=setOperationsTrip(tripId);if(!trip)return;_documentsFilter="all";renderDocumentsHub();openSheetEl("documentsSheet");}
     function closeDocumentsSheet(){closeSheetEl("documentsSheet");}
@@ -4862,11 +5888,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if(!rows.length){const e=document.createElement("div");e.className="logistics-empty";e.textContent=showAll?t("documents_empty"):t("documents_no_needed");stand.appendChild(e);}
     }
 
-    function openDocumentSheet(index){const trip=operationsTrip();if(!trip)return;_editingDocumentIndex=Number.isInteger(index)?index:null;const raw=_editingDocumentIndex!==null&&Array.isArray(trip.documents)?trip.documents[_editingDocumentIndex]:null,info=Finance.documentInfo(raw);$("documentSheetHead").textContent=_editingDocumentIndex===null?t("document_add_title"):t("document_edit_title");$("documentLabel").value=info.label;$("documentType").value=info.type||"other";$("documentStatus").value=info.status;$("documentReference").value=info.reference;$("documentUrl").value=info.url;$("documentNote").value=info.note;populateEntityLinkSelect($("documentLink"),trip,info.linkedType,info.linkedId);$("documentDeleteBtn").hidden=_editingDocumentIndex===null;const more=$("documentSheet").querySelector("details.logistics-more");if(more)more.open=!!(info.reference||info.url||info.note||info.linkedType);openSheetEl("documentSheet");}
-    function closeDocumentSheet(){_editingDocumentIndex=null;closeSheetEl("documentSheet");}
+    function openDocumentSheet(ref){const trip=operationsTrip();if(!trip)return;const raw=rowFromEditorRef(trip.documents,ref);_editingDocumentId=raw&&typeof raw.id==="string"?raw.id:null;const info=Finance.documentInfo(raw);$("documentSheetHead").textContent=_editingDocumentId===null?t("document_add_title"):t("document_edit_title");$("documentLabel").value=info.label;$("documentType").value=info.type||"other";$("documentStatus").value=info.status;$("documentReference").value=info.reference;$("documentUrl").value=info.url;$("documentNote").value=info.note;populateEntityLinkSelect($("documentLink"),trip,info.linkedType,info.linkedId);$("documentDeleteBtn").hidden=_editingDocumentId===null;const more=$("documentSheet").querySelector("details.logistics-more");if(more)more.open=!!(info.reference||info.url||info.note||info.linkedType);openSheetEl("documentSheet");}
+    function closeDocumentSheet(){_editingDocumentId=null;closeSheetEl("documentSheet");}
     function readDocumentForm(existing){const label=$("documentLabel").value.trim();if(!label){showToast(t("toast_document_label_required"));return null;}const next=(existing&&typeof existing==="object")?Object.assign({},existing):{id:financeId("doc")};next.label=label;const type=$("documentType").value,status=$("documentStatus").value,reference=$("documentReference").value.trim(),url=$("documentUrl").value.trim(),note=$("documentNote").value.trim();next.type=Finance.DOCUMENT_TYPES.indexOf(type)!==-1?type:"other";if(Finance.DOCUMENT_STATUSES.indexOf(status)!==-1)next.status=status;else delete next.status;if(reference)next.reference=reference;else delete next.reference;if(url)next.url=url;else delete next.url;if(note)next.note=note;else delete next.note;return{next,linkSpec:readLinkSelection($("documentLink").value)};}
-    function saveDocument(){const trip=operationsTrip();if(!trip)return;const existing=_editingDocumentIndex!==null&&Array.isArray(trip.documents)?trip.documents[_editingDocumentIndex]:null,read=readDocumentForm(existing);if(!read)return;const ok=commitState(()=>{applyLinkToRecord(read.next,read.linkSpec,trip);if(!Array.isArray(trip.documents))trip.documents=[];if(_editingDocumentIndex===null)trip.documents.push(read.next);else trip.documents[_editingDocumentIndex]=read.next;});if(!ok)return;closeDocumentSheet();renderDocumentsHub();renderCurrentView();if($("overviewSheet").classList.contains("open")&&trip.id===activeTripId)renderOverview();showToast(t("toast_document_saved"));}
-    function deleteDocument(){const trip=operationsTrip();if(!trip||_editingDocumentIndex===null||!Array.isArray(trip.documents)||!trip.documents[_editingDocumentIndex])return;const index=_editingDocumentIndex;if(!commitState(()=>{trip.documents.splice(index,1);if(!trip.documents.length)delete trip.documents;}))return;closeDocumentSheet();renderDocumentsHub();renderCurrentView();showUndoToast(t("toast_document_deleted"));}
+    function saveDocument(){const trip=operationsTrip();if(!trip)return;const index=rowIndexByStableId(trip.documents,_editingDocumentId),existing=index>=0?trip.documents[index]:null;if(_editingDocumentId&&!existing)return;const read=readDocumentForm(existing);if(!read)return;const ok=commitState(()=>{applyLinkToRecord(read.next,read.linkSpec,trip);if(!Array.isArray(trip.documents))trip.documents=[];if(_editingDocumentId===null)trip.documents.push(read.next);else trip.documents[index]=read.next;});if(!ok)return;closeDocumentSheet();renderDocumentsHub();renderCurrentView();if($("overviewSheet").classList.contains("open")&&trip.id===activeTripId)renderOverview();showToast(t("toast_document_saved"));}
+    function deleteDocument(){const trip=operationsTrip();if(!trip||_editingDocumentId===null||!Array.isArray(trip.documents))return;const index=rowIndexByStableId(trip.documents,_editingDocumentId);if(index<0)return;if(!commitState(()=>{trip.documents.splice(index,1);if(!trip.documents.length)delete trip.documents;}))return;closeDocumentSheet();renderDocumentsHub();renderCurrentView();showUndoToast(t("toast_document_deleted"));}
 
 
     /* ══════════════════════════════════════════════════════════════════
@@ -4878,8 +5904,59 @@ document.addEventListener("DOMContentLoaded", () => {
     let _tripBoardTab = "agenda";
     let _tripTaskFilter = "open";
 
+    /* ══════════════════════════════════════════════════════════════════
+       TRIP BRIEF (v2000): local command summary + privacy-safe share text.
+       The shared/copied representation deliberately excludes confirmation
+       codes, booking references, notes and exact financial amounts. */
+    let _tripBriefTripId = null;
+    function tripBriefTrip(){return trips.find(x=>x.id===_tripBriefTripId)||getActiveTrip();}
+    function tripBriefDateRangeText(trip){
+      const range=tripDateRange(trip);if(!range)return t("overview_fact_unset");
+      const f=d=>formatDateOnly(d,{day:"numeric",month:"short",year:"numeric"})||d;
+      return range.first===range.last?f(range.first):f(range.first)+" – "+f(range.last);
+    }
+    function tripBriefSafeText(trip){
+      if(!trip)return "";
+      const lines=[trip.name||"TripMaster"];
+      const dest=tripDestination(trip),range=tripDateRange(trip),readiness=tripReadiness(trip),stats=tripTaskStats(trip);
+      if(dest)lines.push(t("trip_brief_destination")+": "+dest);
+      if(range)lines.push(t("trip_brief_dates")+": "+tripBriefDateRangeText(trip));
+      const stays=tripStays(trip).map(stayInfo).filter(x=>x.status!=="cancelled");
+      if(stays.length){lines.push("");lines.push(t("trip_brief_section_logistics")+":");stays.forEach(st=>{const bits=["🏨 "+(st.name||t("stay_unnamed"))];if(st.startDate||st.endDate)bits.push(flowPairText(st.startDate||"…", st.endDate||"…"));if(st.location)bits.push(st.location);lines.push("- "+bits.join(" · "));});}
+      const journeys=tripJourneys(trip).map(journeyInfo).filter(x=>x.status!=="cancelled");
+      journeys.forEach(j=>{const bits=["🚆 "+flowPairText(j.origin||"…", j.destination||"…")];if(j.date)bits.push(j.date);if(j.provider)bits.push(j.provider);if(j.serviceNumber)bits.push(j.serviceNumber);lines.push("- "+bits.join(" · "));});
+      lines.push("");lines.push(t("trip_brief_section_readiness")+": "+(readiness.rows.length?tf("trip_brief_readiness_counts",{issues:readiness.issues,actions:readiness.actions}):t("trip_brief_readiness_ready")));
+      lines.push(t("trip_brief_open_tasks")+": "+stats.open);
+      lines.push(t("trip_brief_docs_needed")+": "+Finance.documentNeedsAttention(trip).length);
+      lines.push(t("trip_brief_booking_attention")+": "+Finance.bookingAttentionEntries(trip,Logistics).length);
+      return lines.join("\n");
+    }
+    function briefFactRow(label,value){const row=document.createElement("div");row.className="overview-fact";const k=document.createElement("span");k.className="overview-fact-key";k.textContent=label;const v=document.createElement("span");v.className="overview-fact-val";v.textContent=String(value);row.appendChild(k);row.appendChild(v);return row;}
+    function briefSection(title){const card=document.createElement("section");card.className="overview-card trip-brief-card";const h=document.createElement("div");h.className="overview-card-title";h.textContent=title;card.appendChild(h);return card;}
+    function renderTripBrief(){
+      const trip=tripBriefTrip(),body=$("tripBriefBody"),status=$("tripBriefStatus");if(!body||!status)return;body.innerHTML="";
+      if(!trip){status.textContent=t("trip_brief_no_trip");return;}
+      const range=tripDateRange(trip),readiness=tripReadiness(trip),taskStats=tripTaskStats(trip),budget=Finance.budgetSummary(trip);
+      status.textContent=readiness.rows.length?tf("trip_brief_readiness_counts",{issues:readiness.issues,actions:readiness.actions}):t("trip_brief_readiness_ready");
+      const tripCard=briefSection(t("trip_brief_section_trip"));tripCard.appendChild(briefFactRow(t("trip_brief_destination"),tripDestination(trip)||t("overview_fact_unset")));tripCard.appendChild(briefFactRow(t("trip_brief_dates"),tripBriefDateRangeText(trip)));tripCard.appendChild(briefFactRow(t("trip_brief_days"),range?((dateDiffDays(range.first,range.last)||0)+1):0));body.appendChild(tripCard);
+      const logisticsCard=briefSection(t("trip_brief_section_logistics"));logisticsCard.appendChild(briefFactRow(t("trip_brief_stays"),tripStays(trip).filter(x=>stayInfo(x).status!=="cancelled").length));logisticsCard.appendChild(briefFactRow(t("trip_brief_journeys"),tripJourneys(trip).filter(x=>journeyInfo(x).status!=="cancelled").length));logisticsCard.appendChild(briefFactRow(t("trip_brief_booking_attention"),Finance.bookingAttentionEntries(trip,Logistics).length));body.appendChild(logisticsCard);
+      const taskCard=briefSection(t("trip_brief_section_tasks"));taskCard.appendChild(briefFactRow(t("trip_brief_open_tasks"),taskStats.open));taskCard.appendChild(briefFactRow(t("trip_brief_docs_needed"),Finance.documentNeedsAttention(trip).length));body.appendChild(taskCard);
+      const moneyCard=briefSection(t("trip_brief_section_money"));moneyCard.appendChild(briefFactRow(t("trip_brief_budget"),budget.active?formatMoneyAmount(budget.comparableSpent,budget.budget.currency)+" / "+formatMoneyAmount(budget.budget.amount,budget.budget.currency):t("overview_fact_unset")));body.appendChild(moneyCard);
+    }
+    function openTripBriefSheet(tripId){const trip=trips.find(x=>x.id===tripId)||getActiveTrip();if(!trip)return;_tripBriefTripId=trip.id;renderTripBrief();openSheetEl("tripBriefSheet");}
+    function closeTripBriefSheet(){_tripBriefTripId=null;closeSheetEl("tripBriefSheet");}
+    async function copyTripBrief(){const text=tripBriefSafeText(tripBriefTrip());if(!text)return;try{await navigator.clipboard.writeText(text);showToast(t("trip_brief_copied"));}catch(_){const ta=document.createElement("textarea");ta.value=text;ta.setAttribute("readonly","");ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");showToast(t("trip_brief_copied"));}catch(__){}ta.remove();}}
+    async function shareTripBrief(){const trip=tripBriefTrip(),text=tripBriefSafeText(trip);if(!trip||!text)return;try{if(navigator.share){await navigator.share({title:trip.name||"TripMaster",text});showToast(t("trip_brief_shared"));return;}}catch(err){if(err&&err.name==="AbortError")return;}await copyTripBrief();showToast(t("trip_brief_share_fallback"));}
+
     function tripBoardTrip() { return trips.find(x => x.id === _tripBoardTripId) || null; }
+    let _editingTaskId = null;
     function newTaskId() { return newTripId("task"); }
+    function cancelTripTaskEdit(){
+      _editingTaskId=null;if($("tripTaskInput"))$("tripTaskInput").value="";if($("tripTaskDate"))$("tripTaskDate").value="";if($("tripTaskPriority"))$("tripTaskPriority").value="normal";if($("tripTaskCancelEditBtn"))$("tripTaskCancelEditBtn").hidden=true;if($("tripTaskAddBtn"))$("tripTaskAddBtn").textContent=t("trip_task_add_btn");
+    }
+    function beginTripTaskEdit(raw){
+      const info=Operations.taskInfo(raw);if(!info.id)return;_editingTaskId=info.id;$("tripTaskInput").value=info.title;$("tripTaskDate").value=info.date;$("tripTaskPriority").value=info.priority;$("tripTaskCancelEditBtn").hidden=false;$("tripTaskAddBtn").textContent=t("trip_task_save_edit");try{$("tripTaskInput").focus();}catch(_){}
+    }
     function tripAgendaDates(trip) {
       const dates = new Set();
       (trip && Array.isArray(trip.days) ? trip.days : []).forEach(d => { if (d && d.date) dates.add(d.date); });
@@ -4902,6 +5979,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     function setTripBoardTab(tab) {
       _tripBoardTab = ["agenda","tasks","attention"].includes(tab) ? tab : "agenda";
+      if(_tripBoardTab!=="tasks"&&_editingTaskId)cancelTripTaskEdit();
       const agenda=$("tripBoardAgendaSection"), tasks=$("tripBoardTasksSection"), attention=$("tripBoardAttentionSection");
       if(agenda)agenda.hidden=_tripBoardTab!=="agenda";
       if(tasks)tasks.hidden=_tripBoardTab!=="tasks";
@@ -4911,11 +5989,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     function openTripBoardSheet(tripId, tab) {
       const trip=trips.find(x=>x.id===tripId)||getActiveTrip(); if(!trip)return;
-      _tripBoardTripId=trip.id; _tripBoardTab=["tasks","attention"].includes(tab)?tab:"agenda"; _tripTaskFilter="open";
+      cancelTripTaskEdit();_tripBoardTripId=trip.id; _tripBoardTab=["tasks","attention"].includes(tab)?tab:"agenda"; _tripTaskFilter="open";
       if($("tripBoardSearch"))$("tripBoardSearch").value="";
       renderTripBoard(); setTripBoardTab(_tripBoardTab); openSheetEl("tripBoardSheet");
     }
-    function closeTripBoardSheet(){ _tripBoardTripId=null; closeSheetEl("tripBoardSheet"); }
+    function closeTripBoardSheet(){ cancelTripTaskEdit();_tripBoardTripId=null; closeSheetEl("tripBoardSheet"); }
     function renderTripBoardSummary(trip){
       const el=$("tripBoardSummary"); if(!el)return; const stats=tripTaskStats(trip), dates=tripAgendaDates(trip);
       el.textContent=tf("trip_board_summary",{days:dates.length,activities:(trip.days||[]).reduce((n,d)=>n+((d.items&&d.items.length)||0),0),tasks:stats.open});
@@ -4962,22 +6040,52 @@ document.addEventListener("DOMContentLoaded", () => {
         const toggle=document.createElement("button");toggle.type="button";toggle.className="trip-task-toggle";toggle.setAttribute("aria-label",info.done?t("trip_task_mark_open"):t("trip_task_mark_done"));toggle.textContent=info.done?"✓":"○";
         const copy=document.createElement("span");copy.className="trip-task-copy";const title=document.createElement("span");title.className="trip-task-title";title.textContent=info.title;copy.appendChild(title);
         const meta=document.createElement("small");meta.className="trip-task-meta";const bits=[];const dueLabel=taskDueLabel(info);if(dueLabel)bits.push(dueLabel);if(info.priority!=="normal")bits.push(taskPriorityLabel(info.priority));meta.textContent=bits.join(" · ");if(meta.textContent)copy.appendChild(meta);
+        const edit=document.createElement("button");edit.type="button";edit.className="trip-task-edit";edit.setAttribute("aria-label",t("trip_task_edit"));edit.textContent="✏️";
         const del=document.createElement("button");del.type="button";del.className="trip-task-delete";del.setAttribute("aria-label",t("trip_task_delete"));del.textContent="🗑";
-        toggle.addEventListener("click",()=>{if(!commitState(()=>{raw.done=!info.done;}))return;renderTripBoard();renderCurrentView();});
-        del.addEventListener("click",()=>{if(!commitState(()=>{trip.tasks.splice(index,1);if(!trip.tasks.length)delete trip.tasks;},{type:"task-delete"}))return;renderTripBoard();renderCurrentView();showUndoToast(t("trip_task_deleted"));});
-        row.appendChild(toggle);row.appendChild(copy);row.appendChild(del);wrap.appendChild(row);
+        toggle.addEventListener("click",()=>{if(!commitState(()=>{const row=(trip.tasks||[]).find(x=>x.id===info.id);if(row)row.done=!row.done;}))return;renderTripBoard();renderCurrentView();});
+        edit.addEventListener("click",()=>beginTripTaskEdit(raw));
+        del.addEventListener("click",()=>{if(_editingTaskId===info.id)cancelTripTaskEdit();if(!commitState(()=>{const currentIndex=rowIndexByStableId(trip.tasks,info.id);if(currentIndex<0)return;trip.tasks.splice(currentIndex,1);if(!trip.tasks.length)delete trip.tasks;},{type:"task-delete"}))return;renderTripBoard();renderCurrentView();showUndoToast(t("trip_task_deleted"));});
+        row.appendChild(toggle);row.appendChild(copy);row.appendChild(edit);row.appendChild(del);wrap.appendChild(row);
       });
       if(!rows.length){const empty=document.createElement("div");empty.className="logistics-empty";empty.textContent=allRows.length?t("trip_task_filter_empty"):t("trip_task_none");wrap.appendChild(empty);}
     }
+    function attentionDetailRows(trip,area){
+      const out=[];
+      if(area==="schedule"){
+        (trip.days||[]).forEach((day,dayIndex)=>{const scheduleItems=scheduleRelevantItems(day),analysis=DayIntel.analyzeDay(scheduleItems),date=formatDateOnly(day.date,{day:"numeric",month:"short"})||day.date||"—";
+          analysis.conflicts.forEach(c=>{const a=scheduleItems[c.firstIndex]||{},b=scheduleItems[c.secondIndex]||{};out.push({level:"issue",dayIndex,text:tf("attention_detail_overlap",{date,first:a.title||"—",second:b.title||"—",n:c.overlapMin})});});
+          analysis.entries.filter(e=>e.invalidRange||e.malformedStart||e.malformedEnd).forEach(e=>out.push({level:"issue",dayIndex,text:tf("attention_detail_invalid_time",{date,title:(e.item&&e.item.title)||"—"})}));
+          analysis.pairs.filter(p=>p.status==="insufficient").forEach(pair=>{const a=scheduleItems[pair.firstIndex]||{},b=scheduleItems[pair.secondIndex]||{},short=Math.max(0,Math.abs(pair.bufferMin||0));out.push({level:"issue",dayIndex,text:tf("attention_detail_travel_short",{date,first:a.title||"—",second:b.title||"—",n:short})});});
+        });
+      } else if(area==="logistics"){
+        Logistics.stayOverlaps(trip).forEach(pair=>{const a=stayInfo(pair[0]),b=stayInfo(pair[1]);out.push({level:"issue",text:tf("attention_detail_stay_overlap",{first:a.name||a.location||"—",second:b.name||b.location||"—"})});});
+        const dates=Logistics.overnightDates((trip.days||[]).map(d=>d&&d.date));Logistics.uncoveredDates(trip,dates).forEach(date=>out.push({level:"issue",kind:"stay-gap",date,text:tf("attention_detail_stay_gap",{date:formatDateOnly(date,{day:"numeric",month:"short"})||date})}));
+      } else if(area==="tasks"){
+        Operations.sortedTasks(trip,todayISO()).filter(x=>Operations.taskDueState(x.info,todayISO())==="overdue").forEach(x=>out.push({level:"issue",text:tf("attention_detail_task_overdue",{title:x.info.title,date:formatDateOnly(x.info.date,{day:"numeric",month:"short"})||x.info.date})}));
+      }
+      return out.slice(0,12);
+    }
+    function openAttentionDetail(trip,detail,area){
+      closeTripBoardSheet();if(trip.id!==activeTripId)switchTrip(trip.id,{silent:true});
+      if(detail&&detail.kind==="stay-gap"&&openMissingStayEditor(trip,detail.date))return;
+      if(Number.isInteger(detail&&detail.dayIndex)){currentView="planner";days=trip.days||[];currentDayIndex=Math.max(0,Math.min(detail.dayIndex,Math.max(0,days.length-1)));renderCurrentView();updateHeaderInfo();return;}
+      openReadinessArea(area,trip);
+    }
     function renderTripBoardAttention(trip){
-      const wrap=$("tripBoardAttention"),summary=$("tripBoardAttentionSummary");if(!wrap)return;wrap.innerHTML="";const rows=readinessEntries(trip);const issues=rows.filter(r=>r.level==="issue").length,checks=rows.filter(r=>r.level==="check").length;
-      if(summary)summary.textContent=rows.length?tf("trip_board_attention_summary",{issues,checks}):t("trip_board_attention_clear");
+      const wrap=$("tripBoardAttention"),summary=$("tripBoardAttentionSummary");if(!wrap)return;wrap.innerHTML="";const rows=readinessEntries(trip);const issues=rows.filter(r=>r.level==="issue").length,actions=rows.filter(r=>r.level==="action").length;
+      if(summary)summary.textContent=rows.length?tf("trip_board_attention_summary",{issues,actions}):t("trip_board_attention_clear");
       if(!rows.length){const empty=document.createElement("div");empty.className="logistics-empty";empty.textContent=t("trip_board_attention_clear");wrap.appendChild(empty);return;}
       const order=["schedule","logistics","bookings","money","documents","tasks","access","setup"];
-      order.forEach(area=>{const areaRows=rows.filter(r=>r.area===area);if(!areaRows.length)return;const group=document.createElement("section");group.className="trip-board-attention-group";const head=document.createElement("div");head.className="trip-board-attention-head";const title=document.createElement("strong");title.textContent=readinessAreaLabel(area);const btn=document.createElement("button");btn.type="button";btn.className="btn btn-muted compact-btn";btn.textContent=t("readiness_review_action");btn.addEventListener("click",()=>{closeTripBoardSheet();if(trip.id!==activeTripId)switchTrip(trip.id,{silent:true});openReadinessArea(area,trip);});head.appendChild(title);head.appendChild(btn);group.appendChild(head);areaRows.forEach(entry=>{const row=document.createElement("div");row.className="planning-issue readiness-row readiness-"+entry.level;row.textContent="• "+entry.text;group.appendChild(row);});wrap.appendChild(group);});
+      order.forEach(area=>{const areaRows=rows.filter(r=>r.area===area);if(!areaRows.length)return;const group=document.createElement("section");group.className="trip-board-attention-group";const head=document.createElement("div");head.className="trip-board-attention-head";const title=document.createElement("strong");title.textContent=readinessAreaLabel(area);const btn=document.createElement("button");btn.type="button";btn.className="btn btn-muted compact-btn";btn.textContent=t(areaRows.some(r=>r.level==="issue")?"readiness_review_action":"readiness_open_action");btn.addEventListener("click",()=>{closeTripBoardSheet();if(trip.id!==activeTripId)switchTrip(trip.id,{silent:true});openReadinessArea(area,trip);});head.appendChild(title);head.appendChild(btn);group.appendChild(head);areaRows.forEach(entry=>{const row=document.createElement("div");row.className="planning-issue readiness-row readiness-"+entry.level;row.textContent="• "+entry.text;group.appendChild(row);});
+        attentionDetailRows(trip,area).forEach(detail=>{const row=document.createElement("button");row.type="button";row.className="attention-detail-row readiness-"+detail.level;row.textContent=detail.text;row.addEventListener("click",()=>openAttentionDetail(trip,detail,area));group.appendChild(row);});wrap.appendChild(group);});
     }
     function renderTripBoard(){const trip=tripBoardTrip();if(!trip)return;renderTripBoardSummary(trip);if(_tripBoardTab==="tasks")renderTripBoardTasks(trip);else if(_tripBoardTab==="attention")renderTripBoardAttention(trip);else renderTripBoardAgenda(trip);}
-    function addTripTask(){const trip=tripBoardTrip(),input=$("tripTaskInput");if(!trip||!input)return;const title=input.value.trim();if(!title){showToast(t("trip_task_required"));return;}const date=$("tripTaskDate")?$("tripTaskDate").value:"";const priority=$("tripTaskPriority")?$("tripTaskPriority").value:"normal";if(!commitState(()=>{if(!Array.isArray(trip.tasks))trip.tasks=[];const task={id:newTaskId(),title,done:false,createdAt:new Date().toISOString(),priority:["low","normal","high"].includes(priority)?priority:"normal"};if(/^\d{4}-\d{2}-\d{2}$/.test(date))task.date=date;trip.tasks.push(task);}))return;input.value="";if($("tripTaskDate"))$("tripTaskDate").value="";if($("tripTaskPriority"))$("tripTaskPriority").value="normal";renderTripBoard();renderCurrentView();showToast(t("trip_task_added"));}
+    function addTripTask(){
+      const trip=tripBoardTrip(),input=$("tripTaskInput");if(!trip||!input)return;const title=input.value.trim();if(!title){showToast(t("trip_task_required"));return;}const date=$("tripTaskDate")?$("tripTaskDate").value:"",priority=$("tripTaskPriority")?$("tripTaskPriority").value:"normal",editingId=_editingTaskId;
+      if(editingId&&!trip.tasks?.some(x=>Operations.taskInfo(x).id===editingId)){cancelTripTaskEdit();showToast(t("trip_task_edit_missing"));return;}
+      if(!commitState(()=>{if(!Array.isArray(trip.tasks))trip.tasks=[];if(editingId){const task=trip.tasks.find(x=>Operations.taskInfo(x).id===editingId);if(!task)return;task.title=title;task.priority=["low","normal","high"].includes(priority)?priority:"normal";if(/^\d{4}-\d{2}-\d{2}$/.test(date))task.date=date;else delete task.date;}else{const task={id:newTaskId(),title,done:false,createdAt:new Date().toISOString(),priority:["low","normal","high"].includes(priority)?priority:"normal"};if(/^\d{4}-\d{2}-\d{2}$/.test(date))task.date=date;trip.tasks.push(task);}}))return;
+      cancelTripTaskEdit();renderTripBoard();renderCurrentView();showToast(t(editingId?"trip_task_updated":"trip_task_added"));
+    }
 
     /* ══════════════════════════════════════════════════════════════════
        OVERVIEW-001 (v1040 / C1): read-only whole-trip view
@@ -5028,7 +6136,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const readinessCopy = document.createElement("div");
       const readinessTitle = document.createElement("div"); readinessTitle.className = "overview-card-title"; readinessTitle.textContent = t("readiness_center_title");
       const readinessSummary = document.createElement("div"); readinessSummary.className = "overview-card-note";
-      readinessSummary.textContent = readiness.rows.length ? tf("readiness_center_summary", { issues:readiness.issues, checks:readiness.checks }) : t("readiness_ready_detail");
+      readinessSummary.textContent = readiness.issues
+        ? tf("readiness_center_issue_summary", { issues:readiness.issues, actions:readiness.actions })
+        : readiness.actions ? tf("readiness_center_actions_summary", { actions:readiness.actions }) : t("readiness_ready_detail");
       readinessCopy.appendChild(readinessTitle); readinessCopy.appendChild(readinessSummary);
       const readinessStatus = document.createElement("div"); readinessStatus.className = "readiness-status readiness-" + readiness.level; readinessStatus.textContent = readinessLabel(readiness.level);
       readinessHead.appendChild(readinessCopy); readinessHead.appendChild(readinessStatus); readinessCard.appendChild(readinessHead);
@@ -5040,7 +6150,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const group = document.createElement("section"); group.className = "readiness-area";
           const groupHead = document.createElement("div"); groupHead.className = "readiness-area-head";
           const groupTitle = document.createElement("strong"); groupTitle.textContent = readinessAreaLabel(area);
-          const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn btn-muted compact-btn readiness-area-btn"; btn.textContent = t("readiness_review_action"); btn.addEventListener("click", () => openReadinessArea(area, trip));
+          const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn btn-muted compact-btn readiness-area-btn"; btn.textContent = t(areaRows.some(row => row.level === "issue") ? "readiness_review_action" : "readiness_open_action"); btn.addEventListener("click", () => openReadinessArea(area, trip));
           groupHead.appendChild(groupTitle); groupHead.appendChild(btn); group.appendChild(groupHead);
           const list = document.createElement("div"); list.className = "planning-issues";
           areaRows.forEach(entry => { const row=document.createElement("div"); row.className="planning-issue readiness-row readiness-"+entry.level; row.textContent="• "+entry.text; list.appendChild(row); });
@@ -5093,7 +6203,7 @@ document.addEventListener("DOMContentLoaded", () => {
           .forEach(({raw,info})=>{
             const row=document.createElement("div"); row.className="overview-logistics-row";
             const main=document.createElement("div"); main.className="overview-travel-day-title"; main.textContent="🏨 " + (info.name || t("stay_unnamed")); row.appendChild(main);
-            const bits=[]; if(info.startDate||info.endDate) bits.push((info.startDate||"…")+" → "+(info.endDate||"…")); if(info.location) bits.push(info.location); if(info.status) bits.push(bookingStatusLabel(info.status)); const pay=Finance.paymentStatus(raw&&raw.paymentStatus); if(pay)bits.push(paymentStatusLabel(pay));
+            const bits=[]; if(info.startDate||info.endDate) bits.push(flowPairText(info.startDate||"…", info.endDate||"…")); if(info.location) bits.push(info.location); if(info.status) bits.push(bookingStatusLabel(info.status)); const pay=Finance.paymentStatus(raw&&raw.paymentStatus); if(pay)bits.push(paymentStatusLabel(pay));
             if(info.confirmation) bits.push(t("booking_reference_short")+": "+info.confirmation);
             const detail=document.createElement("div"); detail.className="overview-card-note"; detail.textContent=bits.join(" · ")||t("overview_fact_unset"); row.appendChild(detail); stayCard.appendChild(row);
           });
@@ -5108,8 +6218,8 @@ document.addEventListener("DOMContentLoaded", () => {
           .sort((a,b)=>(a.info.date||"9999").localeCompare(b.info.date||"9999") || (a.info.departureTime||"").localeCompare(b.info.departureTime||""))
           .forEach(({raw,info})=>{
             const row=document.createElement("div"); row.className="overview-logistics-row";
-            const main=document.createElement("div"); main.className="overview-travel-day-title"; main.textContent="🚆 " + (info.origin||"…") + " → " + (info.destination||"…"); row.appendChild(main);
-            const bits=[]; if(info.date)bits.push(info.arrivalDate&&info.arrivalDate!==info.date?info.date+" → "+info.arrivalDate:info.date); if(info.mode)bits.push(journeyModeLabel(info.mode)); if(info.departureTime||info.arrivalTime)bits.push((info.departureTime||"…")+" → "+(info.arrivalTime||"…")); if(info.status)bits.push(bookingStatusLabel(info.status)); const pay=Finance.paymentStatus(raw&&raw.paymentStatus);if(pay)bits.push(paymentStatusLabel(pay)); if(info.serviceNumber)bits.push(info.serviceNumber); if(info.confirmation)bits.push(t("booking_reference_short")+": "+info.confirmation);
+            const main=document.createElement("div"); main.className="overview-travel-day-title"; main.textContent="🚆 " + flowPairText(info.origin||"…", info.destination||"…"); row.appendChild(main);
+            const bits=[]; if(info.date)bits.push(info.arrivalDate&&info.arrivalDate!==info.date?flowPairText(info.date, info.arrivalDate):info.date); if(info.mode)bits.push(journeyModeLabel(info.mode)); if(info.departureTime||info.arrivalTime)bits.push(flowPairText(info.departureTime||"…", info.arrivalTime||"…")); if(info.status)bits.push(bookingStatusLabel(info.status)); const pay=Finance.paymentStatus(raw&&raw.paymentStatus);if(pay)bits.push(paymentStatusLabel(pay)); if(info.serviceNumber)bits.push(info.serviceNumber); if(info.confirmation)bits.push(t("booking_reference_short")+": "+info.confirmation);
             const detail=document.createElement("div"); detail.className="overview-card-note"; detail.textContent=bits.join(" · ")||t("overview_fact_unset"); row.appendChild(detail); journeyCard.appendChild(row);
           });
         body.appendChild(journeyCard);
@@ -5185,12 +6295,12 @@ document.addEventListener("DOMContentLoaded", () => {
         accessCard.appendChild(at);
         const chips = document.createElement("div"); chips.className = "planning-chips";
         const addAccessChip = (text, cls) => { const c=document.createElement("span"); c.className="planning-chip"+(cls?" "+cls:""); c.textContent=text; chips.appendChild(c); };
-        addAccessChip(tf("overview_access_verified", { n: st.accessVerified }), "access-good");
-        addAccessChip(tf("overview_access_to_check_short", { n: st.accessNeedsCheck }), "access-check");
-        addAccessChip(tf("overview_access_issues_short", { n: st.accessIssues }), st.accessIssues ? "access-issue" : "");
-        accessCard.appendChild(chips);
-        const note = document.createElement("div"); note.className = "overview-card-note"; note.textContent = t("overview_access_truth_note");
+        if (st.accessVerified) addAccessChip(tf("overview_access_verified", { n: st.accessVerified }), "access-good");
+        if (st.accessIssues) addAccessChip(tf("overview_access_issues_short", { n: st.accessIssues }), "access-issue");
+        if (chips.childNodes.length) accessCard.appendChild(chips);
+        const note = document.createElement("div"); note.className = "overview-card-note"; note.textContent = t("overview_access_profile_note_v2500");
         accessCard.appendChild(note);
+        const accessBtn=document.createElement("button");accessBtn.type="button";accessBtn.className="btn btn-muted compact-btn";accessBtn.textContent=t("access_manage_profile");accessBtn.addEventListener("click",()=>openAccessProfile(trip));accessCard.appendChild(accessBtn);
         body.appendChild(accessCard);
       }
 
@@ -5223,14 +6333,14 @@ document.addEventListener("DOMContentLoaded", () => {
         if (logisticsTrackingActive(trip)) {
           const logisticBits=[];
           Logistics.staysEndingOn(trip,day.date).forEach(raw=>{const st=stayInfo(raw); logisticBits.push("↗ "+t("day_logistics_checkout")+": "+(st.name||st.location||t("overview_fact_unset")));});
-          Logistics.journeysForDate(trip,day.date).forEach(raw=>{const j=journeyInfo(raw); logisticBits.push("🚆 "+(j.origin||"…")+" → "+(j.destination||"…")+(j.departureTime||j.arrivalTime?" · "+(j.departureTime||"…")+" → "+(j.arrivalTime||"…"):""));});
+          Logistics.journeysForDate(trip,day.date).forEach(raw=>{const j=journeyInfo(raw); logisticBits.push("🚆 "+flowPairText(j.origin||"…", j.destination||"…")+(j.departureTime||j.arrivalTime?" · "+flowPairText(j.departureTime||"…", j.arrivalTime||"…"):""));});
           Logistics.staysStartingOn(trip,day.date).forEach(raw=>{const st=stayInfo(raw); logisticBits.push("↘ "+t("day_logistics_checkin")+": "+(st.name||st.location||t("overview_fact_unset")));});
           if (!logisticBits.length && Logistics.staysTrackingActive(trip)) {
             const baseLabel=effectiveBaseLabelForDate(trip,day.date); if(baseLabel) logisticBits.push("🏨 "+t("day_logistics_base")+": "+baseLabel);
           }
           if(logisticBits.length){const lg=document.createElement("div");lg.className="overview-day-logistics";logisticBits.forEach(text=>{const r=document.createElement("div");r.textContent=text;lg.appendChild(r);});block.appendChild(lg);}
         }
-        const analysis = DayIntel.analyzeDay(day.items || []);
+        const analysis = DayIntel.analyzeDay(scheduleRelevantItems(day));
         const healthBits = [];
         if (analysis.conflicts.length) healthBits.push(tf("day_health_conflicts", { n: analysis.conflicts.length }));
         const badTimes = analysis.invalidRangeCount + analysis.malformedCount;
@@ -5238,12 +6348,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const insufficientTravel = analysis.pairs.filter(pair => pair.status === "insufficient").length;
         if (insufficientTravel) healthBits.push(tf("day_health_travel_insufficient", { n: insufficientTravel }));
         if (analysis.travelUnresolved) healthBits.push(tf("day_health_travel_unknown", { n: analysis.travelUnresolved }));
-        if (hasAccessPlanningNeeds()) {
-          const accessN = (day.items || []).filter(item => !itemAccessStatus(item) || itemAccessStatus(item) === "needscheck").length;
-          const accessIssues = (day.items || []).filter(item => itemAccessStatus(item) === "problem").length;
-          if (accessN) healthBits.push(tf("day_health_access_checks", { n: accessN }));
-          if (accessIssues) healthBits.push(tf("day_health_access_issues", { n: accessIssues }));
-        }
         if (healthBits.length) {
           const health=document.createElement("div"); health.className="overview-day-health"; health.textContent=healthBits.join(" · "); block.appendChild(health);
         }
@@ -5349,6 +6453,7 @@ document.addEventListener("DOMContentLoaded", () => {
         case "expenseSheet":      closeExpenseSheet(); return;
         case "documentsSheet":    closeDocumentsSheet(); return;
         case "tripBoardSheet":     closeTripBoardSheet(); return;
+        case "tripBriefSheet":     closeTripBriefSheet(); return;
         case "safetyCenterSheet":  closeSafetyCenter(); return;
         case "documentSheet":     closeDocumentSheet(); return;
         case "overviewSheet":     closeOverviewSheet(); return;
@@ -5361,8 +6466,18 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    function showUpdateBanner(){const el=$("updateBanner");if(!el)return;if(topOpenSheet()){_pendingUpdateReady=true;return;}el.hidden=false;}
-    function hideUpdateBanner(){_pendingUpdateReady=false;const el=$("updateBanner");if(el)el.hidden=true;}
+    function showUpdateBanner(forceReload){
+      const el=$("updateBanner");if(!el)return;
+      if(forceReload===true)_reloadRequiredForVersion=true;
+      if(topOpenSheet()){_pendingUpdateReady=true;return;}
+      const forced=_reloadRequiredForVersion===true;
+      const title=el.querySelector(".update-banner-copy strong"),body=el.querySelector(".update-banner-copy span"),later=$("updateLaterBtn");
+      if(title)title.textContent=t(forced?"update_reload_required_title":"update_ready_title");
+      if(body)body.textContent=t(forced?"update_reload_required_body":"update_ready_body");
+      if(later)later.hidden=forced;
+      el.hidden=false;
+    }
+    function hideUpdateBanner(){if(_reloadRequiredForVersion)return;_pendingUpdateReady=false;const el=$("updateBanner");if(el)el.hidden=true;}
 
     window.addEventListener("popstate", (event) => {
       if (!_backGuardArmed) return;
@@ -5396,9 +6511,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Header menu toggle
     // MENU-001 (v1020 fix): the hamburger now opens the product menu sheet.
-    window.addEventListener("tripmaster:update-ready", showUpdateBanner);
+    window.addEventListener("tripmaster:update-ready", () => showUpdateBanner(false));
+    window.addEventListener("tripmaster:reload-required", () => showUpdateBanner(true));
     if ($("updateLaterBtn")) $("updateLaterBtn").addEventListener("click", hideUpdateBanner);
-    if ($("updateReloadBtn")) $("updateReloadBtn").addEventListener("click", () => location.reload());
+    window.addEventListener("tripmaster:update-apply-failed", () => {
+      const btn=$("updateReloadBtn"); if(btn)btn.disabled=false;
+      showUpdateBanner(false);
+    });
+    if ($("updateReloadBtn")) $("updateReloadBtn").addEventListener("click", () => {
+      const btn=$("updateReloadBtn"); if(btn)btn.disabled=true;
+      if(_reloadRequiredForVersion){window.location.reload();return;}
+      window.dispatchEvent(new CustomEvent("tripmaster:apply-update"));
+    });
     if ($("todayAlertsBtn")) $("todayAlertsBtn").addEventListener("click", requestTodayAlerts);
 
     $("settingsToggle").addEventListener("click", openMenuSheet);
@@ -5411,9 +6535,11 @@ document.addEventListener("DOMContentLoaded", () => {
        failed write must not leave the screen dark and the storage light.
        The attribute is applied only after the write is confirmed. */
     $("themeBtn").addEventListener("click", () => {
+      if (!guardPreferenceWrite("theme")) return;
       const cur = document.documentElement.getAttribute("data-theme");
       const next = cur === "dark" ? "light" : "dark";
       if (!writeAll([[KEY_THEME, next]])) { reportStorageFailure(); return; }
+      _themeStorageToken = next;
       if (next === "dark") document.documentElement.setAttribute("data-theme", "dark");
       else document.documentElement.removeAttribute("data-theme");
     });
@@ -5456,7 +6582,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!selectedDate) { showToast(t("toast_missing_date")); return; }
       // STORE-001 (v1040 / A7): guarded, same as addNewDay().
       if (!commitState(() => {
-        days.push({ date: selectedDate, items: [] });
+        days.push({ id:newTripId("day"), date: selectedDate, items: [] });
         currentDayIndex = days.length - 1;
       })) return;
       renderDays();
@@ -5480,14 +6606,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // Settings inputs
-    $("global-apikey").addEventListener("input", () => { settings.apiKey = $("global-apikey").value; saveSettings(); });
-
     // Reset
     $("resetBtn").addEventListener("click", () => {
       // MENU-003 (v1020 RC3): utility actions no longer auto-close the menu.
       // The confirm sheet stacks above it, and after a reset the next likely
       // action is Restore — which is right here in the same menu.
       confirmReset(() => {
+        // v2400 RC2: never snapshot/reset a stale in-memory view after an
+        // external window has changed storage. Adopt newest state and require
+        // a fresh deliberate reset attempt.
+        if(!guardExternalStateBeforeWrite())return;
+        if(!guardPreferenceStateBeforeDestructiveWrite())return;
         /* SNAPSHOT-001 (v1040 / A6): recoverable local copy first, and no
            reset at all if it cannot be written. */
         if (!writeSafetySnapshot("reset")) { showToast(t("toast_snapshot_failed")); return; }
@@ -5527,9 +6656,9 @@ document.addEventListener("DOMContentLoaded", () => {
         settings = nextSettings;
         setUndo(undoState, { settings: undoSettings, theme: undoTheme });
 
+        updatePreferenceStorageTokens();
         renderCurrentView();
-        $("global-apikey").value = "";
-        renderPrefsAndAccess();   // v1020: clear the new controls too
+          renderPrefsAndAccess();   // v1020: clear the new controls too
         // I18N-001 (v1030): keep currentLang and settings.language in sync.
         // With the RC2 fix this is a no-op repaint rather than a switch.
         currentLang = settings.language;
@@ -5568,7 +6697,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (exportStays.length) {
           text += `\n${t("export_stays_heading")}\n`;
           exportStays.map(raw=>({raw,info:stayInfo(raw)})).sort((a,b)=>(a.info.startDate||"9999").localeCompare(b.info.startDate||"9999")).forEach(({raw,info:st})=>{
-            text += `🏨 ${st.name || t("stay_unnamed")}${st.startDate||st.endDate ? " · " + (st.startDate||"…") + " → " + (st.endDate||"…") : ""}\n`;
+            text += `🏨 ${st.name || t("stay_unnamed")}${st.startDate||st.endDate ? " · " + flowPairText(st.startDate||"…", st.endDate||"…") : ""}\n`;
             if(st.location) text += `  📍 ${st.location}\n`;
             if(st.checkInTime) text += `  ${t("stay_checkin_time")}: ${st.checkInTime}\n`;
             if(st.checkOutTime) text += `  ${t("stay_checkout_time")}: ${st.checkOutTime}\n`;
@@ -5584,7 +6713,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (exportJourneys.length) {
           text += `\n${t("export_journeys_heading")}\n`;
           exportJourneys.map(raw=>({raw,info:journeyInfo(raw)})).sort((a,b)=>(a.info.date||"9999").localeCompare(b.info.date||"9999") || (a.info.departureTime||"").localeCompare(b.info.departureTime||"")).forEach(({raw,info:j})=>{
-            text += `🚆 ${j.date ? j.date + " · " : ""}${j.origin||"…"} → ${j.destination||"…"}${j.mode ? " · " + journeyModeLabel(j.mode) : ""}\n`;
+            text += `🚆 ${j.date ? j.date + " · " : ""}${flowPairText(j.origin||"…", j.destination||"…")}${j.mode ? " · " + journeyModeLabel(j.mode) : ""}\n`;
             if(j.departureTime||j.arrivalTime) text += `  ${t("travel_day_departure_time")}: ${j.departureTime||"…"} · ${t("travel_day_arrival_time")}: ${j.arrivalTime||"…"}${j.arrivalDate&&j.arrivalDate!==j.date?" · "+t("journey_arrival_date")+": "+j.arrivalDate:""}\n`;
             if(j.provider) text += `  ${t("journey_provider_label")}: ${j.provider}\n`;
             if(j.serviceNumber) text += `  ${t("journey_service_label")}: ${j.serviceNumber}\n`;
@@ -5635,12 +6764,10 @@ document.addEventListener("DOMContentLoaded", () => {
           if (note) text += `  📝 ${note}\n`;
           const status = itemAccessStatus(item);
           const anote  = itemAccessNote(item);
-          if (status || anote) {
+          if ((status && status !== "needscheck") || anote) {
             const label = (status === "verified" || status === "stepfree") ? t("access_badge_verified")
-                        : status === "problem"  ? t("access_badge_problem")
-                        : status === "needscheck" ? t("access_badge_needscheck")
-                        : t("access_status_unknown");
-            text += `  ♿ ${t("export_access_line")}: ${label}${anote ? " - " + anote : ""}\n`;
+                        : status === "problem" ? t("access_badge_problem") : "";
+            text += `  ♿ ${t("export_access_line")}: ${[label, anote].filter(Boolean).join(" - ")}\n`;
           }
           const booking = itemBookingInfo(item);
           const activityPay = itemPaymentStatus(item);
@@ -5693,7 +6820,7 @@ document.addEventListener("DOMContentLoaded", () => {
       currentDayIndex = todayIdx; renderDays(); renderActivities(currentDayIndex);
       setTimeout(() => {
         const nowEl = document.querySelector(".now-item");
-        if (nowEl) { nowEl.scrollIntoView({ behavior: "smooth", block: "center" }); showToast(t("toast_jumped_now")); }
+        if (nowEl) { nowEl.scrollIntoView({ behavior: preferredScrollBehavior(), block: "center" }); showToast(t("toast_jumped_now")); }
         else showToast(t("toast_no_current"));
       }, 100);
     });
@@ -5708,7 +6835,19 @@ document.addEventListener("DOMContentLoaded", () => {
     $("safetyCenterClose").addEventListener("click", closeSafetyCenter);
     $("safetySnapshotCreateBtn").addEventListener("click", createManualSafetySnapshot);
     $("safetySnapshotRestoreBtn").addEventListener("click", restoreLocalSafetySnapshot);
+    $("betaHealthRunBtn").addEventListener("click",()=>{runBetaHealthAudit(true);renderSafetyCenter();});
+    $("betaDiagnosticsCopyBtn").addEventListener("click",copyBetaDiagnostics);
+    $("betaDiagnosticsDownloadBtn").addEventListener("click",downloadBetaDiagnostics);
+    $("betaDiagnosticsClearBtn").addEventListener("click",clearBetaDiagnostics);
     $("safetyBackupDownloadBtn").addEventListener("click", exportBackup);
+    $("safetyBackupRestoreBtn").addEventListener("click",()=>$("restoreInput").click());
+    $("tripExportBtn").addEventListener("click", downloadTripPackage);
+    $("tripShareBtn").addEventListener("click", shareTripPackage);
+    $("tripImportBtn").addEventListener("click",()=>$("tripImportInput").click());
+    $("tripImportInput").addEventListener("change",event=>{
+      const file=event.target.files&&event.target.files[0];if(!file)return;if(file.size>10*1024*1024){showToast(t("trip_import_too_large"));event.target.value="";return;}
+      const reader=new FileReader();reader.onload=e=>{try{const payload=JSON.parse(e.target.result);const result=importPortableTripPayload(payload);recordTransferResult("import",result.ok?"passed":result.reason);if(!result.ok){if(result.reason==="storage")reportStorageFailure();else showToast(t("trip_import_invalid"));}else{closeSafetyCenter();showToast(tf("toast_trip_imported",{name:result.trip.name||t("menu_new_trip")}));}}catch(err){recordTransferResult("import","invalid");console.error(err);showToast(t("trip_import_invalid"));}event.target.value="";};reader.onerror=()=>{recordTransferResult("import","invalid");showToast(t("trip_import_invalid"));event.target.value="";};reader.readAsText(file);
+    });
     $("restoreBtn").addEventListener("click", () => {
       // MENU-003 (v1020 RC3): stays open behind the file picker and the
       // restore confirmation, so the user is not stranded mid-flow.
@@ -5719,21 +6858,21 @@ document.addEventListener("DOMContentLoaded", () => {
     $("restoreInput").addEventListener("change", (event) => {
       const file = event.target.files[0];
       if (!file) { showToast(t("toast_no_file")); return; }
+      if(file.size>15*1024*1024){showToast(t("backup_too_large"));event.target.value="";return;}
       const reader = new FileReader();
       reader.onload = function(e) {
         try {
           const backup = JSON.parse(e.target.result);
-          if (((!backup.trips || !Array.isArray(backup.trips)) && (!backup.days || !Array.isArray(backup.days))) ||
-              !backup.settings || typeof backup.settings !== "object") {
-            showToast(t("toast_bad_backup")); event.target.value = ""; return;
-          }
+          const report=Operations.backupPayloadReport(backup);
+          if(!report.valid){recordTransferResult("restore","invalid");console.warn("TripMaster: backup validation rejected",report.errors);showToast(t("toast_bad_backup"));event.target.value="";return;}
           _pendingRestoreData = backup;
           confirmRestore(() => { doRestore(_pendingRestoreData); _pendingRestoreData = null; });
         } catch (err) {
-          console.error(err); showToast(t("toast_backup_read_error"));
+          recordTransferResult("restore","invalid");console.error(err); showToast(t("toast_backup_read_error"));
         }
         event.target.value = "";
       };
+      reader.onerror=()=>{recordTransferResult("restore","invalid");showToast(t("toast_backup_read_error"));event.target.value="";};
       reader.readAsText(file);
     });
 
@@ -5764,11 +6903,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Delete activity from within Edit Activity sheet (reuses existing confirm dialog + delete logic)
     $("addDeleteBtn").addEventListener("click", () => {
-      if (editingDayIndex === null || editingItemIndex === null) return;
-      const dayIndex = editingDayIndex, itemIndex = editingItemIndex;
+      if (!editingItemUid) return;
+      const dayId = editingDayId, itemUid = editingItemUid;
       confirmDeleteActivity(() => {
         closeSheet();
-        deleteActivity(dayIndex, itemIndex);
+        deleteActivityByStableId(dayId, itemUid);
       });
     });
 
@@ -5790,8 +6929,8 @@ document.addEventListener("DOMContentLoaded", () => {
       // end time and Access reach the calendar and a rolled-back save never
       // produces an .ics for something that was not stored. Still fully
       // synchronous inside the click, which navigator.share() requires.
-      const saved = (editingDayIndex !== null && editingItemIndex !== null)
-        ? editItem(editingDayIndex, editingItemIndex)
+      const saved = editingItemUid !== null
+        ? editItem()
         : addItem();
 
       isSavingActivity = false;
@@ -5820,8 +6959,8 @@ document.addEventListener("DOMContentLoaded", () => {
         $("addGoogleCalBtn").disabled = false;
         return;
       }
-      const saved = (editingDayIndex !== null && editingItemIndex !== null)
-        ? editItem(editingDayIndex, editingItemIndex)
+      const saved = editingItemUid !== null
+        ? editItem()
         : addItem();
 
       isSavingActivity = false;
@@ -5832,33 +6971,21 @@ document.addEventListener("DOMContentLoaded", () => {
       exportActivityToGoogle(saved.day, saved.item);
     });
 
-    $("editAccessQuick").addEventListener("click", () => {
-      setMoreExpanded(true);
-      window.setTimeout(() => { try { $("addAccessStatus").focus(); } catch (err) {} }, 50);
-    });
-    $("addAccessStatus").addEventListener("change", () => {
-      if (editingDayIndex !== null && editingItemIndex !== null) {
-        const day = days[editingDayIndex];
-        if (day && day.items && day.items[editingItemIndex]) {
-          const temp = Object.assign({}, day.items[editingItemIndex], { accessStatus: $("addAccessStatus").value || undefined });
-          updateAccessQuickButton(temp);
-        }
-      }
-      updateMoreBadge();
-    });
-
     // AI strip + AI button
     $("aiStripBtn").addEventListener("click", openAISheet);
     $("aiStripBtn").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openAISheet(); } });
     $("aiBtn").addEventListener("click", openAISheet);
     $("aiSheetClose").addEventListener("click", closeAISheet);
     $("aiSendBtn").addEventListener("click", () => runAI());
-    $("aiPromptInput").addEventListener("keydown", (e) => { if (e.key === "Enter") runAI(); });
+    $("aiPromptInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) runAI(); });
+    $("aiPromptInput").addEventListener("input", () => { delete $("aiPromptInput").dataset.aiIntentHint; });
     document.querySelectorAll(".ai-quick-prompt").forEach((btn) => {
       btn.addEventListener("click", () => {
         if (_activeAIRequest && !_activeAIRequest.settled) return;
-        $("aiPromptInput").value = t(btn.dataset.aiPromptKey);
-        try { $("aiPromptInput").focus(); } catch (_) {}
+        const input=$("aiPromptInput");
+        input.value = t(btn.dataset.aiPromptKey);
+        input.dataset.aiIntentHint = btn.dataset.aiIntent || "";
+        try { input.focus(); } catch (_) {}
       });
     });
     $("aiClearBtn").addEventListener("click", () => {
@@ -5866,6 +6993,7 @@ document.addEventListener("DOMContentLoaded", () => {
       $("aiOutput").classList.remove("loading");
       $("aiImportBtn").style.display = "none";
       $("aiPromptInput").value = "";
+      delete $("aiPromptInput").dataset.aiIntentHint;
       if (!_activeAIRequest) setAIRequestUi(false, "");
     });
     // Planner Agent is advisory-only. The legacy import control stays hidden
@@ -5926,9 +7054,14 @@ document.addEventListener("DOMContentLoaded", () => {
     $("plannerMoneyQuick").addEventListener("click", () => { const trip=getActiveTrip(); if(trip) openMoneySheet(trip.id); });
     $("plannerDocumentsQuick").addEventListener("click", () => { const trip=getActiveTrip(); if(trip) openDocumentsSheet(trip.id); });
     $("plannerBoardQuick").addEventListener("click", () => { const trip=getActiveTrip(); if(trip) openTripBoardSheet(trip.id,"agenda"); });
+    $("plannerBriefQuick").addEventListener("click", () => { const trip=getActiveTrip(); if(trip) openTripBriefSheet(trip.id); });
     $("tripBoardClose").addEventListener("click", closeTripBoardSheet);
+    $("tripBriefClose").addEventListener("click", closeTripBriefSheet);
+    $("tripBriefCopyBtn").addEventListener("click", copyTripBrief);
+    $("tripBriefShareBtn").addEventListener("click", shareTripBrief);
     $("tripBoardTabs").addEventListener("click", (e) => { const btn=e.target.closest("[data-board-tab]"); if(btn)setTripBoardTab(btn.dataset.boardTab); });
     $("tripTaskFilters").addEventListener("click", (e) => { const btn=e.target.closest("[data-task-filter]"); if(!btn)return;_tripTaskFilter=["all","open","done"].includes(btn.dataset.taskFilter)?btn.dataset.taskFilter:"open";renderTripBoardTasks(tripBoardTrip()); });
+    $("tripTaskCancelEditBtn").addEventListener("click", cancelTripTaskEdit);
     $("tripBoardSearch").addEventListener("input", () => { if(_tripBoardTab==="agenda")renderTripBoardAgenda(tripBoardTrip()); });
     $("tripTaskAddBtn").addEventListener("click", addTripTask);
     $("tripTaskInput").addEventListener("keydown", (e) => { if(e.key==="Enter"){e.preventDefault();addTripTask();} });
@@ -6041,7 +7174,6 @@ document.addEventListener("DOMContentLoaded", () => {
       document.documentElement.setAttribute("data-theme", "dark");
     }
 
-    $("global-apikey").value   = settings.apiKey || "";
     $("headerCity").innerText  = "TripMaster";   // FIELDS-001 (v1020 RC3)
 
     // I18N-001 (v1030): apply language + direction before the first render
@@ -6060,14 +7192,15 @@ document.addEventListener("DOMContentLoaded", () => {
     // Fresh users have an empty KEY_DAYS and take the no-op path.
     const bootMigration = migrateLegacyHomeDays();
     if (bootMigration.error) console.warn("TripMaster: legacy Home migration deferred");
+    ensureStableTripGraphIds();
 
     let activeTrip = getActiveTrip();
     if (activeTrip && Operations.isArchivedTrip(activeTrip)) {
       if (writeAll([[KEY_ACTIVE_TRIP, ""]])) activeTripId = null;
       activeTrip = null;
     }
-    if (activeTripId && !activeTrip) {
-      // Stale pointer from a deleted/corrupt trip: clear only the pointer.
+    if (activeTripId && !activeTrip && !_unreadableStorageKeys.has(KEY_TRIPS)) {
+      // Only a readable canonical graph can establish that a pointer is stale.
       if (writeAll([[KEY_ACTIVE_TRIP, ""]])) activeTripId = null;
       activeTrip = null;
     }
@@ -6090,9 +7223,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (typeof window.__tmBootProgress === "function") window.__tmBootProgress("core-ready");
     document.documentElement.dataset.tmBoot = "ready";
     window.dispatchEvent(new Event("tripmaster:ready"));
+    armRuntimeDiagnostics();
+    armKeyboardViewport();
 
     try {
-      if (bootMigration.migrated) showToast(t("toast_home_migrated"));
+      if (_unreadableStorageKeys.size) { runBetaHealthAudit(false);openSafetyCenter();showToast(t("beta_health_toast_error")); }
+      else if (bootMigration.migrated) showToast(t("toast_home_migrated"));
       else showToast(t("toast_ready"));
     } catch (err) {
       console.warn("TripMaster: post-boot toast failed", err);
@@ -6115,12 +7251,43 @@ document.addEventListener("DOMContentLoaded", () => {
        Going to sleep is therefore now a no-op. Waking still RE-READS from
        storage, which is the direction that cannot lose data and which makes
        two instances converge instead of fight. */
+    function scheduleExternalStateSync() {
+      if(_externalSyncTimer)window.clearTimeout(_externalSyncTimer);
+      _externalSyncTimer=window.setTimeout(()=>{
+        _externalSyncTimer=null;
+        if(document.hidden)return;
+        if(topOpenSheet()){showToast(t("toast_external_state_pending"));return;}
+        if(!_externalStatePending && !_externalSettingsPending && !_externalThemePending)return;
+        if(reloadStateAfterWake())showToast(t("toast_external_state_reloaded"));
+      },120);
+    }
+
     function reloadStateAfterWake() {
+      // CROSS-WINDOW-EDITOR-002: a wake/pageshow must never replace the arrays
+      // backing an open editor. Detect a missed storage event by comparing the
+      // token captured when the sheet opened, then defer adoption until close.
+      if (canonicalTripStorageToken() !== _observedTripToken || openSheetHasStaleTripToken()) _externalStatePending = true;
+      // Frozen/discarded tabs can miss preference storage events too.
+      detectMissedPreferenceChanges();
+      if (topOpenSheet() && (_externalStatePending || _externalSettingsPending || _externalThemePending)) {
+        showToast(t("toast_external_state_pending"));
+        return false;
+      }
+
+      const hadExternalState = _externalStatePending;
+      const hadExternalSettings = _externalSettingsPending;
+      const hadExternalTheme = _externalThemePending;
       try {
         trips = normalizeTrips(safeParseJSON(KEY_TRIPS, []));
         activeTripId = localStorage.getItem(KEY_ACTIVE_TRIP) || null;
+        // We have now adopted the canonical trip payload. Clear the trip
+        // pending flag BEFORE repair/migration writes so their guarded save
+        // cannot recursively call reloadStateAfterWake().
+        _externalStatePending = false;
+        _observedTripToken = canonicalTripStorageToken();
         const wakeMigration = migrateLegacyHomeDays();
         if (wakeMigration.error) console.warn("TripMaster: legacy Home migration deferred on wake");
+        ensureStableTripGraphIds();
         let woken = getActiveTrip();
         if (woken && Operations.isArchivedTrip(woken)) { activeTripId=null; days=[]; currentView="home"; woken=null; }
         const req = _activeAIRequest;
@@ -6128,9 +7295,21 @@ document.addEventListener("DOMContentLoaded", () => {
         if (woken) { days = woken.days || []; }
         else { days = []; currentView = "home"; }
         if (currentDayIndex >= days.length) currentDayIndex = 0;
+
+        if (hadExternalSettings) adoptExternalSettingsFromStorage();
+        if (hadExternalTheme) adoptExternalThemeFromStorage();
+
         renderCurrentView(); updateHeaderInfo();
-      } catch(e) { console.warn("TripMaster: wake reload failed", e); }
+        if (hadExternalState || hadExternalSettings || hadExternalTheme) recordLifecycleEvent("state_sync",{trips:hadExternalState,settings:hadExternalSettings,theme:hadExternalTheme});
+        if (hadExternalState) invalidateUndoAfterExternalState();
+        _externalStatePending=false;
+        _externalSettingsPending=false;
+        _externalThemePending=false;
+        if(_externalSyncTimer){window.clearTimeout(_externalSyncTimer);_externalSyncTimer=null;}
+        return true;
+      } catch(e) { console.warn("TripMaster: wake reload failed", e); return false; }
     }
+
     /* Only the wake direction is wired. There is deliberately no pagehide /
        beforeunload writer: see STALE-WRITE-001 above. */
     document.addEventListener("visibilitychange", () => {
@@ -6147,6 +7326,29 @@ document.addEventListener("DOMContentLoaded", () => {
       resumeAIRequestAfterWake();
     });
     window.addEventListener("pageshow", () => { if (!_backGuardArmed) armBackGuard(); reloadStateAfterWake(); resumeAIRequestAfterWake(); });
+    window.addEventListener("storage", (event) => {
+      if (!event) return;
+      if (event.key === KEY_SETTINGS) {
+        recordLifecycleEvent("storage_change",{scope:"settings"});
+        _externalSettingsPending = true;
+        if (!document.hidden) scheduleExternalStateSync();
+        return;
+      }
+      if (event.key === KEY_THEME) {
+        recordLifecycleEvent("storage_change",{scope:"theme"});
+        _externalThemePending = true;
+        if (!document.hidden) scheduleExternalStateSync();
+        return;
+      }
+      if(![KEY_TRIPS,KEY_ACTIVE_TRIP,KEY_DAYS].includes(event.key))return;
+      recordLifecycleEvent("storage_change",{scope:"trip"});
+      _externalStatePending=true;
+      // Invalidate immediately, not only while the pending flag remains set.
+      // Auto-sync and wake reloads may clear that flag before the user taps
+      // Undo; the snapshot would still be stale and dangerous.
+      invalidateUndoAfterExternalState();
+      if(!document.hidden)scheduleExternalStateSync();
+    });
 
     /* ── REMINDERS-001 follow-up: lightweight time-based UI refresh ──
        Purely visual re-render so the reminder countdown / "עבר" / "עכשיו" labels can
